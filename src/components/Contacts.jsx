@@ -191,11 +191,8 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
                       <td><EsitoBadge name={c.esito} /></td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button className="btn btn-sm" style={{ marginRight: 4 }}
-                          onClick={() => { 
-                            if (openId === c.id) { setOpenId(null); setOpenContact(null); }
-                            else { setOpenId(c.id); setOpenContact(c); }
-                          }}>
-                          {isOpen ? 'Chiudi' : 'Scheda'}
+                          onClick={() => setModal({ type: 'scheda', data: c })}>
+                          Scheda
                         </button>
                         <button className="btn btn-sm btn-primary"
                           onClick={() => setModal({ type: 'contact', data: c })}>
