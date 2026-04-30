@@ -153,7 +153,12 @@ export default function App() {
         const esito = esitoRaw.includes('ok') ? 'Positivo' : esitoRaw.includes('ko') ? 'Negativo' : 'In valutazione';
 
         const newHist = [];
-        if (dataRaw) newHist.push({ id: uid(), type: 'appt', date: parseDate(dataRaw) || dataRaw, stato, esito: noteRaw || '' });
+        if (dataRaw) newHist.push({ 
+          id: uid(), type: 'appt', 
+          date: parseDate(dataRaw) || dataRaw, 
+          stato: 'Programmato', // Always Programmato — stato will be updated manually after the appt
+          esito: '' // Empty — will be filled manually after the appt
+        });
         if (fu) newHist.push({ id: uid(), type: 'note', date: todayStr, text: noteRaw || 'Follow-up da importazione', followup: fu });
 
         if (existingIdx >= 0) {
@@ -161,11 +166,13 @@ export default function App() {
           const existingDates = (ex.history || []).filter(h => h.type === 'appt').map(h => h.date.slice(0, 10));
           const newDate = dataRaw ? (parseDate(dataRaw) || dataRaw).slice(0, 10) : '';
           if (newDate && !existingDates.includes(newDate)) {
+            // Add new appt to history — never modify existing records
             const updatedHist = [...(ex.history || []), ...newHist];
             current[existingIdx] = { ...ex, history: updatedHist };
             toUpdateHist.push({ id: ex.id, history: updatedHist });
             updated++;
           } else { skipped++; }
+          // Never overwrite fase, proposta, esito, contratti of existing contacts
         } else {
           const nc = { id: uid(), nome, azienda: g(row, iAz), email, telefono: g(row, iTel), categoria: g(row, iCat), fase, fonte: g(row, iFonte) || 'Calendly', esito, proposta, importoProposta: 0, dataChiusura: '', contratti: [], testoProposta: '', history: newHist, customData: {} };
           current.push(nc);
