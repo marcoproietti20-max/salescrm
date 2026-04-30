@@ -194,6 +194,13 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
                           onClick={() => setModal({ type: 'scheda', data: c })}>
                           Scheda
                         </button>
+                        <button className="btn btn-sm" style={{ marginRight: 4 }}
+                          onClick={() => {
+                            const dupl = { ...c, id: uid(), nome: c.nome + ' (copia)', history: [], contratti: [] };
+                            setModal({ type: 'contact', data: dupl });
+                          }}>
+                          Duplica
+                        </button>
                         <button className="btn btn-sm btn-primary"
                           onClick={() => setModal({ type: 'contact', data: c })}>
                           Modifica
