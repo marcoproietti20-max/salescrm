@@ -167,6 +167,50 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
           <label className="form-label">Testo proposta commerciale</label>
           <textarea className="form-control" style={{ minHeight: 90 }} value={f.testoProposta} onChange={e => s('testoProposta', e.target.value)} placeholder="Incolla qui la proposta inviata. Verrà riassunta dall'AI per i follow-up." />
         </div>
+
+        {/* Contratti */}
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div className="form-label" style={{ margin: 0 }}>Contratti ({(f.contratti||[]).length})</div>
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => s('contratti', [...(f.contratti||[]), { id: uid(), tipo: 'Nuovo', nuovoFatturato: 0, prodotti: [], dataInizio: '', totale: 0 }])}>+ Aggiungi contratto</button>
+          </div>
+          {(f.contratti||[]).length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 8 }}>Nessun contratto — clicca "+ Aggiungi contratto"</div>}
+          {(f.contratti||[]).map((ct, ci) => (
+            <div key={ct.id||ci} style={{ background: '#EAF3DE', border: '1px solid #C0DD97', borderRadius: 'var(--r)', padding: '12px 14px', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#3B6D11' }}>Contratto #{ci+1} — €{((ct.prodotti||[]).reduce((s,p)=>s+(Number(p.importo)||0),0)||ct.totale||0).toLocaleString('it-IT')}</span>
+                <button type="button" className="btn btn-sm btn-danger" onClick={() => s('contratti', (f.contratti||[]).filter((_,i)=>i!==ci))}>× Elimina</button>
+              </div>
+              <div className="form-row" style={{ marginBottom: 8 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Tipo</label>
+                  <select className="form-control" value={ct.tipo||'Nuovo'} onChange={e => s('contratti', (f.contratti||[]).map((x,i)=>i===ci?{...x,tipo:e.target.value}:x))}>
+                    <option value="Nuovo">Nuovo</option><option value="Rinnovo">Rinnovo</option>
+                  </select>
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Data inizio</label>
+                  <input className="form-control" type="date" value={ct.dataInizio||''} onChange={e => s('contratti', (f.contratti||[]).map((x,i)=>i===ci?{...x,dataInizio:e.target.value}:x))} />
+                </div>
+              </div>
+              {(ct.prodotti||[]).length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 6 }}>Nessun prodotto</div>}
+              {(ct.prodotti||[]).map((p, pi) => (
+                <div key={p.id||pi} style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <select className="form-control" style={{ flex: 2, minWidth: 120 }} value={p.categoria||''} onChange={e => s('contratti', (f.contratti||[]).map((x,i)=>i===ci?{...x,prodotti:x.prodotti.map((pp,j)=>j===pi?{...pp,categoria:e.target.value}:pp)}:x))}>
+                    <option value="">— categoria —</option>
+                    {['Editoria elettronica','Software','Formazione','Partner24 Ore','ItalyX','Quotidiani','Newsletter','Business Compass','Studi di Settore','Altri Prodotti'].map(pr=><option key={pr} value={pr}>{pr}</option>)}
+                  </select>
+                  <input className="form-control" style={{ flex: 2, minWidth: 80 }} type="text" placeholder="Nome prodotto" value={p.nome||''} onChange={e => s('contratti', (f.contratti||[]).map((x,i)=>i===ci?{...x,prodotti:x.prodotti.map((pp,j)=>j===pi?{...pp,nome:e.target.value}:pp)}:x))} />
+                  <input className="form-control" style={{ flex: 1, minWidth: 70 }} type="number" placeholder="€" value={p.importo||''} onChange={e => { const v=Number(e.target.value)||0; s('contratti', (f.contratti||[]).map((x,i)=>i===ci?{...x,totale:(x.prodotti||[]).reduce((s,pp,j)=>s+(j===pi?v:Number(pp.importo)||0),0),prodotti:x.prodotti.map((pp,j)=>j===pi?{...pp,importo:v}:pp)}:x)); }} />
+                  <input className="form-control" style={{ flex: 1, minWidth: 60 }} type="number" placeholder="mesi" value={p.durataM||''} onChange={e => s('contratti', (f.contratti||[]).map((x,i)=>i===ci?{...x,prodotti:x.prodotti.map((pp,j)=>j===pi?{...pp,durataM:Number(e.target.value)}:pp)}:x))} />
+                  <button type="button" className="btn btn-sm btn-danger" onClick={() => s('contratti', (f.contratti||[]).map((x,i)=>i===ci?{...x,prodotti:x.prodotti.filter((_,j)=>j!==pi)}:x))}>×</button>
+                </div>
+              ))}
+              <button type="button" className="btn btn-sm" style={{ marginTop: 4 }} onClick={() => s('contratti', (f.contratti||[]).map((x,i)=>i===ci?{...x,prodotti:[...(x.prodotti||[]),{id:uid(),categoria:'',nome:'',importo:0,durataM:12}]}:x))}>+ Prodotto</button>
+            </div>
+          ))}
+        </div>
+
         {customFields.length > 0 && (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 4 }}>
             <div className="form-label" style={{ marginBottom: 10 }}>Campi aggiuntivi</div>
