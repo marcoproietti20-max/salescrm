@@ -48,9 +48,15 @@ export default function ChiusoPerMese({ contacts, stages }) {
   if (!allYears.includes(curYear)) allYears.unshift(curYear);
 
   const [year, setYear] = useState(curYear);
+  const [filterProd, setFilterProd] = useState('');
   const [openM, setOpenM] = useState({});
   const [sortK, setSortK] = useState('data');
   const [sortD, setSortD] = useState('desc');
+
+  // All product categories across all closed contracts
+  const allProdCategories = [...new Set(
+    contacts.flatMap(c => getContratti(c).flatMap(ct => (ct.prodotti||[]).map(p => p.categoria).filter(Boolean)))
+  )].sort();
   const chartRef = useRef(); const chartInst = useRef();
 
   const yearClosed = closed.filter(c => getDataChiusura(c).startsWith(year));
@@ -62,7 +68,7 @@ export default function ChiusoPerMese({ contacts, stages }) {
 
   // Group by contract dataInizio, not contact dataChiusura
   yearClosed.forEach(c => {
-    getContratti(c).forEach(ct => {
+    getContratti(c).filter(ct => !filterProd || (ct.prodotti||[]).some(p => p.categoria === filterProd)).forEach(ct => {
       const d = ct.dataInizio || getDataChiusura(c);
       if (!d || !d.startsWith(year)) return;
       const m = parseInt(d.slice(5,7)) - 1;
@@ -136,6 +142,11 @@ export default function ChiusoPerMese({ contacts, stages }) {
       <div className="topbar">
         <span className="page-title">Chiuso per mese</span>
         <div className="topbar-right">
+          <label className="fs-12 text-muted">Prodotto:</label>
+          <select className="form-control" style={{width:160}} value={filterProd} onChange={e=>setFilterProd(e.target.value)}>
+            <option value="">Tutti i prodotti</option>
+            {allProdCategories.map(p=><option key={p} value={p}>{p}</option>)}
+          </select>
           <label className="fs-12 text-muted">Anno:</label>
           <select className="form-control" style={{width:90}} value={year} onChange={e=>setYear(e.target.value)}>
             {allYears.map(y=><option key={y} value={y}>{y}</option>)}
