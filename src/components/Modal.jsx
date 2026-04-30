@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { FONTI, CATEGORIE, ESITI, PROPOSTE, STATI_APPT, PRODOTTI, uid, fmt } from '../constants';
+import { FONTI, CATEGORIE, ESITI, PROPOSTE, STATI_APPT, PRODOTTI, uid, fmt, fmtDT, getContratti, getPreventivato } from '../constants';
+import { StageBadge, FonteBadge, EsitoBadge, PropostaBadge, StatoBadge } from './Badges';
 
 export default function Modal({ modal, setModal, contacts, stages, customFields,
   saveContact, deleteContact, updateContact, showToast }) {
@@ -51,6 +52,11 @@ export default function Modal({ modal, setModal, contacts, stages, customFields,
         showToast('Contratto salvato'); close();
       }}
       onDelete={(cid, cid2) => { updateContact(cid, c => ({ ...c, contratti: (c.contratti || []).filter(x => x.id !== cid2) })); showToast('Contratto eliminato'); close(); }}
+      onClose={close} />
+  );
+  if (modal.type === 'scheda') return (
+    <SchedaModal contact={modal.data} contacts={contacts} stages={stages}
+      setModal={setModal} updateContact={updateContact} showToast={showToast}
       onClose={close} />
   );
   if (modal.type === 'merge') return (
@@ -397,5 +403,168 @@ function MergeForm({ contacts, contact, onMerge, onClose }) {
         <button className="btn btn-primary" disabled={!sel} onClick={() => { if (sel && window.confirm('Confermi?')) onMerge(contact.id, sel.id); }}>Unisci anagrafiche</button>
       </div>
     </Overlay>
+  );
+}
+
+// ── Scheda contatto ─────────────────────────────────────────
+function SchedaModal({ contact: initialContact, contacts, stages, setModal, updateContact, showToast, onClose }) {
+  const [noteText, setNoteText] = React.useState('');
+  const [noteFu, setNoteFu] = React.useState('');
+  const [noteFase, setNoteFase] = React.useState('');
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Always read fresh contact from contacts array
+  const c = contacts.find(x => x.id === initialContact.id) || initialContact;
+  const hist = (c.history || []).slice().reverse();
+
+
+
+  const addNote = () => {
+    if (!noteText.trim()) return;
+    updateContact(c.id, ct => ({
+      ...ct,
+      history: [...(ct.history || []), { id: uid(), type: 'note', date: today, text: noteText, followup: noteFu }],
+      ...(noteFase ? { fase: noteFase } : {}),
+    }));
+    setNoteText(''); setNoteFu(''); setNoteFase('');
+    showToast('Nota aggiunta');
+  };
+
+  const openEmail = () => {
+    const sub = encodeURIComponent('Seguito alla nostra conversazione — Il Sole 24 Ore Professionale');
+    const body = encodeURIComponent(`Gentile ${c.nome},\n\nLa contatto in seguito al nostro precedente appuntamento.\n\nResto a disposizione per qualsiasi informazione.\n\nCordiali saluti,\nMarco Proietti\nIl Sole 24 Ore Professionale`);
+    window.open(`mailto:${c.email}?subject=${sub}&body=${body}`, '_blank');
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-box" style={{ width: 700 }}>
+        <div className="modal-header">
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>{c.nome}</div>
+            <div className="text-muted fs-12">{c.azienda}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <StageBadge name={c.fase} stages={stages} />
+            {c.email && <button className="btn btn-sm" onClick={openEmail}>📧 Email</button>}
+            <button className="btn btn-sm" onClick={() => { onClose(); setTimeout(() => setModal({ type: 'merge', data: c }), 100); }}>🔗 Riconcilia</button>
+            <button className="btn btn-sm btn-primary" onClick={() => { onClose(); setTimeout(() => setModal({ type: 'contact', data: c }), 100); }}>Modifica</button>
+            <button className="modal-close" onClick={onClose}>×</button>
+          </div>
+        </div>
+        <div className="modal-body" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+
+          {/* Info */}
+          <div className="info-grid" style={{ marginBottom: 16 }}>
+            <div className="info-item"><label>Telefono</label><span>{c.telefono || '—'}</span></div>
+            <div className="info-item"><label>Email</label><span>{c.email || '—'}</span></div>
+            <div className="info-item"><label>Categoria</label><span>{c.categoria || '—'}</span></div>
+            <div className="info-item"><label>Fonte</label><FonteBadge name={c.fonte} /></div>
+            <div className="info-item"><label>Proposta</label><PropostaBadge name={c.proposta} /></div>
+            <div className="info-item"><label>Importo proposta</label><span style={{ fontWeight: 600, color: '#185FA5' }}>{getPreventivato(c) > 0 ? '€' + getPreventivato(c).toLocaleString('it-IT') : '—'}</span></div>
+            <div className="info-item"><label>Esito</label><EsitoBadge name={c.esito} /></div>
+            <div className="info-item"><label>Data chiusura</label><span>{c.dataChiusura ? fmt(c.dataChiusura) : '—'}</span></div>
+          </div>
+
+          {/* Contratti */}
+          {getContratti(c).length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="form-label" style={{ marginBottom: 8 }}>Contratti ({getContratti(c).length})</div>
+              {getContratti(c).map((ct, i) => (
+                <div key={ct.id || i} style={{ background: '#EAF3DE', border: '1px solid #C0DD97', borderRadius: 'var(--r)', padding: '10px 14px', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 13, marginBottom: 4 }}>
+                    <span><strong>Totale:</strong> <span style={{ color: '#3B6D11', fontWeight: 700 }}>€{(ct.totale || 0).toLocaleString('it-IT')}</span></span>
+                    <span className="badge" style={{ background: ct.tipo === 'Rinnovo' ? '#E6F1FB' : '#EAF3DE', color: ct.tipo === 'Rinnovo' ? '#0C447C' : '#27500A', border: 'none', fontSize: 10 }}>{ct.tipo || 'Nuovo'}</span>
+                    {ct.dataInizio && <span><strong>Inizio:</strong> {fmt(ct.dataInizio)}</span>}
+                    {ct.nuovoFatturato > 0 && <span><strong>Nuovo fatt.:</strong> €{ct.nuovoFatturato.toLocaleString('it-IT')}</span>}
+                  </div>
+                  {(ct.prodotti || []).length > 0 && (
+                    <div className="fs-12">{ct.prodotti.map(p => (
+                      <span key={p.id} style={{ display: 'inline-block', background: 'white', border: '1px solid #C0DD97', borderRadius: 4, padding: '2px 8px', marginRight: 6, marginTop: 4 }}>
+                        {p.categoria && <strong>{p.categoria}</strong>}{p.categoria && p.nome ? ' — ' : ''}{p.nome}: €{Number(p.importo).toLocaleString('it-IT')}{p.durataM ? ` (${p.durataM}m)` : ''}
+                      </span>
+                    ))}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Testo proposta */}
+          {c.testoProposta && (
+            <div style={{ marginBottom: 16, background: 'var(--bg3)', borderRadius: 'var(--r)', padding: '12px 14px' }}>
+              <div className="form-label" style={{ marginBottom: 6 }}>Testo proposta commerciale</div>
+              <div className="fs-12 text-muted" style={{ lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{c.testoProposta}</div>
+            </div>
+          )}
+
+          {/* Storico */}
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+            <div className="section-head">
+              Storico attività ({(c.history || []).length})
+              <button className="btn btn-sm btn-primary" onClick={() => { onClose(); setTimeout(() => setModal({ type: 'appt', data: { contactId: c.id, appt: null } }), 100); }}>+ Appuntamento</button>
+            </div>
+            {hist.map(h => {
+              if (h.type === 'appt') {
+                const bc = { 'Svolto': '#639922', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D', 'Programmato': '#378ADD' }[h.stato] || '#378ADD';
+                return (
+                  <div key={h.id} className="history-item appt" style={{ borderLeftColor: bc }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <span className="history-tag tag-appt">Appuntamento</span>
+                      <StatoBadge name={h.stato} />
+                    </div>
+                    <div className="history-date">{fmtDT(h.date)}</div>
+                    <div className="history-text">{h.esito || <em className="text-muted">Nessun esito</em>}</div>
+                    <button className="btn btn-sm" style={{ marginTop: 6 }} onClick={() => { onClose(); setTimeout(() => setModal({ type: 'appt', data: { contactId: c.id, appt: h } }), 100); }}>Aggiorna</button>
+                  </div>
+                );
+              }
+              const fs = h.followup ? (h.followup < today ? 'scaduto' : h.followup === today ? 'oggi' : 'futuro') : '';
+              const fc = { scaduto: '#A32D2D', oggi: '#E07B1A', futuro: '#185FA5' }[fs] || '';
+              return (
+                <div key={h.id} className="history-item note">
+                  <span className="history-tag tag-note">Nota</span>
+                  <div className="history-date">{fmt(h.date, { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+                  <div className="history-text">{h.text}</div>
+                  {h.followup && (
+                    <div style={{ fontSize: 11, color: fc, fontWeight: 500, marginTop: 4 }}>
+                      Follow-up: {fmt(h.followup, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                      {fs === 'scaduto' ? ' — SCADUTO' : fs === 'oggi' ? ' — OGGI' : ''}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    <button className="btn btn-sm" onClick={() => { onClose(); setTimeout(() => setModal({ type: 'followup', data: { contactId: c.id, note: h } }), 100); }}>✏️ Modifica</button>
+                    <button className="btn btn-sm btn-danger" onClick={() => updateContact(c.id, ct => ({ ...ct, history: (ct.history || []).map(x => x.id === h.id ? { ...x, followup: '' } : x) }))}>× Elimina follow-up</button>
+                  </div>
+                </div>
+              );
+            })}
+            {hist.length === 0 && <div className="empty" style={{ padding: '14px 0' }}>Nessuna attività</div>}
+
+            {/* Aggiungi nota */}
+            <div style={{ marginTop: 12, background: 'var(--bg3)', borderRadius: 'var(--r)', padding: 14 }}>
+              <div className="form-label" style={{ marginBottom: 8 }}>Aggiungi nota</div>
+              <div className="form-group" style={{ marginBottom: 8 }}>
+                <textarea className="form-control" style={{ minHeight: 60 }} placeholder="Nota..." value={noteText} onChange={e => setNoteText(e.target.value)} />
+              </div>
+              <div className="form-row" style={{ marginBottom: 8 }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Follow-up</label>
+                  <input className="form-control" type="date" value={noteFu} onChange={e => setNoteFu(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Aggiorna fase</label>
+                  <select className="form-control" value={noteFase} onChange={e => setNoteFase(e.target.value)}>
+                    <option value="">— nessun cambiamento —</option>
+                    {stages.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={addNote}>Salva nota</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
