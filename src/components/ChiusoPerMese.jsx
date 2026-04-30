@@ -194,24 +194,34 @@ export default function ChiusoPerMese({ contacts, stages }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortContacts(m.contacts).map(c => {
-                    const durata = getDurataMedia(c);
-                    const prodotti = getContratti(c).flatMap(ct=>(ct.prodotti||[]).map(p=>`${p.categoria||p.nome||''}`)).filter(Boolean);
-                    const uniqueProd = [...new Set(prodotti)];
-                    return (
-                      <tr key={c.id}>
-                        <td className="fw-600">{c.nome}</td>
-                        <td className="text-muted fs-12">{c.azienda||'—'}</td>
-                        <td className="text-muted fs-12">{fmt(getDataChiusura(c),{day:'2-digit',month:'long',year:'numeric'})}</td>
-                        <td className="text-muted fs-12">{uniqueProd.join(', ')||'—'}</td>
-                        <td className="text-muted fs-12">{durata ? `${durata} mesi` : '—'}</td>
-                        <td style={{fontWeight:600,color:'#378ADD'}}>{getFatturatoNuovo(c)>0?fmtEur(getFatturatoNuovo(c)):'—'}</td>
-                        <td style={{fontWeight:600,color:'var(--accent)'}}>{getFatturatoRinnovo(c)>0?fmtEur(getFatturatoRinnovo(c)):'—'}</td>
-                        <td style={{fontWeight:700,color:'#3B6D11'}}>{fmtEur(getFatturatoTotale(c))}</td>
-                        <td className="text-muted fs-12">{fmtEur(getValoreContrattuale(c))}</td>
-                      </tr>
-                    );
-                  })}
+                  {sortContacts(m.contacts).flatMap(c =>
+                    getContratti(c).map((ct, ci) => {
+                      const isNuovo = ct.tipo !== 'Rinnovo';
+                      const importoCt = (ct.prodotti||[]).reduce((s,p)=>s+(Number(p.importo)||0),0) || Number(ct.totale)||0;
+                      const prodotti = (ct.prodotti||[]).map(p=>p.categoria||p.nome||'').filter(Boolean);
+                      const uniqueProd = [...new Set(prodotti)];
+                      const durate = (ct.prodotti||[]).map(p=>Number(p.durataM)||12);
+                      const durataLabel = durate.length > 0
+                        ? durate.every(d=>d===durate[0]) ? `${durate[0]} mesi` : durate.map(d=>`${d}m`).join(', ')
+                        : ct.durataM ? `${ct.durataM} mesi` : '—';
+                      const vc = ct.prodotti?.length
+                        ? ct.prodotti.reduce((s,p)=>s+(Number(p.importo)||0)*(Number(p.durataM)||12)/12,0)
+                        : (Number(ct.totale)||0)*(Number(ct.durataM)||12)/12;
+                      return (
+                        <tr key={`${c.id}-${ct.id||ci}`}>
+                          <td className="fw-600">{ci===0?c.nome:<span className="text-muted fs-12">↳</span>}</td>
+                          <td className="text-muted fs-12">{ci===0?c.azienda||'—':''}</td>
+                          <td className="text-muted fs-12">{ci===0?fmt(getDataChiusura(c),{day:'2-digit',month:'long',year:'numeric'}):''}</td>
+                          <td className="text-muted fs-12">{uniqueProd.join(', ')||'—'}</td>
+                          <td className="text-muted fs-12">{durataLabel}</td>
+                          <td style={{fontWeight:600,color:'#378ADD'}}>{isNuovo?fmtEur(importoCt):'—'}</td>
+                          <td style={{fontWeight:600,color:'var(--accent)'}}>{!isNuovo?fmtEur(importoCt):'—'}</td>
+                          <td style={{fontWeight:700,color:'#3B6D11'}}>{fmtEur(importoCt)}</td>
+                          <td className="text-muted fs-12">{fmtEur(vc)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
                   <tr style={{background:'var(--bg3)'}}>
                     <td colSpan={5} style={{fontWeight:700,fontSize:11,color:'var(--text2)',textTransform:'uppercase',letterSpacing:'.04em'}}>Totale {m.label}</td>
                     <td style={{fontWeight:700,color:'#378ADD'}}>{m.nuovo>0?fmtEur(m.nuovo):'—'}</td>
