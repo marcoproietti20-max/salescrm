@@ -104,6 +104,7 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
     importoProposta: c?.importoProposta || 0,
     dataChiusura: c?.dataChiusura || '',
     testoProposta: c?.testoProposta || '',
+    noteInterne: c?.noteInterne || '',
     customData: c?.customData || {}, history: c?.history || [],
     contratti: c?.contratti || [],
   });
@@ -172,6 +173,10 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
         <div className="form-group">
           <label className="form-label">Testo proposta commerciale</label>
           <textarea className="form-control" style={{ minHeight: 90 }} value={f.testoProposta} onChange={e => s('testoProposta', e.target.value)} placeholder="Incolla qui la proposta inviata. Verrà riassunta dall'AI per i follow-up." />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Note interne</label>
+          <textarea className="form-control" style={{ minHeight: 70 }} value={f.noteInterne} onChange={e => s('noteInterne', e.target.value)} placeholder="Note private sul contatto — non vengono usate per le email." />
         </div>
 
         {/* Contratti */}
