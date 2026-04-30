@@ -60,30 +60,48 @@ export default function ChiusoPerMese({ contacts, stages }) {
     contacts: [], totale: 0, nuovo: 0, rinnovo: 0, valoreContrattuale: 0, count: 0
   }));
 
+  // Group by contract dataInizio, not contact dataChiusura
   yearClosed.forEach(c => {
-    const m = parseInt(getDataChiusura(c).slice(5,7)) - 1;
-    monthly[m].contacts.push(c);
-    monthly[m].totale += getFatturatoTotale(c);
-    monthly[m].nuovo += getFatturatoNuovo(c);
-    monthly[m].rinnovo += getFatturatoRinnovo(c);
-    monthly[m].valoreContrattuale += getValoreContrattuale(c);
-    monthly[m].count++;
+    getContratti(c).forEach(ct => {
+      const d = ct.dataInizio || getDataChiusura(c);
+      if (!d || !d.startsWith(year)) return;
+      const m = parseInt(d.slice(5,7)) - 1;
+      if (m < 0 || m > 11) return;
+      const isNuovo = ct.tipo !== 'Rinnovo';
+      const importoCt = (ct.prodotti||[]).reduce((s,p)=>s+(Number(p.importo)||0),0) || Number(ct.totale)||0;
+      const vc = ct.prodotti?.length
+        ? ct.prodotti.reduce((s,p)=>s+(Number(p.importo)||0)*(Number(p.durataM)||12)/12,0)
+        : importoCt*(Number(ct.durataM)||12)/12;
+      if (!monthly[m].contactMap) monthly[m].contactMap = {};
+      if (!monthly[m].contactMap[c.id]) monthly[m].contactMap[c.id] = { c, contratti: [] };
+      monthly[m].contactMap[c.id].contratti.push(ct);
+      monthly[m].totale += importoCt;
+      if (isNuovo) monthly[m].nuovo += importoCt; else monthly[m].rinnovo += importoCt;
+      monthly[m].valoreContrattuale += vc;
+      monthly[m].count++;
+    });
   });
+  // Build contacts list per month from contactMap
+  monthly.forEach(m => { m.contacts = Object.values(m.contactMap||{}); });
 
-  const totalTotale = yearClosed.reduce((s,c) => s + getFatturatoTotale(c), 0);
-  const totalNuovo = yearClosed.reduce((s,c) => s + getFatturatoNuovo(c), 0);
-  const totalRinnovo = yearClosed.reduce((s,c) => s + getFatturatoRinnovo(c), 0);
-  const totalVC = yearClosed.reduce((s,c) => s + getValoreContrattuale(c), 0);
+  const totalTotale = monthly.reduce((s,m)=>s+m.totale,0);
+  const totalNuovo = monthly.reduce((s,m)=>s+m.nuovo,0);
+  const totalRinnovo = monthly.reduce((s,m)=>s+m.rinnovo,0);
+  const totalVC = monthly.reduce((s,m)=>s+m.valoreContrattuale,0);
   const activeMths = monthly.filter(m => m.count > 0);
   const bestMonth = monthly.reduce((b,m) => m.totale > b.totale ? m : b, monthly[0]);
 
   const sortContacts = list => [...list].sort((a,b) => {
+    const ac = a.c || a; const bc = b.c || b;
+    const aVal = (a.contratti||[]).reduce((s,ct)=>(ct.prodotti||[]).reduce((ps,p)=>ps+(Number(p.importo)||0),0)||s+(Number(ct.totale)||0),0);
+    const bVal = (b.contratti||[]).reduce((s,ct)=>(ct.prodotti||[]).reduce((ps,p)=>ps+(Number(p.importo)||0),0)||s+(Number(ct.totale)||0),0);
+    const aDate = (a.contratti||[])[0]?.dataInizio || getDataChiusura(ac);
+    const bDate = (b.contratti||[])[0]?.dataInizio || getDataChiusura(bc);
     let va='', vb='';
-    if (sortK==='nome'){va=a.nome||'';vb=b.nome||'';}
-    else if (sortK==='totale') return sortD==='asc'?getFatturatoTotale(a)-getFatturatoTotale(b):getFatturatoTotale(b)-getFatturatoTotale(a);
-    else if (sortK==='nuovo') return sortD==='asc'?getFatturatoNuovo(a)-getFatturatoNuovo(b):getFatturatoNuovo(b)-getFatturatoNuovo(a);
-    else if (sortK==='rinnovo') return sortD==='asc'?getFatturatoRinnovo(a)-getFatturatoRinnovo(b):getFatturatoRinnovo(b)-getFatturatoRinnovo(a);
-    else if (sortK==='data'){va=getDataChiusura(a);vb=getDataChiusura(b);}
+    if (sortK==='nome'){va=ac.nome||'';vb=bc.nome||'';}
+    else if (sortK==='totale') return sortD==='asc'?aVal-bVal:bVal-aVal;
+    else if (sortK==='nuovo'||sortK==='rinnovo') return sortD==='asc'?aVal-bVal:bVal-aVal;
+    else if (sortK==='data'){va=aDate;vb=bDate;}
     const cmp=va.localeCompare(vb,'it',{numeric:true});
     return sortD==='asc'?cmp:-cmp;
   });
@@ -194,8 +212,8 @@ export default function ChiusoPerMese({ contacts, stages }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortContacts(m.contacts).flatMap(c =>
-                    getContratti(c).map((ct, ci) => {
+                  {sortContacts(m.contacts).flatMap(({c, contratti}) =>
+                    contratti.map((ct, ci) => {
                       const isNuovo = ct.tipo !== 'Rinnovo';
                       const importoCt = (ct.prodotti||[]).reduce((s,p)=>s+(Number(p.importo)||0),0) || Number(ct.totale)||0;
                       const prodotti = (ct.prodotti||[]).map(p=>p.categoria||p.nome||'').filter(Boolean);
