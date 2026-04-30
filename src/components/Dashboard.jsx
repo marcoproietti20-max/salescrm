@@ -2,6 +2,13 @@
 import React, { useEffect, useRef } from 'react';
 import { Chart, ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import { fmtEur, fmt, FONTI, getFatturato, getPreventivato, getDataChiusura, getContratti } from '../constants';
+
+function getFattNuovo(c) {
+  return getContratti(c).filter(ct=>ct.tipo!=='Rinnovo').reduce((s,ct)=>s+(ct.prodotti||[]).reduce((ps,p)=>ps+(Number(p.importo)||0),0)||Number(ct.totale)||0,0);
+}
+function getFattRinnovo(c) {
+  return getContratti(c).filter(ct=>ct.tipo==='Rinnovo').reduce((s,ct)=>s+(ct.prodotti||[]).reduce((ps,p)=>ps+(Number(p.importo)||0),0)||Number(ct.totale)||0,0);
+}
 import { FonteBadge, StageBadge } from './Badges';
 Chart.register(ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend);
 const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
@@ -89,6 +96,12 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
           <Metric label="Totale preventivato" value={fmtEur(totPrev)} sub="trattative attive" onClick={() => navigateTo('contacts', { preventivato: true })} />
           <Metric label="Fatturato mese" value={fmtEur(fatMese)} sub={new Date().toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })} color="#3B6D11" onClick={() => navigateTo('chiuso')} />
           <Metric label="Fatturato anno" value={fmtEur(fatAnno)} sub={curYear} color="#3B6D11" onClick={() => navigateTo('chiuso')} />
+        </div>
+        <div className="metric-grid">
+          <Metric label="Nuovo — mese" value={fmtEur(chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFattNuovo(c),0))} sub="fatturato nuovi clienti" color="#378ADD" onClick={() => navigateTo('chiuso')} />
+          <Metric label="Rinnovo — mese" value={fmtEur(chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFattRinnovo(c),0))} sub="fatturato rinnovi" color="var(--accent)" onClick={() => navigateTo('chiuso')} />
+          <Metric label="Nuovo — anno" value={fmtEur(chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFattNuovo(c),0))} sub={`nuovi ${curYear}`} color="#378ADD" onClick={() => navigateTo('chiuso')} />
+          <Metric label="Rinnovo — anno" value={fmtEur(chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFattRinnovo(c),0))} sub={`rinnovi ${curYear}`} color="var(--accent)" onClick={() => navigateTo('chiuso')} />
         </div>
         <div className="metric-grid">
           <Metric label="Chiuso OK" value={chiusiOK.length} sub={fmtEur(chiusiOK.reduce((s, c) => s + getFatturato(c), 0)) + ' fatturati'} color="#3B6D11" onClick={() => navigateTo('chiuso')} />
