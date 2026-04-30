@@ -13,9 +13,12 @@ import Calendly from './components/Calendly';
 import Settings from './components/Settings';
 import Modal from './components/Modal';
 import Toast from './components/Toast';
+import Login from './components/Login';
 import './App.css';
 
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [page, setPage] = useState('dashboard');
   const [pageFilter, setPageFilter] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,9 +30,19 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
 
-  // Load from Supabase on mount
+  // Auth check on mount
   useEffect(() => {
-    dbLoadContacts().then(data => { setContacts(data); setLoading(false); });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+      if (session) dbLoadContacts().then(data => { setContacts(data); setLoading(false); });
+      else setLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) dbLoadContacts().then(data => setContacts(data));
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   // Persist settings to localStorage
@@ -185,7 +198,7 @@ export default function App() {
       await Promise.all(toUpdateHist.map(u => dbUpdateHistory(u.id, u.history)));
       if (toInsert.length) await dbSaveMany(toInsert);
 
-      // Reload fresh from Supabase to get all fields including contratti
+      // Reload fresh from Supabase and update state directly
       const fresh = await dbLoadContacts();
       setContacts(fresh);
 
@@ -219,14 +232,27 @@ export default function App() {
 
   const sharedProps = {
     contacts, stages, customFields, brand, gsCfg,
-    setContacts: batchUpdate, setStages, setCustomFields, setBrand, setGsCfg,
+    setContacts: batchUpdate,   // use for bulk UI actions (syncs to Supabase)
+    setContactsDirect: setContacts, // use after sync reload (already in Supabase)
+    setStages, setCustomFields, setBrand, setGsCfg,
     saveContact, deleteContact, deleteContacts, updateContact,
     syncFromGoogleSheet, importFromCSV,
     setModal, showToast, today, navigateTo, pageFilter, setPageFilter,
   };
 
+  const logout = async () => { await supabase.auth.signOut(); setSession(null); setContacts([]); };
+
   const pages = { dashboard: Dashboard, contacts: Contacts, pipeline: Pipeline, appointments: Appointments, followups: FollowUps, chiuso: ChiusoPerMese, archivio: ArchivioKO, calendly: Calendly, settings: Settings };
   const Page = pages[page] || Dashboard;
+
+  if (authLoading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+      <div style={{ width: 36, height: 36, border: '3px solid #f0efe9', borderTop: '3px solid #c8102e', borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  if (!session) return <Login onLogin={s => setSession(s)} />;
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 16, fontFamily: 'DM Sans, sans-serif' }}>
@@ -242,6 +268,7 @@ export default function App() {
       <main className="main">
         <Page {...sharedProps} />
       </main>
+      <button onClick={logout} style={{ position:'fixed', bottom:16, right:16, background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--r)', padding:'6px 12px', fontSize:12, cursor:'pointer', color:'var(--text2)', zIndex:20 }}>Esci</button>
       {modal && <Modal modal={modal} setModal={setModal} {...sharedProps} />}
       {toast && <Toast toast={toast} />}
     </div>
