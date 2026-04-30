@@ -1,0 +1,6 @@
+Nome,Azienda,Email,Telefono,Categoria,Fonte,Fase,Esito,Proposta,Importo Proposta,Data Chiusura,Follow Up,Note
+Mario Rossi,Studio Rossi Srl,mario.rossi@studiorossi.it,06 1234567,Commercialista,Telemarketing Rosanna,Appuntamento,In valutazione,Offerta Inviata,3600,,"15/05/2026","Interessato al pacchetto Smart24 Aziende"
+Anna Bianchi,Bianchi & Partners,a.bianchi@bianchip.it,02 9876543,Avvocato / Studio Legale,LinkedIn,In valutazione,In valutazione,Offerta Inviata,2400,,,"Da ricontattare dopo le ferie"
+Giuseppe Verdi,,g.verdi@gmail.com,333 1234567,Azienda,Autonomia,Lead,,,0,,,
+Sara Neri,Studio Neri,s.neri@studioneri.it,081 234567,Notaio,Coupon Aziendale,Chiuso OK,Positivo,Offerta Inviata,4800,29/04/2026,,"Contratto firmato"
+Luca Blu,Blu Consulting,l.blu@blucons.it,06 7654321,Commercialista,Email Marketing,Chiuso KO,Negativo,Non inviata,0,,,"Non interessato"
