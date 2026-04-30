@@ -20,6 +20,7 @@ function toDb(c) {
     data_chiusura: c.dataChiusura || null,
     contratti: c.contratti || [],
     testo_proposta: c.testoProposta || null,
+    note_interne: c.noteInterne || null,
     history: c.history || [],
     custom_data: c.customData || {},
     updated_at: new Date().toISOString(),
@@ -42,6 +43,7 @@ function fromDb(r) {
     dataChiusura: r.data_chiusura || '',
     contratti: r.contratti || [],
     testoProposta: r.testo_proposta || '',
+    noteInterne: r.note_interne || '',
     history: r.history || [],
     customData: r.custom_data || {},
   };
