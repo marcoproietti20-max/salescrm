@@ -13,6 +13,7 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
   const [fPrev, setFPrev] = useState(false);
   const [selIds, setSelIds] = useState(new Set());
   const [openId, setOpenId] = useState(null);
+  const [openContact, setOpenContact] = useState(null);
   const [noteText, setNoteText] = useState('');
   const [noteFu, setNoteFu] = useState('');
   const [noteFase, setNoteFase] = useState('');
@@ -62,8 +63,12 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
   const toggleOne = (id) => setSelIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleAll = (checked) => setSelIds(prev => { const n = new Set(prev); filtered.forEach(c => checked ? n.add(c.id) : n.delete(c.id)); return n; });
 
-  // The open contact — always read fresh from contacts array
-  const openContact = openId ? contacts.find(c => c.id === openId) : null;
+  // Keep openContact in sync with contacts array
+  React.useEffect(() => {
+    if (!openId) { setOpenContact(null); return; }
+    const found = contacts.find(c => c.id === openId);
+    setOpenContact(found || null);
+  }, [openId, contacts]);
 
   const addNote = () => {
     if (!noteText.trim() || !openId) return;
@@ -186,7 +191,10 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
                       <td><EsitoBadge name={c.esito} /></td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button className="btn btn-sm" style={{ marginRight: 4 }}
-                          onClick={() => setOpenId(openId === c.id ? null : c.id)}>
+                          onClick={() => { 
+                            if (openId === c.id) { setOpenId(null); setOpenContact(null); }
+                            else { setOpenId(c.id); setOpenContact(c); }
+                          }}>
                           {isOpen ? 'Chiudi' : 'Scheda'}
                         </button>
                         <button className="btn btn-sm btn-primary"
