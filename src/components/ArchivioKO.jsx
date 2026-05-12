@@ -1,9 +1,8 @@
-// ArchivioKO.jsx
 import React, { useState } from 'react';
-import { fmt, fmtEur, getLastAppt } from '../constants';
+import { fmt, getLastAppt } from '../constants';
 import { FonteBadge } from './Badges';
 
-export function ArchivioKO({ contacts, stages, setContacts, showToast, setModal }) {
+export default function ArchivioKO({ contacts, stages, setContacts, showToast, setModal }) {
   const [q, setQ] = useState('');
   const [sortK, setSortK] = useState('nome'); const [sortD, setSortD] = useState('asc');
   const koNames = stages.filter(s => s.isKo).map(s => s.name);
@@ -36,15 +35,13 @@ export function ArchivioKO({ contacts, stages, setContacts, showToast, setModal 
                 sorted.map(c=>{
                   const la=getLastAppt(c);
                   const ln=(c.history||[]).filter(h=>h.type==='note'&&h.text).slice(-1)[0];
-                  return(
-                    <tr key={c.id} style={{cursor:'pointer'}} onClick={()=>setModal({type:'contact',data:c})}>
-                      <td className="fw-600">{c.nome}</td><td className="text-muted">{c.azienda||'—'}</td><td className="fs-12 text-muted">{c.categoria||'—'}</td>
-                      <td><FonteBadge name={c.fonte}/></td>
-                      <td className="text-muted fs-12">{la?fmt(la,{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
-                      <td className="text-muted fs-12" style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ln?.text||'—'}</td>
-                      <td onClick={e=>e.stopPropagation()}><button className="btn btn-sm" onClick={()=>reopen(c.id)}>Riapri</button></td>
-                    </tr>
-                  );
+                  return(<tr key={c.id} style={{cursor:'pointer'}} onClick={()=>setModal({type:'scheda',data:c})}>
+                    <td className="fw-600">{c.nome}</td><td className="text-muted">{c.azienda||'—'}</td><td className="fs-12 text-muted">{c.categoria||'—'}</td>
+                    <td><FonteBadge name={c.fonte}/></td>
+                    <td className="text-muted fs-12">{la?fmt(la,{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+                    <td className="text-muted fs-12" style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ln?.text||'—'}</td>
+                    <td onClick={e=>e.stopPropagation()}><button className="btn btn-sm" onClick={()=>reopen(c.id)}>Riapri</button></td>
+                  </tr>);
                 })
               }
             </tbody>
@@ -54,5 +51,3 @@ export function ArchivioKO({ contacts, stages, setContacts, showToast, setModal 
     </>
   );
 }
-
-export default ArchivioKO;
