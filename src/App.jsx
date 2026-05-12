@@ -24,7 +24,11 @@ export default function App() {
   const [pageFilter, setPageFilter] = useState(null);
   const [loading, setLoading] = useState(true);
   const [contacts, setContacts] = useState([]);
-  const [stages, setStages] = useState(() => lsGet('crm_stages', DEFAULT_STAGES));
+  const [stages, setStages] = useState(() => {
+    const saved = lsGet('crm_stages', DEFAULT_STAGES);
+    // Migrate old "Proposta" to "In Attesa"
+    return saved.map(s => s.name === 'Proposta' ? { ...s, name: 'In Attesa' } : s);
+  });
   const [customFields, setCustomFields] = useState(() => lsGet('crm_fields', []));
   const [brand, setBrand] = useState(() => lsGet('crm_brand', DEFAULT_BRAND));
   const [gsCfg, setGsCfg] = useState(() => lsGet('crm_gs', DEFAULT_GS));
@@ -203,7 +207,7 @@ export default function App() {
       <main className="main">
         <Page {...sharedProps}/>
       </main>
-      <div style={{position:'fixed',top:10,right:60,zIndex:30}}>
+      <div style={{position:'fixed',top:10,left:'50%',transform:'translateX(-50%)',zIndex:30,maxWidth:320,width:'100%'}}>
         <GlobalSearch contacts={contacts} stages={stages} setModal={setModal} navigateTo={navigateTo}/>
       </div>
       {modal&&<Modal modal={modal} setModal={setModal} {...sharedProps}/>}
