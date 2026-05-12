@@ -16,7 +16,7 @@ function getWeekDays(offset) {
 
 export default function FollowUps({ contacts, setModal, showToast, updateContact }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [view, setView] = useState('list');
+  const [view, setView] = useState('calendar');
   const [weekOffset, setWeekOffset] = useState(0);
   const [selIds, setSelIds] = useState(new Set());
   const [postponeDays, setPostponeDays] = useState(7);
