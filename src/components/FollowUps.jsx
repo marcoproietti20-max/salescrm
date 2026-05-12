@@ -1,8 +1,23 @@
 import React, { useState } from 'react';
-import { fmt } from '../constants';
+import { fmt, uid } from '../constants';
+
+// Get week dates Mon-Fri
+function getWeekDays(offset) {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + offset * 7);
+  return Array.from({ length: 5 }, (_, i) => {
+    const d = new Date(mon);
+    d.setDate(mon.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
 
 export default function FollowUps({ contacts, setModal, showToast, updateContact }) {
   const today = new Date().toISOString().slice(0, 10);
+  const [view, setView] = useState('list');
+  const [weekOffset, setWeekOffset] = useState(0);
   const [selIds, setSelIds] = useState(new Set());
   const [postponeDays, setPostponeDays] = useState(7);
   const [generatingEmail, setGeneratingEmail] = useState(null);
@@ -43,30 +58,17 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
 
   const openEmail = async (f) => {
     setGeneratingEmail(f.key);
-    const nome = f.c.nome || '';
-    const email = f.c.email || '';
-    const nota = f.h.text || '';
-    const testoProposta = f.c.testoProposta || '';
+    const nome = f.c.nome || ''; const email = f.c.email || '';
+    const nota = f.h.text || ''; const testoProposta = f.c.testoProposta || '';
     const sub = encodeURIComponent('Seguito alla nostra conversazione — Il Sole 24 Ore Professionale');
     let riassunto = '';
     if (testoProposta) {
       try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 200, messages: [{ role: 'user', content: `Riassumi in 2-3 frasi brevi e professionali questa proposta commerciale, per richiamarla in un'email di follow-up. Testo: "${testoProposta}"` }] })
-        });
-        const data = await res.json();
-        riassunto = data.content?.[0]?.text || '';
+        const res = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:200, messages:[{role:'user',content:`Riassumi in 2-3 frasi brevi questa proposta per un follow-up email: "${testoProposta}"`}] }) });
+        const data = await res.json(); riassunto = data.content?.[0]?.text || '';
       } catch { riassunto = ''; }
     }
-    const body = encodeURIComponent(
-      `Gentile ${nome},\n\n` +
-      `La contatto in seguito alla nostra precedente conversazione e alla proposta che le ho inviato.\n\n` +
-      (riassunto ? `Come le avevo illustrato: ${riassunto}\n\n` : '') +
-      (nota && nota !== 'Follow-up da importazione' ? `Note: ${nota}\n\n` : '') +
-      `Resto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\nMarco Proietti\nIl Sole 24 Ore Professionale`
-    );
+    const body = encodeURIComponent(`Gentile ${nome},\n\nLa contatto in seguito alla nostra conversazione${riassunto?` e alla proposta che le ho inviato.\n\nCome le avevo illustrato: ${riassunto}`:''}.\n\n${nota&&nota!=='Follow-up da importazione'?`Note: ${nota}\n\n`:''}Resto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\nMarco Proietti\nIl Sole 24 Ore Professionale`);
     setGeneratingEmail(null);
     window.open(`mailto:${email}?subject=${sub}&body=${body}`, '_blank');
   };
@@ -76,49 +78,97 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
       <input type="checkbox" checked={selIds.has(f.key)} onChange={() => toggleOne(f.key)} style={{ flexShrink: 0, marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="fw-600">{f.c.nome}
-          <span className="badge" style={{ marginLeft: 6, fontSize: 10, background: f.s === 'scaduto' ? '#FCEBEB' : f.s === 'oggi' ? '#FAEEDA' : '#EAF3DE', color: f.s === 'scaduto' ? '#791F1F' : f.s === 'oggi' ? '#633806' : '#27500A' }}>
+          <span className="badge" style={{ marginLeft: 6, fontSize: 10, background: f.s==='scaduto'?'#FCEBEB':f.s==='oggi'?'#FAEEDA':'#EAF3DE', color: f.s==='scaduto'?'#791F1F':f.s==='oggi'?'#633806':'#27500A' }}>
             {f.s === 'scaduto' ? 'Scaduto' : f.s === 'oggi' ? 'Oggi' : 'Futuro'}
           </span>
         </div>
         <div className="text-muted fs-12">{f.c.azienda} — {(f.h.text || '').slice(0, 80)}</div>
-        <div className="fs-11 text-muted" style={{ marginTop: 3 }}>{fmt(f.h.followup, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</div>
+        <div className="fs-11 text-muted" style={{ marginTop: 3 }}>{fmt(f.h.followup, { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</div>
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-        <button className="btn btn-sm" disabled={generatingEmail === f.key} onClick={() => openEmail(f)}>
-          {generatingEmail === f.key ? '⏳' : '📧'}
-        </button>
+        <button className="btn btn-sm" onClick={() => setModal({ type: 'scheda', data: f.c })} title="Apri scheda">👤</button>
+        <button className="btn btn-sm" disabled={generatingEmail === f.key} onClick={() => openEmail(f)}>{generatingEmail === f.key ? '⏳' : '📧'}</button>
         <button className="btn btn-sm" onClick={() => setModal({ type: 'followup', data: { contactId: f.c.id, note: f.h } })}>✏️</button>
       </div>
     </div>
   );
 
+  // Calendar view
+  const weekDays = getWeekDays(weekOffset);
+  const DAY_NAMES = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì'];
+  const weekLabel = `${fmt(weekDays[0], { day: '2-digit', month: 'short' })} — ${fmt(weekDays[4], { day: '2-digit', month: 'short', year: 'numeric' })}`;
+
   return (
     <>
-      <div className="topbar"><span className="page-title">Follow-up</span></div>
+      <div className="topbar">
+        <span className="page-title">Follow-up</span>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className={`btn btn-sm${view==='list'?' btn-primary':''}`} onClick={() => setView('list')}>Lista</button>
+          <button className={`btn btn-sm${view==='calendar'?' btn-primary':''}`} onClick={() => setView('calendar')}>Calendario</button>
+        </div>
+      </div>
       <div className="content">
-        {all.length === 0 && <div className="empty">Nessun follow-up programmato 🎉</div>}
-        {all.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '8px 12px', background: 'var(--bg3)', borderRadius: 'var(--r)', flexWrap: 'wrap' }}>
-            <input type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} />
-            <span className="fs-12 text-muted">{selIds.size > 0 ? `${selIds.size} selezionati` : 'Seleziona tutti'}</span>
-            {selIds.size > 0 && (
-              <>
-                <div className="bulk-sep" />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span className="fs-12 text-muted">Posticipa di</span>
-                  <input className="form-control" type="number" value={postponeDays} onChange={e => setPostponeDays(e.target.value)} style={{ width: 60, padding: '4px 8px', fontSize: 12 }} />
-                  <span className="fs-12 text-muted">giorni</span>
-                  <button className="btn btn-sm" onClick={bulkPostpone}>Applica</button>
-                </div>
-                <div className="bulk-sep" />
-                <button className="btn btn-sm btn-danger" onClick={bulkDelete}>🗑 Elimina selezionati</button>
-              </>
+        {view === 'calendar' ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+              <button className="btn btn-sm" onClick={() => setWeekOffset(w => w - 1)}>← Prec.</button>
+              <button className="btn btn-sm" onClick={() => setWeekOffset(0)}>Oggi</button>
+              <button className="btn btn-sm" onClick={() => setWeekOffset(w => w + 1)}>Succ. →</button>
+              <span className="fs-12 text-muted fw-600">{weekLabel}</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+              {weekDays.map((d, i) => {
+                const isToday = d === today;
+                const dayFUs = all.filter(f => f.h.followup === d);
+                const isPast = d < today;
+                return (
+                  <div key={d} style={{ background: isToday ? '#E6F1FB' : 'var(--bg2)', border: `1px solid ${isToday ? '#B5D4F4' : 'var(--border)'}`, borderRadius: 'var(--r)', overflow: 'hidden', minHeight: 120 }}>
+                    <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', background: isToday ? '#B5D4F4' : 'var(--bg3)' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: isToday ? '#0C447C' : 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{DAY_NAMES[i]}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: isToday ? '#0C447C' : isPast ? 'var(--text3)' : 'var(--text)' }}>{fmt(d, { day: '2-digit', month: 'short' })}</div>
+                    </div>
+                    <div style={{ padding: '6px 8px' }}>
+                      {dayFUs.length === 0 && <div className="fs-11 text-muted" style={{ padding: '8px 0' }}>—</div>}
+                      {dayFUs.map(f => (
+                        <div key={f.key} style={{ background: 'var(--bg3)', borderRadius: 4, padding: '5px 7px', marginBottom: 5, cursor: 'pointer', fontSize: 11 }}
+                          onClick={() => setModal({ type: 'scheda', data: f.c })}>
+                          <div style={{ fontWeight: 700, marginBottom: 1 }}>{f.c.nome}</div>
+                          <div className="text-muted" style={{ fontSize: 10 }}>{(f.h.text || '').slice(0, 40)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <>
+            {all.length === 0 && <div className="empty">Nessun follow-up programmato 🎉</div>}
+            {all.length > 0 && (
+              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, padding:'8px 12px', background:'var(--bg3)', borderRadius:'var(--r)', flexWrap:'wrap' }}>
+                <input type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} />
+                <span className="fs-12 text-muted">{selIds.size > 0 ? `${selIds.size} selezionati` : 'Seleziona tutti'}</span>
+                {selIds.size > 0 && (
+                  <>
+                    <div className="bulk-sep" />
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <span className="fs-12 text-muted">Posticipa di</span>
+                      <input className="form-control" type="number" value={postponeDays} onChange={e => setPostponeDays(e.target.value)} style={{ width:60, padding:'4px 8px', fontSize:12 }} />
+                      <span className="fs-12 text-muted">giorni</span>
+                      <button className="btn btn-sm" onClick={bulkPostpone}>Applica</button>
+                    </div>
+                    <div className="bulk-sep" />
+                    <button className="btn btn-sm btn-danger" onClick={bulkDelete}>🗑 Elimina selezionati</button>
+                  </>
+                )}
+              </div>
             )}
-          </div>
+            {groups.scaduto.length > 0 && <><div className="group-head" style={{ color:'#791F1F' }}>Scaduti ({groups.scaduto.length})</div>{groups.scaduto.map(f => <FuCard key={f.key} f={f} />)}</>}
+            {groups.oggi.length > 0 && <><div className="group-head" style={{ color:'#633806' }}>Oggi ({groups.oggi.length})</div>{groups.oggi.map(f => <FuCard key={f.key} f={f} />)}</>}
+            {groups.futuro.length > 0 && <><div className="group-head">Prossimi ({groups.futuro.length})</div>{groups.futuro.map(f => <FuCard key={f.key} f={f} />)}</>}
+          </>
         )}
-        {groups.scaduto.length > 0 && <><div className="group-head" style={{ color: '#791F1F' }}>Scaduti ({groups.scaduto.length})</div>{groups.scaduto.map(f => <FuCard key={f.key} f={f} />)}</>}
-        {groups.oggi.length > 0 && <><div className="group-head" style={{ color: '#633806' }}>Oggi ({groups.oggi.length})</div>{groups.oggi.map(f => <FuCard key={f.key} f={f} />)}</>}
-        {groups.futuro.length > 0 && <><div className="group-head">Prossimi ({groups.futuro.length})</div>{groups.futuro.map(f => <FuCard key={f.key} f={f} />)}</>}
       </div>
     </>
   );
