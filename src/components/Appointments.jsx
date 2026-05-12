@@ -15,7 +15,7 @@ function getWeekDays(offset) {
 
 export default function Appointments({ contacts, stages, setModal }) {
   const [filter, setFilter] = useState('tutti');
-  const [view, setView] = useState('list');
+  const [view, setView] = useState('calendar');
   const [weekOffset, setWeekOffset] = useState(0);
   const today = new Date().toISOString().slice(0, 10);
   const koNames = stages.filter(s => s.isKo).map(s => s.name);
@@ -127,7 +127,7 @@ export default function Appointments({ contacts, stages, setModal }) {
                   {evs.map((ev, i) => {
                     const dotColor = STATI_APPT.find(s => s.name === ev.stato)?.color || '#378ADD';
                     return (
-                      <div key={i} className="agenda-event" onClick={() => ev.appt && setModal({ type:'appt', data:{ contactId:ev.c.id, appt:ev.appt } })}>
+                      <div key={i} className="agenda-event" onClick={() => setModal({ type:'scheda', data:ev.c })}>
                         <div style={{ width:60, padding:'12px 0 12px 16px', flexShrink:0 }}>
                           <span style={{ fontSize:13, fontWeight:700, color:isPast?'var(--text3)':'var(--text)' }}>{ev.time||'—'}</span>
                         </div>
@@ -145,7 +145,7 @@ export default function Appointments({ contacts, stages, setModal }) {
                               <StageBadge name={ev.c.fase} stages={stages}/>
                               {ev.stato && <StatoBadge name={ev.stato}/>}
                               <button className="btn btn-sm" style={{ fontSize:11, padding:'2px 7px' }}
-                                onClick={e => { e.stopPropagation(); setModal({ type:'scheda', data:ev.c }); }} title="Apri scheda">👤</button>
+                                onClick={e => { e.stopPropagation(); ev.appt && setModal({ type:'appt', data:{ contactId:ev.c.id, appt:ev.appt } }); }} title="Aggiorna appuntamento">✏️</button>
                             </div>
                           </div>
                           {ev.appt?.esito && <div className="text-muted fs-12" style={{ marginTop:6 }}>{ev.appt.esito.slice(0,120)}</div>}
