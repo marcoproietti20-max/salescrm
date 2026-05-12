@@ -14,6 +14,7 @@ function getFattRinnovo(c) {
 }
 
 export default function Dashboard({ contacts, stages, today, navigateTo }) {
+  const [filterApptMonth, setFilterApptMonth] = React.useState('');
   const barRef=useRef(), doughRef=useRef(), pieRef=useRef(), pie2Ref=useRef(), apptBarRef=useRef();
   const barC=useRef(), doughC=useRef(), pieC=useRef(), pie2C=useRef(), apptBarC=useRef();
 
@@ -68,7 +69,11 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   FONTI.forEach(f=>{fonteApptStats[f.name]={total:0,stati:{}};STATI_APPT.forEach(s=>{fonteApptStats[f.name].stati[s.name]=0;});});
   contacts.forEach(c=>{
     if(!c.fonte||!fonteApptStats[c.fonte]) return;
-    (c.history||[]).filter(h=>h.type==='appt'&&h.date&&h.date.startsWith(curYear)).forEach(h=>{
+    (c.history||[]).filter(h=>{
+      if(h.type!=='appt'||!h.date) return false;
+      if(filterApptMonth) return h.date.startsWith(filterApptMonth);
+      return h.date.startsWith(curYear);
+    }).forEach(h=>{
       fonteApptStats[c.fonte].total++;
       const stato=h.stato||'Svolto';
       if(fonteApptStats[c.fonte].stati[stato]!==undefined) fonteApptStats[c.fonte].stati[stato]++;
@@ -173,7 +178,13 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
           <div className="card">
             <div className="card-title">Appuntamenti per fonte — ultimi 6 mesi</div>
             <div style={{height:220,position:'relative',marginBottom:20}}><canvas ref={apptBarRef}/></div>
-            <div className="card-title" style={{marginTop:16}}>Performance appuntamenti {curYear} per fonte</div>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginTop:16,marginBottom:8}}>
+              <div className="card-title" style={{margin:0}}>Performance appuntamenti per fonte</div>
+              <select className="form-control" style={{width:140,fontSize:12}} value={filterApptMonth} onChange={e=>setFilterApptMonth(e.target.value)}>
+                <option value="">Anno {curYear}</option>
+                {Array.from({length:12},(_,i)=>{const m=(i+1).toString().padStart(2,'0');const ym=`${curYear}-${m}`;return<option key={ym} value={ym}>{['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'][i]} {curYear}</option>;}).filter((_,i)=>parseInt(`${curYear}-${(i+1).toString().padStart(2,'0')}`)<=parseInt(today.slice(0,7).replace('-','')))}
+              </select>
+            </div>
             <div style={{overflowX:'auto'}}>
               <table className="crm-table" style={{minWidth:600}}>
                 <thead>
