@@ -170,10 +170,7 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
           </div>
           <div className="form-group" />
         </div>
-        <div className="form-group">
-          <label className="form-label">Testo proposta commerciale</label>
-          <textarea className="form-control" style={{ minHeight: 90 }} value={f.testoProposta} onChange={e => s('testoProposta', e.target.value)} placeholder="Incolla qui la proposta inviata. Verrà riassunta dall'AI per i follow-up." />
-        </div>
+
         <div className="form-group">
           <label className="form-label">Note interne</label>
           <textarea className="form-control" style={{ minHeight: 70 }} value={f.noteInterne} onChange={e => s('noteInterne', e.target.value)} placeholder="Note private sul contatto — non vengono usate per le email." />
@@ -428,11 +425,11 @@ function SchedaModal({ contact: initialContact, contacts, stages, setModal, upda
     if (!noteText.trim()) return;
     updateContact(c.id, ct => ({
       ...ct,
-      history: [...(ct.history || []), { id: uid(), type: 'note', date: today, text: noteText, followup: noteFu }],
+      history: [...(ct.history || []), { id: uid(), type: 'note', date: today, text: noteText, followup: noteFu || '' }],
       ...(noteFase ? { fase: noteFase } : {}),
     }));
     setNoteText(''); setNoteFu(''); setNoteFase('');
-    showToast('Nota aggiunta');
+    showToast('Nota aggiunta', '');
   };
 
   const openEmail = () => {
