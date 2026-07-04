@@ -1,26 +1,26 @@
 import React, { useState } from 'react';
 import { fmt, uid } from '../constants';
+import { dbSave } from '../supabase';
 
-// Get week dates Mon-Fri
 function getWeekDays(offset) {
   const now = new Date();
-  const day = now.getDay(); // 0=Sun
+  const day = now.getDay();
   const mon = new Date(now);
   mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + offset * 7);
   return Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(mon);
-    d.setDate(mon.getDate() + i);
+    const d = new Date(mon); d.setDate(mon.getDate() + i);
     return d.toISOString().slice(0, 10);
   });
 }
 
-export default function FollowUps({ contacts, setModal, showToast, updateContact }) {
+export default function FollowUps({ contacts, setModal, showToast, updateContact, setContacts }) {
   const today = new Date().toISOString().slice(0, 10);
   const [view, setView] = useState('calendar');
   const [weekOffset, setWeekOffset] = useState(0);
   const [selIds, setSelIds] = useState(new Set());
   const [postponeDays, setPostponeDays] = useState(7);
   const [generatingEmail, setGeneratingEmail] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const all = [];
   contacts.forEach(c => (c.history || []).forEach(h => {
@@ -38,22 +38,56 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
   const toggleAll = checked => setSelIds(checked ? new Set(all.map(f => f.key)) : new Set());
   const allChecked = all.length > 0 && all.every(f => selIds.has(f.key));
 
-  const bulkDelete = () => {
+  const bulkDelete = async () => {
     if (!selIds.size || !window.confirm(`Eliminare ${selIds.size} follow-up?`)) return;
+    setDeleting(true);
+
+    // Group by contact to batch updates
+    const byContact = {};
     selIds.forEach(key => {
       const [cid, hid] = key.split('__');
-      updateContact(cid, c => ({ ...c, history: (c.history || []).map(h => h.id === hid ? { ...h, followup: '' } : h) }));
+      if (!byContact[cid]) byContact[cid] = [];
+      byContact[cid].push(hid);
     });
-    setSelIds(new Set()); showToast('Follow-up eliminati');
+
+    // Update each contact and save to Supabase — wait for ALL to complete
+    const updatedContacts = contacts.map(c => {
+      if (!byContact[c.id]) return c;
+      return {
+        ...c,
+        history: (c.history || []).map(h =>
+          byContact[c.id].includes(h.id) ? { ...h, followup: '' } : h
+        )
+      };
+    });
+
+    // Save all modified contacts to Supabase and wait for completion
+    const modified = updatedContacts.filter(c => byContact[c.id]);
+    await Promise.all(modified.map(c => dbSave(c)));
+
+    // Update React state only after all saves are done
+    setContacts(() => updatedContacts);
+    setSelIds(new Set());
+    setDeleting(false);
+    showToast(`${selIds.size} follow-up eliminati`);
   };
 
   const bulkPostpone = () => {
     if (!selIds.size) return;
     selIds.forEach(key => {
       const [cid, hid] = key.split('__');
-      updateContact(cid, c => ({ ...c, history: (c.history || []).map(h => { if (h.id !== hid) return h; const d = new Date(h.followup); d.setDate(d.getDate() + Number(postponeDays)); return { ...h, followup: d.toISOString().slice(0, 10) }; }) }));
+      updateContact(cid, c => ({
+        ...c,
+        history: (c.history || []).map(h => {
+          if (h.id !== hid) return h;
+          const d = new Date(h.followup);
+          d.setDate(d.getDate() + Number(postponeDays));
+          return { ...h, followup: d.toISOString().slice(0, 10) };
+        })
+      }));
     });
-    setSelIds(new Set()); showToast(`${selIds.size} follow-up posticipati`, `di ${postponeDays} giorni`);
+    setSelIds(new Set());
+    showToast(`${selIds.size} follow-up posticipati`, `di ${postponeDays} giorni`);
   };
 
   const openEmail = async (f) => {
@@ -64,11 +98,16 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
     let riassunto = '';
     if (testoProposta) {
       try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:200, messages:[{role:'user',content:`Riassumi in 2-3 frasi brevi questa proposta per un follow-up email: "${testoProposta}"`}] }) });
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 200, messages: [{ role: 'user', content: `Riassumi in 2-3 frasi brevi questa proposta per un follow-up email: "${testoProposta}"` }] })
+        });
         const data = await res.json(); riassunto = data.content?.[0]?.text || '';
       } catch { riassunto = ''; }
     }
-    const body = encodeURIComponent(`Gentile ${nome},\n\nLa contatto in seguito alla nostra conversazione${riassunto?` e alla proposta che le ho inviato.\n\nCome le avevo illustrato: ${riassunto}`:''}.\n\n${nota&&nota!=='Follow-up da importazione'?`Note: ${nota}\n\n`:''}Resto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\nMarco Proietti\nIl Sole 24 Ore Professionale`);
+    const body = encodeURIComponent(
+      `Gentile ${nome},\n\nLa contatto in seguito alla nostra conversazione${riassunto ? ` e alla proposta che le ho inviato.\n\nCome le avevo illustrato: ${riassunto}` : ''}.\n\n${nota && nota !== 'Follow-up da importazione' ? `Note: ${nota}\n\n` : ''}Resto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\nMarco Proietti\nIl Sole 24 Ore Professionale`
+    );
     setGeneratingEmail(null);
     window.open(`mailto:${email}?subject=${sub}&body=${body}`, '_blank');
   };
@@ -78,12 +117,12 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
       <input type="checkbox" checked={selIds.has(f.key)} onChange={() => toggleOne(f.key)} style={{ flexShrink: 0, marginTop: 2 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="fw-600">{f.c.nome}
-          <span className="badge" style={{ marginLeft: 6, fontSize: 10, background: f.s==='scaduto'?'#FCEBEB':f.s==='oggi'?'#FAEEDA':'#EAF3DE', color: f.s==='scaduto'?'#791F1F':f.s==='oggi'?'#633806':'#27500A' }}>
+          <span className="badge" style={{ marginLeft: 6, fontSize: 10, background: f.s === 'scaduto' ? '#FCEBEB' : f.s === 'oggi' ? '#FAEEDA' : '#EAF3DE', color: f.s === 'scaduto' ? '#791F1F' : f.s === 'oggi' ? '#633806' : '#27500A' }}>
             {f.s === 'scaduto' ? 'Scaduto' : f.s === 'oggi' ? 'Oggi' : 'Futuro'}
           </span>
         </div>
         <div className="text-muted fs-12">{f.c.azienda} — {(f.h.text || '').slice(0, 80)}</div>
-        <div className="fs-11 text-muted" style={{ marginTop: 3 }}>{fmt(f.h.followup, { weekday:'long', day:'2-digit', month:'long', year:'numeric' })}</div>
+        <div className="fs-11 text-muted" style={{ marginTop: 3 }}>{fmt(f.h.followup, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</div>
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
         <button className="btn btn-sm" onClick={() => setModal({ type: 'scheda', data: f.c })} title="Apri scheda">👤</button>
@@ -93,7 +132,6 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
     </div>
   );
 
-  // Calendar view
   const weekDays = getWeekDays(weekOffset);
   const DAY_NAMES = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì'];
   const weekLabel = `${fmt(weekDays[0], { day: '2-digit', month: 'short' })} — ${fmt(weekDays[4], { day: '2-digit', month: 'short', year: 'numeric' })}`;
@@ -103,8 +141,8 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
       <div className="topbar">
         <span className="page-title">Follow-up</span>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className={`btn btn-sm${view==='list'?' btn-primary':''}`} onClick={() => setView('list')}>Lista</button>
-          <button className={`btn btn-sm${view==='calendar'?' btn-primary':''}`} onClick={() => setView('calendar')}>Calendario</button>
+          <button className={`btn btn-sm${view === 'list' ? ' btn-primary' : ''}`} onClick={() => setView('list')}>Lista</button>
+          <button className={`btn btn-sm${view === 'calendar' ? ' btn-primary' : ''}`} onClick={() => setView('calendar')}>Calendario</button>
         </div>
       </div>
       <div className="content">
@@ -146,26 +184,28 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
           <>
             {all.length === 0 && <div className="empty">Nessun follow-up programmato 🎉</div>}
             {all.length > 0 && (
-              <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, padding:'8px 12px', background:'var(--bg3)', borderRadius:'var(--r)', flexWrap:'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '8px 12px', background: 'var(--bg3)', borderRadius: 'var(--r)', flexWrap: 'wrap' }}>
                 <input type="checkbox" checked={allChecked} onChange={e => toggleAll(e.target.checked)} />
                 <span className="fs-12 text-muted">{selIds.size > 0 ? `${selIds.size} selezionati` : 'Seleziona tutti'}</span>
                 {selIds.size > 0 && (
                   <>
                     <div className="bulk-sep" />
-                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span className="fs-12 text-muted">Posticipa di</span>
-                      <input className="form-control" type="number" value={postponeDays} onChange={e => setPostponeDays(e.target.value)} style={{ width:60, padding:'4px 8px', fontSize:12 }} />
+                      <input className="form-control" type="number" value={postponeDays} onChange={e => setPostponeDays(e.target.value)} style={{ width: 60, padding: '4px 8px', fontSize: 12 }} />
                       <span className="fs-12 text-muted">giorni</span>
                       <button className="btn btn-sm" onClick={bulkPostpone}>Applica</button>
                     </div>
                     <div className="bulk-sep" />
-                    <button className="btn btn-sm btn-danger" onClick={bulkDelete}>🗑 Elimina selezionati</button>
+                    <button className="btn btn-sm btn-danger" onClick={bulkDelete} disabled={deleting}>
+                      {deleting ? '⏳ Eliminazione...' : '🗑 Elimina selezionati'}
+                    </button>
                   </>
                 )}
               </div>
             )}
-            {groups.scaduto.length > 0 && <><div className="group-head" style={{ color:'#791F1F' }}>Scaduti ({groups.scaduto.length})</div>{groups.scaduto.map(f => <FuCard key={f.key} f={f} />)}</>}
-            {groups.oggi.length > 0 && <><div className="group-head" style={{ color:'#633806' }}>Oggi ({groups.oggi.length})</div>{groups.oggi.map(f => <FuCard key={f.key} f={f} />)}</>}
+            {groups.scaduto.length > 0 && <><div className="group-head" style={{ color: '#791F1F' }}>Scaduti ({groups.scaduto.length})</div>{groups.scaduto.map(f => <FuCard key={f.key} f={f} />)}</>}
+            {groups.oggi.length > 0 && <><div className="group-head" style={{ color: '#633806' }}>Oggi ({groups.oggi.length})</div>{groups.oggi.map(f => <FuCard key={f.key} f={f} />)}</>}
             {groups.futuro.length > 0 && <><div className="group-head">Prossimi ({groups.futuro.length})</div>{groups.futuro.map(f => <FuCard key={f.key} f={f} />)}</>}
           </>
         )}
