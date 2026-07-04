@@ -7,6 +7,7 @@ export const FONTI = [
   { name: 'Autonomia',             color: '#639922', icon: '⭐' },
   { name: 'Email Marketing',       color: '#c8102e', icon: '✉' },
   { name: 'Calendly',              color: '#006BFF', icon: '📅' },
+  { name: 'Bookings',              color: '#0078D4', icon: '📆' },
   { name: 'Portafoglio',           color: '#2E7D32', icon: '💼' },
 ];
 export const CATEGORIE = [
