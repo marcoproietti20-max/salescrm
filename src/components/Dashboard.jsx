@@ -22,7 +22,6 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const koStages = stages.filter(s=>s.isKo);
   const chiusiOK = contacts.filter(c=>wonStage&&c.fase===wonStage.name);
   const chiusiKO = contacts.filter(c=>koStages.some(s=>s.name===c.fase));
-  // Only count "In valutazione" as open (hot deals)
   const openHot = contacts.filter(c=>c.fase==='In valutazione');
   const curMonth = today.slice(0,7); const curYear = today.slice(0,4);
   const fatMese = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFatturato(c),0);
@@ -35,7 +34,6 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const urgentFU = contacts.reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='note'&&h.followup&&h.followup<=today).length,0);
   const daRifissare = contacts.reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='appt'&&(h.stato==='Da rifissare'||h.stato==='Non si è presentato'||h.stato==='Non effettuato')).length,0);
 
-  // Monthly fatturato (nuovo + rinnovo)
   const monthlyNuovo = Array(12).fill(0); const monthlyRinnovo = Array(12).fill(0);
   chiusiOK.forEach(c=>{
     getContratti(c).forEach(ct=>{
@@ -47,24 +45,19 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
     });
   });
 
-  // Stage counts
   const activeStages = stages.filter(s=>!s.isKo);
   const stageCnt = {}; activeStages.forEach(s=>stageCnt[s.name]=0);
   contacts.forEach(c=>{if(stageCnt[c.fase]!==undefined)stageCnt[c.fase]++;});
 
-  // Product categories (nuovo only)
   const prodCat = {};
   chiusiOK.forEach(c=>getContratti(c).filter(ct=>ct.tipo!=='Rinnovo').forEach(ct=>(ct.prodotti||[]).forEach(p=>{
     if(p.categoria)prodCat[p.categoria]=(prodCat[p.categoria]||0)+(Number(p.importo)||0);
   })));
   const prodLabels = Object.keys(prodCat).filter(k=>prodCat[k]>0);
 
-  // Fonte counts
   const fonteCnt = {}; FONTI.forEach(f=>fonteCnt[f.name]=0);
   contacts.forEach(c=>{if(c.fonte)fonteCnt[c.fonte]=(fonteCnt[c.fonte]||0)+1;});
 
-  // Appointment performance by fonte and month
-  const curMonthIdx = parseInt(today.slice(5,7))-1;
   const fonteApptStats = {};
   FONTI.forEach(f=>{fonteApptStats[f.name]={total:0,stati:{}};STATI_APPT.forEach(s=>{fonteApptStats[f.name].stati[s.name]=0;});});
   contacts.forEach(c=>{
@@ -81,7 +74,6 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   });
   const fonteConAppt = FONTI.filter(f=>fonteApptStats[f.name]?.total>0);
 
-  // Monthly appt by fonte (last 6 months)
   const last6 = Array.from({length:6},(_,i)=>{const d=new Date(today);d.setMonth(d.getMonth()-5+i);return d.toISOString().slice(0,7);});
   const fonteMonthly = {};
   FONTI.forEach(f=>{fonteMonthly[f.name]=Array(6).fill(0);});
@@ -101,7 +93,7 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
     if(pieRef.current&&prodLabels.length){pieC.current?.destroy();pieC.current=new Chart(pieRef.current,{type:'doughnut',data:{labels:prodLabels,datasets:[{data:prodLabels.map(k=>prodCat[k]),backgroundColor:PIE_COLORS.slice(0,prodLabels.length),borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:11}}},tooltip:{callbacks:{label:ctx=>' '+fmtEur(ctx.parsed)}}}}});}
     if(apptBarRef.current&&fontesWithData.length){apptBarC.current?.destroy();apptBarC.current=new Chart(apptBarRef.current,{type:'bar',data:{labels:last6.map(m=>MESI[parseInt(m.slice(5,7))-1]+' '+m.slice(0,4)),datasets:fontesWithData.map((f,i)=>({label:f.name,data:fonteMonthly[f.name],backgroundColor:f.color+'99',borderColor:f.color,borderWidth:1.5,borderRadius:3}))},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{boxWidth:10,font:{size:11}}}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,ticks:{stepSize:1},grid:{color:'rgba(0,0,0,0.05)'}}}}});}
     return()=>{barC.current?.destroy();doughC.current?.destroy();pieC.current?.destroy();pie2C.current?.destroy();apptBarC.current?.destroy();};
-  },[contacts,stages]);
+  },[contacts,stages,filterApptMonth]);
 
   const urgentList=[];
   contacts.forEach(c=>(c.history||[]).forEach(h=>{if(h.type==='note'&&h.followup&&h.followup<=today)urgentList.push({c,h,s:h.followup<today?'scaduto':'oggi'});}));
@@ -131,7 +123,7 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
         )}
         <div className="metric-grid">
           <Metric label="In valutazione" value={openHot.length} sub="trattative calde" onClick={()=>navigateTo('contacts',{fase:'In valutazione'})}/>
-          <Metric label="Totale preventivato" value={fmtEur(totPrev)} sub="trattative in valutazione" onClick={()=>navigateTo('contacts',{preventivato:true})}/>
+          <Metric label="Totale preventivato" value={fmtEur(totPrev)} sub="trattative in valutazione" onClick={()=>navigateTo('contacts',{fase:'In valutazione'})}/>
           <Metric label="Fatturato mese" value={fmtEur(fatMese)} sub={new Date().toLocaleDateString('it-IT',{month:'long',year:'numeric'})} color="#3B6D11" onClick={()=>navigateTo('chiuso')}/>
           <Metric label="Fatturato anno" value={fmtEur(fatAnno)} sub={curYear} color="#3B6D11" onClick={()=>navigateTo('chiuso')}/>
         </div>
@@ -173,7 +165,6 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
           </div>
         </div>
 
-        {/* Appointment performance */}
         {fontesWithData.length>0&&(
           <div className="card">
             <div className="card-title">Appuntamenti per fonte — ultimi 6 mesi</div>
