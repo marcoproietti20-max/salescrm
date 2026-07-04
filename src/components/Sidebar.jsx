@@ -8,7 +8,7 @@ const NAV = [
   { id: 'followups',    label: 'Follow-up',       icon: 'M8 1v7l4 2M15 8A7 7 0 111 8a7 7 0 0114 0z', badge: true },
   { id: 'chiuso',       label: 'Chiuso per mese', icon: 'M2 12l4-4 3 3 5-6M1 15h14' },
   { id: 'archivio',     label: 'Archivio KO',     icon: 'M1 5h14l-2-3H3zm0 0v10a1 1 0 001 1h12a1 1 0 001-1V5M6 9h4' },
-  { id: 'calendly',     label: 'Calendly',        icon: 'M8 2a6 6 0 100 12A6 6 0 008 2zm0 3v4l3 2' },
+  { id: 'calendly',     label: 'Bookings',        icon: 'M8 2a6 6 0 100 12A6 6 0 008 2zm0 3v4l3 2' },
   { id: 'settings',     label: 'Impostazioni',    icon: 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 1v2M8 13v2M1 8h2M13 8h2' },
 ];
 
@@ -25,12 +25,10 @@ export default function Sidebar({ page, setPage, brand, urgentFU }) {
 
   return (
     <>
-      {/* Mobile overlay */}
       {open && window.innerWidth <= 900 && (
         <div onClick={() => setOpen(false)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 49 }} />
       )}
-      {/* Hamburger */}
       <button className="hamburger" onClick={() => setOpen(o => !o)} aria-label="Menu">
         <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.8">
           {open ? <path d="M14 4L4 14M4 4l10 10" /> : <path d="M2 4h14M2 9h14M2 14h14" />}
