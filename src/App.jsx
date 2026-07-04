@@ -35,7 +35,6 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
 
-  // Auth check
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session); setAuthLoading(false);
@@ -64,7 +63,6 @@ export default function App() {
   const navigateTo = useCallback((p, filter=null) => { setPageFilter(filter); setPage(p); }, []);
   const logout = async () => { await supabase.auth.signOut(); setSession(null); setContacts([]); };
 
-  // CRUD
   const saveContact = useCallback(async (data) => {
     const isNew = !contacts.find(c=>c.id===data.id);
     const contact = isNew ? {...data, id:uid(), history:[], customData:{}, contratti:[], testoProposta:'', noteInterne:''} : data;
@@ -92,7 +90,7 @@ export default function App() {
     if(result) await dbSaveMany(result);
   }, []);
 
-  // Google Sheet sync — preserves existing followups, never restores deleted ones
+  // Google Sheet sync
   const syncFromGoogleSheet = useCallback(async () => {
     const {sheetId,apiKey,tabName}=gsCfg;
     if(!sheetId||!apiKey) return {error:'Credenziali mancanti'};
@@ -108,8 +106,9 @@ export default function App() {
       const iNome=cp(['nome']); const iCat=cp(['categoria']); const iEmail=cp(['email']);
       const iTel=cp(['telefono','tel']); const iAz=cp(['azienda','studio']);
       const iFonte=cp(['fonte']); const iData=cp(['data app']);
-      const iStato=cp(['stato app']); const iProp=cp(['proposta inviata','proposta']);
-      const iEsito=cp(['esito']); const iFu=cp(['follow up','follow-up']); const iNote=cp(['note app','note']);
+      const iStato=cp(['stato app']);
+      const iFu=cp(['follow up','follow-up']);
+      const iNote=cp(['note app','note']);
       const statoMap={'svolto':'Svolto','non si è presentato':'Non si è presentato','non effettuato':'Non effettuato','da rifissare':'Da rifissare','programmato':'Programmato'};
       let imported=0,skipped=0,updated=0;
       const todayStr=new Date().toISOString().slice(0,10);
@@ -119,25 +118,44 @@ export default function App() {
         const row=rows[i]; const nome=g(row,iNome); if(!nome){skipped++;continue;}
         const email=g(row,iEmail);
         const existingIdx=current.findIndex(c=>(email&&c.email&&c.email.toLowerCase()===email.toLowerCase())||c.nome.toLowerCase()===nome.toLowerCase());
-        const dataRaw=g(row,iData); const noteRaw=g(row,iNote);
-        const fu=parseDate(g(row,iFu));
+        const dataRaw=g(row,iData);
+        const noteRaw=g(row,iNote);
+        const fuRaw=g(row,iFu);
+        // Only parse follow-up if the field actually has a value
+        const fu=fuRaw?parseDate(fuRaw):'';
         const statoRaw=g(row,iStato).toLowerCase();
-        const stato=statoMap[statoRaw]||'Programmato';
-        // New appt always Programmato, empty esito
-        const newHist=[];
-        if(dataRaw) newHist.push({id:uid(),type:'appt',date:parseDate(dataRaw)||dataRaw,stato:'Programmato',esito:''});
-        // Only add follow-up if not already present (prevents restoring deleted ones)
+
+        // New appt — always Programmato, empty esito
+        const newAppt=dataRaw?{id:uid(),type:'appt',date:parseDate(dataRaw)||dataRaw,stato:'Programmato',esito:''}:null;
+
+        // Note App.to as a note in history (only if noteRaw has content)
+        const noteAppt=noteRaw?{id:uid(),type:'note',date:todayStr,text:`Note appuntamento: ${noteRaw}`,followup:''}:null;
+
+        // Follow-up note — only if fu date actually exists in the sheet
+        const fuNote=(fu)?{id:uid(),type:'note',date:todayStr,text:'Follow-up da importazione',followup:fu}:null;
+
         if(existingIdx>=0){
           const ex=current[existingIdx];
-          const existingDates=(ex.history||[]).filter(h=>h.type==='appt').map(h=>h.date.slice(0,10));
-          const newDate=dataRaw?(parseDate(dataRaw)||dataRaw).slice(0,10):'';
+          const existingApptDates=(ex.history||[]).filter(h=>h.type==='appt').map(h=>h.date.slice(0,10));
           const existingFuDates=(ex.history||[]).filter(h=>h.type==='note'&&h.followup).map(h=>h.followup);
-          const histToAdd=[...newHist];
-          // Only add follow-up if it doesn't already exist in history
-          if(fu&&!existingFuDates.includes(fu)){
-            histToAdd.push({id:uid(),type:'note',date:todayStr,text:noteRaw||'Follow-up da importazione',followup:fu});
+          const existingNoteTexts=(ex.history||[]).filter(h=>h.type==='note').map(h=>h.text);
+          const newDate=dataRaw?(parseDate(dataRaw)||dataRaw).slice(0,10):'';
+          const histToAdd=[];
+
+          // Add new appt only if date not already present
+          if(newAppt&&newDate&&!existingApptDates.includes(newDate)){
+            histToAdd.push(newAppt);
+            // Add note appt only if not already present
+            if(noteAppt&&!existingNoteTexts.includes(noteAppt.text)){
+              histToAdd.push(noteAppt);
+            }
           }
-          if(newDate&&!existingDates.includes(newDate)){
+          // Add follow-up only if fu date exists AND not already in history
+          if(fuNote&&fu&&!existingFuDates.includes(fu)){
+            histToAdd.push(fuNote);
+          }
+
+          if(histToAdd.length>0){
             const updatedHist=[...(ex.history||[]),...histToAdd];
             current[existingIdx]={...ex,history:updatedHist};
             toUpdateHist.push({id:ex.id,history:updatedHist});
@@ -145,8 +163,18 @@ export default function App() {
           } else {skipped++;}
         } else {
           const fase=stages[1]?.name||'Appuntamento';
-          const fuHist=fu?[{id:uid(),type:'note',date:todayStr,text:noteRaw||'Follow-up da importazione',followup:fu}]:[];
-          const nc={id:uid(),nome,azienda:g(row,iAz),email,telefono:g(row,iTel),categoria:g(row,iCat),fase,fonte:g(row,iFonte)||'Calendly',esito:'',proposta:'',importoProposta:0,dataChiusura:'',contratti:[],testoProposta:'',noteInterne:'',history:[...newHist,...fuHist],customData:{}};
+          const nc={
+            id:uid(),nome,azienda:g(row,iAz),email,telefono:g(row,iTel),
+            categoria:g(row,iCat),fase,fonte:g(row,iFonte)||'Bookings',
+            esito:'',proposta:'',importoProposta:0,dataChiusura:'',
+            contratti:[],testoProposta:'',noteInterne:'',
+            history:[
+              ...(newAppt?[newAppt]:[]),
+              ...(noteAppt?[noteAppt]:[]),
+              ...(fuNote?[fuNote]:[]),
+            ],
+            customData:{}
+          };
           current.push(nc); toInsert.push(nc); imported++;
         }
       }
