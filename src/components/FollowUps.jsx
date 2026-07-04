@@ -94,7 +94,7 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
     setGeneratingEmail(f.key);
     const nome = f.c.nome || ''; const email = f.c.email || '';
     const nota = f.h.text || ''; const testoProposta = f.c.testoProposta || '';
-    const sub = encodeURIComponent('Seguito alla nostra conversazione — Il Sole 24 Ore Professionale');
+    const sub = encodeURIComponent('Feedback Preventivo — Il Sole 24 Ore Professionale');
     let riassunto = '';
     if (testoProposta) {
       try {
@@ -106,7 +106,7 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
       } catch { riassunto = ''; }
     }
     const body = encodeURIComponent(
-      `Gentile ${nome},\n\nLa contatto in seguito alla nostra conversazione${riassunto ? ` e alla proposta che le ho inviato.\n\nCome le avevo illustrato: ${riassunto}` : ''}.\n\n${nota && nota !== 'Follow-up da importazione' ? `Note: ${nota}\n\n` : ''}Resto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\nMarco Proietti\nIl Sole 24 Ore Professionale`
+      `Gentile ${nome},\n\nspero che la proposta che le ho inviato nei giorni scorsi sia di suo gradimento.\n\nLe scrivo per sapere se ha avuto modo di valutarla e se posso esserle utile per qualsiasi chiarimento.\n\nLe ricordo che le condizioni che le ho riservato sono legate a una disponibilità limitata, pertanto sarei lieto di ricevere un suo riscontro nei prossimi giorni.\n\nDomani proverò a contattarla telefonicamente per un breve confronto.\n\nA presto,\nMarco Proietti\nIl Sole 24 Ore Professionale`
     );
     setGeneratingEmail(null);
     window.open(`mailto:${email}?subject=${sub}&body=${body}`, '_blank');
