@@ -142,7 +142,7 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
         {(urgentFU>0||daRifissare>0)&&(
           <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
             {urgentFU>0&&<div style={{flex:1,background:'#C0392B',color:'white',border:'none',borderRadius:'var(--r)',padding:'10px 16px',cursor:'pointer',fontSize:13,fontWeight:600}} onClick={()=>navigateTo('followups')}>🔔 {urgentFU} follow-up urgenti — Vedi →</div>}
-            {daRifissare>0&&<div style={{flex:1,background:'#E07B1A',color:'white',border:'none',borderRadius:'var(--r)',padding:'10px 16px',cursor:'pointer',fontSize:13,fontWeight:600}} onClick={()=>navigateTo('appointments')}>🔄 {daRifissare} appuntamenti da gestire — Vedi →</div>}
+            {daRifissare>0&&<div style={{flex:1,background:'#E07B1A',color:'white',border:'none',borderRadius:'var(--r)',padding:'10px 16px',cursor:'pointer',fontSize:13,fontWeight:600}} onClick={()=>navigateTo('appointments',{filter:'da_aggiornare'})}>🔄 {daRifissare} appuntamenti da gestire — Vedi →</div>}
           </div>
         )}
 
