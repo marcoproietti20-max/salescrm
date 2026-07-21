@@ -14,13 +14,19 @@ export default function Modal({ modal, setModal, contacts, stages, customFields,
   );
   if (modal.type === 'appt') return (
     <ApptForm contactId={modal.data.contactId} appt={modal.data.appt} stages={stages}
-      onSave={(cid, appt, fase) => {
-        updateContact(cid, c => {
-          const h = [...(c.history || [])];
-          const i = h.findIndex(x => x.id === appt.id);
-          if (i >= 0) h[i] = appt; else h.push(appt);
-          return { ...c, history: h, ...(fase ? { fase } : {}) };
-        });
+      contacts={contacts} prefDate={modal.data.prefDate}
+      onSave={(cid, appt, fase, newContactName) => {
+        if (cid) {
+          updateContact(cid, c => {
+            const h = [...(c.history || [])];
+            const i = h.findIndex(x => x.id === appt.id);
+            if (i >= 0) h[i] = appt; else h.push(appt);
+            return { ...c, history: h, ...(fase ? { fase } : {}) };
+          });
+        } else if (newContactName) {
+          // Create new contact with this appointment
+          saveContact({ nome: newContactName, azienda: '', email: '', telefono: '', fase: stages[1]?.name || stages[0]?.name, fonte: '', categoria: '', esito: '', proposta: '', importoProposta: 0, dataChiusura: '', contratti: [], testoProposta: '', noteInterne: '', history: [appt], customData: {} });
+        }
         showToast('Appuntamento salvato'); close();
       }}
       onDelete={(cid, hid) => { updateContact(cid, c => ({ ...c, history: (c.history || []).filter(h => h.id !== hid) })); close(); }}
@@ -170,7 +176,10 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
           </div>
           <div className="form-group" />
         </div>
-
+        <div className="form-group">
+          <label className="form-label">Testo proposta commerciale</label>
+          <textarea className="form-control" style={{ minHeight: 90 }} value={f.testoProposta} onChange={e => s('testoProposta', e.target.value)} placeholder="Incolla qui la proposta inviata. Verrà riassunta dall'AI per i follow-up." />
+        </div>
         <div className="form-group">
           <label className="form-label">Note interne</label>
           <textarea className="form-control" style={{ minHeight: 70 }} value={f.noteInterne} onChange={e => s('noteInterne', e.target.value)} placeholder="Note private sul contatto — non vengono usate per le email." />
@@ -245,15 +254,58 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
 }
 
 // ── Appt form ───────────────────────────────────────────────
-function ApptForm({ contactId, appt, stages, onSave, onDelete, onClose }) {
+function ApptForm({ contactId, appt, stages, contacts, onSave, onDelete, onClose, prefDate }) {
   const a = appt || {};
-  const [f, setF] = useState({ id: a.id || uid(), date: a.date || '', stato: a.stato || 'Programmato', esito: a.esito || '' });
+  const [f, setF] = useState({ id: a.id || uid(), date: a.date || (prefDate ? prefDate+'T09:00' : ''), stato: a.stato || 'Programmato', esito: a.esito || '' });
   const [fase, setFase] = useState('');
+  const [searchQ, setSearchQ] = useState('');
+  const [selectedContactId, setSelectedContactId] = useState(contactId || null);
+  const [showSearch, setShowSearch] = useState(!contactId);
   const s = (k, v) => setF(p => ({ ...p, [k]: v }));
+  
+  const selectedContact = contacts?.find(c => c.id === selectedContactId);
+  const searchResults = searchQ.length >= 2 
+    ? (contacts||[]).filter(c => (c.nome+(c.azienda||'')).toLowerCase().includes(searchQ.toLowerCase())).slice(0,6)
+    : [];
   return (
     <Overlay onClose={onClose}>
       <div className="modal-header"><span className="modal-title">{a.id ? 'Aggiorna appuntamento' : 'Registra appuntamento'}</span><button className="modal-close" onClick={onClose}>×</button></div>
       <div className="modal-body">
+        {/* Contact selector */}
+        {!a.id && (
+          <div className="form-group">
+            <label className="form-label">Contatto</label>
+            {selectedContact ? (
+              <div style={{display:'flex',alignItems:'center',gap:8,background:'var(--accent-lt)',border:'1px solid var(--accent-mid)',borderRadius:'var(--r)',padding:'8px 12px'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:13}}>{selectedContact.nome}</div>
+                  <div className="text-muted fs-12">{selectedContact.azienda}</div>
+                </div>
+                <button className="btn btn-sm" onClick={()=>{setSelectedContactId(null);setShowSearch(true);setSearchQ('');}}>Cambia</button>
+              </div>
+            ) : (
+              <div>
+                <input className="form-control" placeholder="Cerca contatto esistente..." value={searchQ} onChange={e=>setSearchQ(e.target.value)} autoFocus />
+                {searchResults.length > 0 && (
+                  <div style={{border:'1px solid var(--border2)',borderRadius:'var(--r)',marginTop:4,overflow:'hidden'}}>
+                    {searchResults.map(c=>(
+                      <div key={c.id} onClick={()=>{setSelectedContactId(c.id);setShowSearch(false);setSearchQ('');}}
+                        style={{padding:'8px 12px',cursor:'pointer',borderBottom:'1px solid var(--border)',fontSize:13}}
+                        onMouseEnter={e=>e.currentTarget.style.background='var(--accent-lt)'}
+                        onMouseLeave={e=>e.currentTarget.style.background='white'}>
+                        <div style={{fontWeight:600}}>{c.nome}</div>
+                        <div className="text-muted fs-12">{c.azienda}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {searchQ.length >= 2 && searchResults.length === 0 && (
+                  <div className="fs-12 text-muted" style={{marginTop:6}}>Nessun contatto trovato — verrà creato nuovo</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div className="form-row">
           <div className="form-group"><label className="form-label">Data e ora</label><input className="form-control" type="datetime-local" value={f.date} onChange={e => s('date', e.target.value)} /></div>
           <div className="form-group"><label className="form-label">Stato</label>
@@ -425,11 +477,11 @@ function SchedaModal({ contact: initialContact, contacts, stages, setModal, upda
     if (!noteText.trim()) return;
     updateContact(c.id, ct => ({
       ...ct,
-      history: [...(ct.history || []), { id: uid(), type: 'note', date: today, text: noteText, followup: noteFu || '' }],
+      history: [...(ct.history || []), { id: uid(), type: 'note', date: today, text: noteText, followup: noteFu }],
       ...(noteFase ? { fase: noteFase } : {}),
     }));
     setNoteText(''); setNoteFu(''); setNoteFase('');
-    showToast('Nota aggiunta', '');
+    showToast('Nota aggiunta');
   };
 
   const openEmail = () => {
