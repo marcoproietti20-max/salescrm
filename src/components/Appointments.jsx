@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { fmtDate, fmtDateTime, STATI_APPT } from '../data';
+import { fmtDate, fmtDateTime, STATI_APPT } from '../constants';
 import { StageBadge, StatoBadge } from './Badges';
 
-export default function Appointments({ contacts, stages, setModal, pageFilter, setPageFilter }) {
+export default function Appointments({ contacts, stages, setModal }) {
   const [filter, setFilter] = useState('tutti');
   const today = new Date().toISOString().split('T')[0];
 
@@ -24,10 +24,7 @@ export default function Appointments({ contacts, stages, setModal, pageFilter, s
     return list.sort((a, b) => { if (!a.date && !b.date) return 0; if (!a.date) return 1; if (!b.date) return -1; return b.date.localeCompare(a.date); });
   }, [contacts, stages]);
 
-  const filtered = filter === 'tutti' ? events :
-    filter === 'da_aggiornare'
-      ? events.filter(e => e.stato === 'Programmato' && e.date < today && !koNames.includes(e.c.fase) && e.c.fase !== wonStage?.name)
-      : events.filter(e => e.stato === filter);
+  const filtered = filter === 'tutti' ? events : events.filter(e => e.stato === filter);
 
   // Group by date
   const groups = {};
