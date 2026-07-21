@@ -124,8 +124,8 @@ export default function ChiusoPerMese({ contacts, stages }) {
       data: {
         labels: MESI.map(m=>m.slice(0,3)),
         datasets: [
-          { label: 'Nuovo', data: monthly.map(m=>m.nuovo), backgroundColor: '#378ADD99', borderColor: '#378ADD', borderWidth: 1.5, borderRadius: 4 },
-          { label: 'Rinnovo', data: monthly.map(m=>m.rinnovo), backgroundColor: accent+'99', borderColor: accent, borderWidth: 1.5, borderRadius: 4 },
+          { label: 'Nuovo', data: monthly.map(m=>m.nuovo), backgroundColor: '#0050A0', borderColor: '#0050A0', borderWidth: 0, borderRadius: 4 },
+          { label: 'Rinnovo', data: monthly.map(m=>m.rinnovo), backgroundColor: '#89C4F4', borderColor: '#89C4F4', borderWidth: 0, borderRadius: 4 },
         ]
       },
       options: {
@@ -164,12 +164,12 @@ export default function ChiusoPerMese({ contacts, stages }) {
           </div>
           <div className="metric-card">
             <div className="metric-label">Di cui nuovo</div>
-            <div className="metric-value" style={{color:'#378ADD'}}>{fmtEur(totalNuovo)}</div>
+            <div className="metric-value" style={{color:'#0050A0'}}>{fmtEur(totalNuovo)}</div>
             <div className="metric-sub">fatturato da nuovi clienti</div>
           </div>
           <div className="metric-card">
             <div className="metric-label">Di cui rinnovo</div>
-            <div className="metric-value" style={{color:'var(--accent)'}}>{fmtEur(totalRinnovo)}</div>
+            <div className="metric-value" style={{color:'#4DA6E8'}}>{fmtEur(totalRinnovo)}</div>
             <div className="metric-sub">fatturato da rinnovi</div>
           </div>
           <div className="metric-card">
@@ -200,8 +200,8 @@ export default function ChiusoPerMese({ contacts, stages }) {
                 <div style={{textAlign:'right'}}>
                   <div style={{fontSize:15,fontWeight:700,color:'#3B6D11'}}>{fmtEur(m.totale)}</div>
                   <div className="fs-11 text-muted" style={{display:'flex',gap:10}}>
-                    {m.nuovo>0&&<span style={{color:'#378ADD'}}>Nuovo: {fmtEur(m.nuovo)}</span>}
-                    {m.rinnovo>0&&<span style={{color:'var(--accent)'}}>Rinnovo: {fmtEur(m.rinnovo)}</span>}
+                    {m.nuovo>0&&<span style={{color:'#0050A0'}}>Nuovo: {fmtEur(m.nuovo)}</span>}
+                    {m.rinnovo>0&&<span style={{color:'#4DA6E8'}}>Rinnovo: {fmtEur(m.rinnovo)}</span>}
                   </div>
                 </div>
                 <span style={{fontSize:16,color:'var(--text2)',transform:openM[m.month]?'rotate(180deg)':'',transition:'transform .2s'}}>▼</span>
@@ -243,7 +243,7 @@ export default function ChiusoPerMese({ contacts, stages }) {
                           <td className="text-muted fs-12">{ci===0?fmt(getDataChiusura(c),{day:'2-digit',month:'long',year:'numeric'}):''}</td>
                           <td className="text-muted fs-12">{uniqueProd.join(', ')||'—'}</td>
                           <td className="text-muted fs-12">{durataLabel}</td>
-                          <td style={{fontWeight:600,color:'#378ADD'}}>{isNuovo?fmtEur(importoCt):'—'}</td>
+                          <td style={{fontWeight:600,color:'#0050A0'}}>{isNuovo?fmtEur(importoCt):'—'}</td>
                           <td style={{fontWeight:600,color:'var(--accent)'}}>{!isNuovo?fmtEur(importoCt):'—'}</td>
                           <td style={{fontWeight:700,color:'#3B6D11'}}>{fmtEur(importoCt)}</td>
                           <td className="text-muted fs-12">{fmtEur(vc)}</td>
