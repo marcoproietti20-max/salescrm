@@ -17,16 +17,28 @@ export default function Modal({ modal, setModal, contacts, stages, customFields,
       contacts={contacts} prefDate={modal.data.prefDate}
       onSave={(cid, appt, fase, _unused, newContactData) => {
         if (cid) {
+          // Existing contact — add appt to history
           updateContact(cid, c => {
             const h = [...(c.history || [])];
             const i = h.findIndex(x => x.id === appt.id);
             if (i >= 0) h[i] = appt; else h.push(appt);
             return { ...c, history: h, ...(fase ? { fase } : {}) };
           });
+          showToast('Appuntamento salvato'); close();
         } else if (newContactData) {
-          saveContact({ ...newContactData, fase: stages[1]?.name || stages[0]?.name, esito: '', proposta: '', importoProposta: 0, dataChiusura: '', contratti: [], testoProposta: '', noteInterne: '', history: [appt], customData: {} });
+          // New contact — include appt directly in history at creation
+          saveContact({
+            ...newContactData,
+            fase: stages[1]?.name || stages[0]?.name,
+            esito: '', proposta: '', importoProposta: 0,
+            dataChiusura: '', contratti: [], testoProposta: '', noteInterne: '',
+            history: [{ ...appt, type: 'appt' }],
+            customData: {}
+          });
+          showToast('Contatto e appuntamento salvati'); close();
+        } else {
+          showToast('Errore: nessun contatto selezionato', '');
         }
-        showToast('Appuntamento salvato'); close();
       }}
       onDelete={(cid, hid) => { updateContact(cid, c => ({ ...c, history: (c.history || []).filter(h => h.id !== hid) })); close(); }}
       onClose={close} />
