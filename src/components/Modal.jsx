@@ -15,7 +15,7 @@ export default function Modal({ modal, setModal, contacts, stages, customFields,
   if (modal.type === 'appt') return (
     <ApptForm contactId={modal.data.contactId} appt={modal.data.appt} stages={stages}
       contacts={contacts} prefDate={modal.data.prefDate}
-      onSave={(cid, appt, fase, newContactName) => {
+      onSave={(cid, appt, fase, _unused, newContactData) => {
         if (cid) {
           updateContact(cid, c => {
             const h = [...(c.history || [])];
@@ -23,9 +23,8 @@ export default function Modal({ modal, setModal, contacts, stages, customFields,
             if (i >= 0) h[i] = appt; else h.push(appt);
             return { ...c, history: h, ...(fase ? { fase } : {}) };
           });
-        } else if (newContactName) {
-          // Create new contact with this appointment
-          saveContact({ nome: newContactName, azienda: '', email: '', telefono: '', fase: stages[1]?.name || stages[0]?.name, fonte: '', categoria: '', esito: '', proposta: '', importoProposta: 0, dataChiusura: '', contratti: [], testoProposta: '', noteInterne: '', history: [appt], customData: {} });
+        } else if (newContactData) {
+          saveContact({ ...newContactData, fase: stages[1]?.name || stages[0]?.name, esito: '', proposta: '', importoProposta: 0, dataChiusura: '', contratti: [], testoProposta: '', noteInterne: '', history: [appt], customData: {} });
         }
         showToast('Appuntamento salvato'); close();
       }}
@@ -261,6 +260,8 @@ function ApptForm({ contactId, appt, stages, contacts, onSave, onDelete, onClose
   const [searchQ, setSearchQ] = useState('');
   const [selectedContactId, setSelectedContactId] = useState(contactId || null);
   const [showSearch, setShowSearch] = useState(!contactId);
+  const [createNew, setCreateNew] = useState(false);
+  const [newContact, setNewContact] = useState({ nome: '', azienda: '', telefono: '', email: '', categoria: '', fonte: '' });
   const s = (k, v) => setF(p => ({ ...p, [k]: v }));
   
   const selectedContact = contacts?.find(c => c.id === selectedContactId);
@@ -300,8 +301,27 @@ function ApptForm({ contactId, appt, stages, contacts, onSave, onDelete, onClose
                   </div>
                 )}
                 {searchQ.length >= 2 && searchResults.length === 0 && (
-                  <div className="fs-12 text-muted" style={{marginTop:6}}>Nessun contatto trovato — verrà creato nuovo</div>
+                  <div style={{marginTop:6}}>
+                    <div className="fs-12 text-muted" style={{marginBottom:6}}>Nessun contatto trovato.</div>
+                    <button className="btn btn-sm btn-primary" onClick={()=>setCreateNew(true)}>
+                      + Crea nuovo contatto "{searchQ}"
+                    </button>
+                  </div>
                 )}
+              </div>
+            )}
+            {createNew && (
+              <div style={{marginTop:10,background:'var(--accent-lt)',border:'1px solid var(--accent-mid)',borderRadius:'var(--r)',padding:12}}>
+                <div className="form-label" style={{marginBottom:8}}>Nuovo contatto</div>
+                <div className="form-row" style={{marginBottom:8}}>
+                  <input className="form-control" placeholder="Nome *" value={newContact.nome||searchQ} onChange={e=>setNewContact(p=>({...p,nome:e.target.value}))} />
+                  <input className="form-control" placeholder="Azienda" value={newContact.azienda} onChange={e=>setNewContact(p=>({...p,azienda:e.target.value}))} />
+                </div>
+                <div className="form-row">
+                  <input className="form-control" placeholder="Telefono" value={newContact.telefono} onChange={e=>setNewContact(p=>({...p,telefono:e.target.value}))} />
+                  <input className="form-control" placeholder="Email" value={newContact.email} onChange={e=>setNewContact(p=>({...p,email:e.target.value}))} />
+                </div>
+                <button className="btn btn-sm" style={{marginTop:8}} onClick={()=>setCreateNew(false)}>Annulla</button>
               </div>
             )}
           </div>
