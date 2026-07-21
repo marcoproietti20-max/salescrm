@@ -1,10 +1,8 @@
-/* ═══════════════════════════════════════════════════════════
-   SalesCRM — Design System v3
-   Palette: Bianco + Blu Microsoft #0078D4
-   ═══════════════════════════════════════════════════════════ */
+/* SalesCRM — Design System v3.1
+   Palette: Bianco + Blu Microsoft #0078D4 */
 :root {
   --accent:     #0078D4;
-  --accent-dk:  #005A9E;
+  --accent-dk:  #0050A0;
   --accent-lt:  #EBF4FC;
   --accent-mid: #C2DEFA;
   --bg:         #F4F8FC;
@@ -131,8 +129,16 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 
 /* Follow-up */
 .fu-item { border-radius: var(--r); padding: 11px 14px; margin-bottom: 9px; display: flex; align-items: flex-start; gap: 10px; }
-.fu-item.scaduto { background: var(--red-lt); border: 1px solid rgba(192,57,43,0.25); }
-.fu-item.oggi { background: var(--amber-lt); border: 1px solid rgba(224,123,26,0.3); }
+.fu-item.scaduto { background: var(--red); border: 1px solid var(--red); color: white; }
+.fu-item.scaduto .text-muted { color: rgba(255,255,255,0.75); }
+.fu-item.scaduto .fs-12 { color: rgba(255,255,255,0.9); }
+.fu-item.scaduto .fs-11 { color: rgba(255,255,255,0.8); }
+.fu-item.scaduto .fw-600 { color: white; }
+.fu-item.oggi { background: var(--amber); border: 1px solid var(--amber); color: white; }
+.fu-item.oggi .text-muted { color: rgba(255,255,255,0.75); }
+.fu-item.oggi .fs-12 { color: rgba(255,255,255,0.9); }
+.fu-item.oggi .fs-11 { color: rgba(255,255,255,0.8); }
+.fu-item.oggi .fw-600 { color: white; }
 .fu-item.futuro { background: var(--bg2); border: 1px solid var(--border); }
 
 /* Bulk bar */
@@ -170,9 +176,9 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
 /* Info boxes */
 .info-box { border-radius: var(--r); padding: 10px 14px; margin-bottom: 14px; font-size: 12px; line-height: 1.6; }
 .info-box.blue { background: var(--accent-lt); color: var(--accent-dk); border: 1px solid var(--accent-mid); }
-.info-box.amber { background: var(--amber-lt); color: #7A4010; border: 1px solid rgba(224,123,26,0.3); }
+.info-box.amber { background: var(--amber); color: white; border: 1px solid var(--amber); }
 .info-box.green { background: var(--green-lt); color: #0F5023; border: 1px solid rgba(27,122,62,0.3); }
-.info-box.red { background: var(--red-lt); color: #7A1A1A; border: 1px solid rgba(192,57,43,0.3); }
+.info-box.red { background: var(--red); color: white; border: 1px solid var(--red); }
 
 /* Misc */
 .empty { text-align: center; padding: 36px 20px; color: var(--text2); font-size: 13px; }
