@@ -345,7 +345,17 @@ function ApptForm({ contactId, appt, stages, contacts, onSave, onDelete, onClose
       <div className="modal-footer">
         {a.id && <button className="btn btn-danger" style={{ marginRight: 'auto' }} onClick={() => onDelete(contactId, a.id)}>Elimina</button>}
         <button className="btn" onClick={onClose}>Annulla</button>
-        <button className="btn btn-primary" onClick={() => onSave(contactId, { ...f, type: 'appt' }, fase)}>Salva</button>
+        <button className="btn btn-primary" onClick={() => {
+            const cid = selectedContactId || contactId;
+            if (createNew) {
+              if (!newContact.nome && !searchQ) return alert('Inserisci almeno il nome');
+              onSave(null, { ...f, type: 'appt' }, fase, null, { ...newContact, nome: newContact.nome || searchQ });
+            } else if (cid) {
+              onSave(cid, { ...f, type: 'appt' }, fase);
+            } else {
+              alert('Seleziona un contatto esistente o creane uno nuovo');
+            }
+          }}>Salva</button>
       </div>
     </Overlay>
   );
