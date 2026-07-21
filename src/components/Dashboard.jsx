@@ -49,7 +49,8 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const fatRinnovoAnno = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFattRinnovo(c),0);
   const totPrev = openHot.reduce((s,c)=>s+getPreventivato(c),0);
   const urgentFU = contacts.reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='note'&&h.followup&&h.followup<=today).length,0);
-  const daRifissare = contacts.reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='appt'&&(h.stato==='Da rifissare'||h.stato==='Non si è presentato'||h.stato==='Non effettuato')).length,0);
+  const koAndOkNames = [...stages.filter(s=>s.isKo).map(s=>s.name), wonStage?.name].filter(Boolean);
+  const daRifissare = contacts.filter(c=>!koAndOkNames.includes(c.fase)).reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='appt'&&h.stato==='Programmato'&&h.date&&h.date.slice(0,10)<today).length,0);
 
   const monthlyNuovo = Array(12).fill(0); const monthlyRinnovo = Array(12).fill(0);
   chiusiOK.forEach(c=>{
