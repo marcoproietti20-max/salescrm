@@ -270,7 +270,7 @@ export default function App() {
         <Page {...sharedProps} />
       </main>
       {/* Global search — fixed top right */}
-      <div style={{ position:'fixed', top:10, right:60, zIndex:30 }}>
+      <div style={{ position:'fixed', top:10, left:'50%', transform:'translateX(-50%)', zIndex:30, maxWidth:320, width:'100%' }}>
         <GlobalSearch contacts={contacts} stages={stages} setModal={setModal} navigateTo={navigateTo} />
       </div>
       <button onClick={logout} style={{ position:'fixed', bottom:16, right:16, background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--r)', padding:'6px 12px', fontSize:12, cursor:'pointer', color:'var(--text2)', zIndex:20 }}>Esci</button>
