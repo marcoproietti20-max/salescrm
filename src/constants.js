@@ -43,9 +43,10 @@ export const DEFAULT_STAGES = [
   { id: 'ko',   name: 'Chiuso KO',      color: '#A32D2D', isKo: true  },
 ];
 export const DEFAULT_BRAND = {
-  name: 'SalesCRM', sub: 'Il Sole 24 Ore Professionale',
+  name: 'SalesPRO', sub: 'Il Sole 24 Ore Professionale',
   user: 'Marco Proietti', role: 'Il Sole 24 Ore Professionale',
-  color: '#c8102e', callink: 'https://calendly.com/marco-proietti-il-sole-24-ore',
+  color: '#c8102e',
+  callink: 'https://bookings.cloud.microsoft/book/MarcoProiettiIlSole24Ore@ilsole24ore.onmicrosoft.com/?ismsaljsauthenabled',
 };
 export const DEFAULT_GS = {
   sheetId: '1nC3fC_REUsd-XmoAKYXrsAqvxTlN8jcq4dvUrl32E3A',
