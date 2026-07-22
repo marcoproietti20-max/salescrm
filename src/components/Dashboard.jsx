@@ -43,15 +43,12 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const curMonth = today.slice(0,7); const curYear = today.slice(0,4);
   const fatMese = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFatturato(c),0);
   const fatAnno = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFatturato(c),0);
-  const fatNuovoMese = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFattNuovo(c),0);
-  const fatRinnovoMese = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFattRinnovo(c),0);
-  const fatNuovoAnno = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFattNuovo(c),0);
-  const fatRinnovoAnno = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFattRinnovo(c),0);
   const totPrev = openHot.reduce((s,c)=>s+getPreventivato(c),0);
   const urgentFU = contacts.reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='note'&&h.followup&&h.followup<=today).length,0);
   const koAndOkNames = [...stages.filter(s=>s.isKo).map(s=>s.name), wonStage?.name].filter(Boolean);
   const daRifissare = contacts.filter(c=>!koAndOkNames.includes(c.fase)).reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='appt'&&h.stato==='Programmato'&&h.date&&h.date.slice(0,10)<today).length,0);
 
+  // Group by contract's own dataInizio (same source of truth as "Chiuso per mese")
   const monthlyNuovo = Array(12).fill(0); const monthlyRinnovo = Array(12).fill(0);
   chiusiOK.forEach(c=>{
     getContratti(c).forEach(ct=>{
@@ -62,6 +59,11 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
       if(ct.tipo==='Rinnovo') monthlyRinnovo[m]+=v; else monthlyNuovo[m]+=v;
     });
   });
+  const curMonthIdxForMetric = parseInt(today.slice(5,7))-1;
+  const fatNuovoMese = monthlyNuovo[curMonthIdxForMetric]||0;
+  const fatRinnovoMese = monthlyRinnovo[curMonthIdxForMetric]||0;
+  const fatNuovoAnno = monthlyNuovo.reduce((s,v)=>s+v,0);
+  const fatRinnovoAnno = monthlyRinnovo.reduce((s,v)=>s+v,0);
 
   const activeStages = stages.filter(s=>!s.isKo);
   const stageCnt = {}; activeStages.forEach(s=>stageCnt[s.name]=0);
