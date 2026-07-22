@@ -35,12 +35,10 @@ export default function Sidebar({ page, setPage, brand, urgentFU }) {
         </svg>
       </button>
       <aside className={`sidebar${open ? ' open' : ''}`}>
-        <div className="sidebar-logo" style={{ paddingTop: window.innerWidth <= 900 ? 52 : 18 }}>
-          <div className="brand-row">
-            <span className="brand-dot" style={{ background: brand.color || '#c8102e' }} />
-            <span className="brand-name">{brand.name}</span>
+        <div className="sidebar-logo" style={{ paddingTop: window.innerWidth <= 900 ? 52 : 22 }}>
+          <div style={{ fontSize: 26, fontWeight: 800, color: 'white', letterSpacing: '-0.5px', lineHeight: 1 }}>
+            SalesPRO
           </div>
-          <div className="brand-sub">{brand.sub}</div>
         </div>
         <nav className="nav">
           <div className="nav-label">Menu</div>
