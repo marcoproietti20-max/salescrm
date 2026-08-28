@@ -16,23 +16,119 @@ export const ESITI_CHIAMATA = [
   { name: 'Già cliente',          icon: '💼', color: '#2E7D32', tipo: 'semplice' },
 ];
 
+const NAV_OP = [
+  { id: 'home',     label: 'Dashboard',     icon: 'M2 2h5v5H2zm7 0h5v5H9zm-7 7h5v5H2zm7 0h5v5H9z' },
+  { id: 'coda',     label: 'Coda chiamate', icon: 'M2.5 2l3-1 1.8 3.6-2 1.6a10.5 10.5 0 004.5 4.5l1.6-2L15 10.5l-1 3C8 14.5 1.5 8 2.5 2z' },
+  { id: 'richiami', label: 'Richiami',      icon: 'M8 1v7l4 2M15 8A7 7 0 111 8a7 7 0 0114 0z', badge: true },
+  { id: 'archivio', label: 'Archivio lead', icon: 'M1 5h14l-2-3H3zm0 0v10a1 1 0 001 1h12a1 1 0 001-1V5M6 9h4' },
+];
+
+const CSS = `
+  .opv * { box-sizing: border-box; }
+  .opv { min-height: 100vh; background: #EEF3F9; font-family: 'DM Sans', sans-serif; color: #1F2A37; display: flex; }
+  .opv-side { width: 230px; min-height: 100vh; background: linear-gradient(175deg, #005A9E, ${BLU}); color: white; display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 45; }
+  .opv-logo { padding: 24px 20px 18px; }
+  .opv-logo .big { font-size: 24px; font-weight: 800; letter-spacing: -.5px; }
+  .opv-logo .sub { font-size: 11px; opacity: .8; letter-spacing: .08em; text-transform: uppercase; margin-top: 3px; }
+  .opv-navlabel { font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; opacity: .65; padding: 8px 20px 6px; }
+  .opv-navitem { display: flex; align-items: center; gap: 11px; width: calc(100% - 16px); margin: 2px 8px; padding: 10px 12px; border: none; border-radius: 10px; background: transparent; color: rgba(255,255,255,.85); font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; text-align: left; }
+  .opv-navitem:hover { background: rgba(255,255,255,.1); }
+  .opv-navitem.active { background: rgba(255,255,255,.2); color: white; }
+  .opv-navicon { width: 16px; height: 16px; flex-shrink: 0; }
+  .opv-navbadge { margin-left: auto; background: #E74C3C; color: white; border-radius: 20px; font-size: 11px; font-weight: 800; padding: 1px 8px; }
+  .opv-sidefoot { margin-top: auto; padding: 16px 20px; border-top: 1px solid rgba(255,255,255,.2); font-size: 12px; }
+  .opv-sidefoot strong { display: block; font-size: 13px; }
+  .opv-sidefoot span { opacity: .75; }
+  .opv-esci { margin-top: 10px; width: 100%; background: rgba(255,255,255,.14); color: white; border: 1px solid rgba(255,255,255,.4); border-radius: 9px; padding: 7px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .opv-esci:hover { background: rgba(255,255,255,.25); }
+  .opv-main { flex: 1; margin-left: 230px; padding: 0 26px 60px; max-width: 1150px; }
+  .opv-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0 6px; }
+  .opv-title { font-size: 20px; font-weight: 800; }
+  .opv-date { font-size: 12.5px; color: #6B7A8C; text-transform: capitalize; }
+  .opv-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 12px; }
+  .opv-metric { background: white; border-radius: 14px; padding: 15px 17px; box-shadow: 0 2px 10px rgba(0,60,120,.07); }
+  .opv-metric .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6B7A8C; }
+  .opv-metric .val { font-size: 31px; font-weight: 800; line-height: 1.15; }
+  .opv-metric .sub { font-size: 11.5px; color: #6B7A8C; }
+  .opv-card { background: white; border-radius: 14px; padding: 18px 20px; box-shadow: 0 2px 10px rgba(0,60,120,.06); margin-top: 16px; }
+  .opv-card-title { font-size: 12.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #33475B; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .opv-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .opv-input, .opv-select { border: 1.5px solid #D4DEE9; border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; background: white; color: inherit; }
+  .opv-input:focus, .opv-select:focus { outline: none; border-color: ${BLU}; }
+  .opv-search { flex: 1; min-width: 200px; }
+  .opv-row { display: flex; align-items: center; gap: 14px; padding: 13px 15px; border: 1px solid #E2E9F1; border-radius: 12px; margin-bottom: 9px; cursor: pointer; background: white; transition: box-shadow .12s, border-color .12s; }
+  .opv-row:hover { border-color: ${BLU}; box-shadow: 0 3px 12px rgba(0,120,212,.14); }
+  .opv-row.hot { background: #FFF7ED; border-color: #F0B26B; }
+  .opv-row .who { flex: 1; min-width: 0; }
+  .opv-row .who .az { font-size: 15.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .opv-row .who .det { font-size: 12.5px; color: #6B7A8C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+  .opv-tag { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  .opv-call { display: inline-flex; align-items: center; gap: 8px; background: ${BLU}; color: white; border: none; border-radius: 10px; padding: 9px 15px; font-size: 14.5px; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .opv-call:hover { background: #005A9E; }
+  .opv-open { background: white; color: ${BLU}; border: 1.5px solid ${BLU}; border-radius: 10px; padding: 8px 13px; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap; font-family: inherit; }
+  .opv-empty { text-align: center; color: #8A97A6; font-size: 14px; padding: 20px 0; }
+  .opv-modal-bg { position: fixed; inset: 0; background: rgba(15,30,50,.5); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 14px; }
+  .opv-modal { background: white; border-radius: 16px; width: 100%; max-width: 620px; max-height: 92vh; overflow-y: auto; padding: 24px; }
+  .opv-bigcall { display: flex; align-items: center; justify-content: center; gap: 10px; background: ${BLU}; color: white; border-radius: 12px; padding: 15px; font-size: 25px; font-weight: 800; text-decoration: none; margin: 15px 0 8px; }
+  .opv-tabs { display: flex; gap: 6px; background: #EEF3F9; border-radius: 12px; padding: 5px; margin-bottom: 16px; }
+  .opv-tab { flex: 1; border: none; border-radius: 9px; padding: 10px 8px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; background: transparent; color: #6B7A8C; }
+  .opv-tab.on { background: white; color: ${BLU}; box-shadow: 0 1px 5px rgba(0,60,120,.12); }
+  .opv-dl { display: grid; grid-template-columns: 130px 1fr; gap: 7px 12px; font-size: 14px; margin-bottom: 16px; }
+  .opv-dl dt { color: #6B7A8C; font-weight: 600; }
+  .opv-dl dd { margin: 0; font-weight: 600; }
+  .opv-esiti { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .opv-esito-btn { border-radius: 12px; padding: 14px 10px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .opv-form-label { display: block; font-size: 12px; font-weight: 700; color: #33475B; margin-bottom: 5px; }
+  .opv-textarea { width: 100%; border: 1.5px solid #D4DEE9; border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical; }
+  .opv-textarea:focus { outline: none; border-color: ${BLU}; }
+  .opv-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+  .opv-btn { border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; border: 1.5px solid #D4DEE9; background: white; }
+  .opv-btn.primary { background: ${BLU}; border-color: ${BLU}; color: white; }
+  .opv-btn.primary:disabled { opacity: .6; }
+  .opv-hist { border-left: 3px solid ${BLU}; padding: 5px 12px; margin-bottom: 10px; }
+  .opv-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); color: white; border-radius: 12px; padding: 12px 24px; font-size: 15px; font-weight: 700; z-index: 100; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+  .opv-burger { display: none; position: fixed; top: 12px; left: 12px; z-index: 55; background: ${BLU}; color: white; border: none; border-radius: 10px; width: 40px; height: 40px; font-size: 18px; cursor: pointer; }
+  .opv-overlay { display: none; }
+  .opv-statochip { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  @media (max-width: 900px) {
+    .opv-side { transform: translateX(-100%); transition: transform .18s; }
+    .opv-side.open { transform: translateX(0); }
+    .opv-overlay.show { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 44; }
+    .opv-burger { display: block; }
+    .opv-main { margin-left: 0; padding: 0 12px 60px; }
+    .opv-topbar { padding-top: 60px; }
+    .opv-metrics { grid-template-columns: repeat(2, 1fr); gap: 9px; }
+    .opv-metric .val { font-size: 26px; }
+    .opv-row { flex-wrap: wrap; gap: 8px; }
+    .opv-row .who { flex-basis: 100%; }
+    .opv-call { flex: 1; justify-content: center; }
+    .opv-open { flex: 1; }
+    .opv-esiti { grid-template-columns: 1fr 1fr; }
+    .opv-bigcall { font-size: 21px; }
+  }
+`;
+
 export default function OperatorView({ profile, onLogout }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pageOp, setPageOp] = useState('home');
+  const [sideOpen, setSideOpen] = useState(false);
   const [fCategoria, setFCategoria] = useState('');
   const [fLista, setFLista] = useState('');
+  const [fStato, setFStato] = useState('');
+  const [cerca, setCerca] = useState('');
   const [selected, setSelected] = useState(null);
-  const [esitoOpen, setEsitoOpen] = useState(null); // esito in compilazione
+  const [tab, setTab] = useState('esito');
+  const [esitoOpen, setEsitoOpen] = useState(null);
   const [nota, setNota] = useState('');
   const [dataRichiamo, setDataRichiamo] = useState('');
-  const [ricontatto, setRicontatto] = useState('6m'); // 6m / 12m / mai
+  const [ricontatto, setRicontatto] = useState('6m');
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
   const chartRef = useRef(); const chartC = useRef();
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // Tema: la postazione nasce blu, indipendente dal localStorage del browser
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', BLU);
     document.title = 'SalesPRO — Telemarketing';
@@ -40,7 +136,7 @@ export default function OperatorView({ profile, onLogout }) {
 
   const load = useCallback(async () => {
     const data = await dbLoadLeads();
-    if (data === null) { setToast({ msg: 'Errore di caricamento. Riprova o avvisa Marco.', type: 'err' }); setLeads([]); }
+    if (data === null) { setToast({ msg: 'Errore di caricamento. Ricarica la pagina o avvisa Marco.', type: 'err' }); setLeads([]); }
     else setLeads(data);
     setLoading(false);
   }, []);
@@ -48,44 +144,51 @@ export default function OperatorView({ profile, onLogout }) {
 
   const showToast = (msg, type = 'ok') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500); };
 
-  // ── Code di lavoro ─────────────────────────────────────────
-  const matchFiltri = l =>
-    (!fCategoria || l.categoria === fCategoria) &&
-    (!fLista || l.lista === fLista);
+  // ── Filtri e code ──────────────────────────────────────────
+  const matchFiltri = l => {
+    if (fCategoria && l.categoria !== fCategoria) return false;
+    if (fLista && l.lista !== fLista) return false;
+    if (cerca) {
+      const q = cerca.toLowerCase();
+      const hay = [l.azienda, l.nome, l.telefono, l.citta].filter(Boolean).join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  };
 
-  const richiami = leads.filter(l => l.stato === 'Richiamare' && l.data_richiamo && l.data_richiamo <= today && matchFiltri(l));
+  const byRichiamo = (a, b) => (a.data_richiamo || '').localeCompare(b.data_richiamo || '');
+  const richiamiOggi = leads.filter(l => l.stato === 'Richiamare' && l.data_richiamo && l.data_richiamo <= today && matchFiltri(l)).sort(byRichiamo);
   const riconatti = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today && matchFiltri(l));
   const daChiamare = leads.filter(l => (l.stato === 'Da chiamare' || l.stato === 'Non risponde') && matchFiltri(l));
-  const richiamiFuturi = leads.filter(l => l.stato === 'Richiamare' && (!l.data_richiamo || l.data_richiamo > today) && matchFiltri(l));
+  const richiamiFuturi = leads.filter(l => l.stato === 'Richiamare' && (!l.data_richiamo || l.data_richiamo > today) && matchFiltri(l)).sort(byRichiamo);
+  const nRichiamiBadge = leads.filter(l => (l.stato === 'Richiamare' && l.data_richiamo && l.data_richiamo <= today) || (l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today)).length;
 
   const liste = [...new Set(leads.map(l => l.lista).filter(Boolean))].sort();
   const categoriePresenti = CATEGORIE.filter(c => leads.some(l => l.categoria === c));
 
-  // ── Contatori del giorno ───────────────────────────────────
   const esitiOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === today).length, 0);
   const apptOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === today && h.esito === 'Appuntamento fissato').length, 0);
 
-  // ── Grafico: chiamate ultimi 5 giorni lavorativi ───────────
+  // ── Grafico settimana (pagina home) ────────────────────────
+  const giorni = []; { const d = new Date(); while (giorni.length < 5) { if (d.getDay() !== 0 && d.getDay() !== 6) giorni.unshift(d.toISOString().slice(0, 10)); d.setDate(d.getDate() - 1); } }
+  const chiamateGiorni = giorni.map(g => leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === g).length, 0));
+  const haAttivita = chiamateGiorni.some(v => v > 0);
+
   useEffect(() => {
-    const giorni = []; const d = new Date();
-    while (giorni.length < 5) { if (d.getDay() !== 0 && d.getDay() !== 6) giorni.unshift(d.toISOString().slice(0, 10)); d.setDate(d.getDate() - 1); }
-    const chiamate = giorni.map(g => leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === g).length, 0));
+    if (pageOp !== 'home' || !haAttivita || !chartRef.current) { chartC.current?.destroy(); chartC.current = null; return; }
     const appt = giorni.map(g => leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === g && h.esito === 'Appuntamento fissato').length, 0));
     const labels = giorni.map(g => new Date(g + 'T12:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric' }));
-    if (chartRef.current) {
-      chartC.current?.destroy();
-      chartC.current = new Chart(chartRef.current, { type: 'bar', data: { labels, datasets: [
-        { label: 'Chiamate', data: chiamate, backgroundColor: '#89C4F4', borderRadius: 4 },
-        { label: 'Appuntamenti', data: appt, backgroundColor: '#0050A0', borderRadius: 4 },
-      ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { stepSize: 1 }, grid: { color: 'rgba(0,120,212,0.06)' } } } } });
-    }
+    chartC.current?.destroy();
+    chartC.current = new Chart(chartRef.current, { type: 'bar', data: { labels, datasets: [
+      { label: 'Chiamate', data: chiamateGiorni, backgroundColor: '#89C4F4', borderRadius: 5 },
+      { label: 'Appuntamenti', data: appt, backgroundColor: '#0050A0', borderRadius: 5 },
+    ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { stepSize: 1 }, grid: { color: 'rgba(0,120,212,0.06)' } } } } });
     return () => chartC.current?.destroy();
-  }, [leads]);
+  }, [leads, haAttivita, pageOp]);
 
   // ── Registrazione esito ────────────────────────────────────
-  const apriEsito = (esito) => {
-    setEsitoOpen(esito); setNota(''); setDataRichiamo(''); setRicontatto('6m');
-  };
+  const apriLead = (l, t = 'esito') => { setSelected(l); setEsitoOpen(null); setTab(t); };
+  const apriEsito = (esito) => { setEsitoOpen(esito); setNota(''); setDataRichiamo(''); setRicontatto('6m'); };
 
   const registraEsito = async () => {
     if (!selected || !esitoOpen || saving) return;
@@ -95,18 +198,16 @@ export default function OperatorView({ profile, onLogout }) {
     const nowIso = new Date().toISOString();
     const entry = { id: Date.now().toString(36), date: nowIso, esito: e.name, testo: nota.trim() };
     const fields = {
-      stato: e.name === 'Non risponde' ? 'Non risponde' : e.name,
+      stato: e.name,
       tentativi: (selected.tentativi || 0) + 1,
       ultimo_contatto: nowIso,
       note_storia: [...(selected.note_storia || []), entry],
       data_richiamo: e.tipo === 'richiamo' ? dataRichiamo : null,
       non_interessato_fino_a: null,
     };
-    if (e.tipo === 'noninteressato') {
-      if (ricontatto !== 'mai') {
-        const d = new Date(); d.setMonth(d.getMonth() + (ricontatto === '6m' ? 6 : 12));
-        fields.non_interessato_fino_a = d.toISOString().slice(0, 10);
-      }
+    if (e.tipo === 'noninteressato' && ricontatto !== 'mai') {
+      const d = new Date(); d.setMonth(d.getMonth() + (ricontatto === '6m' ? 6 : 12));
+      fields.non_interessato_fino_a = d.toISOString().slice(0, 10);
     }
     const ok = await dbUpdateLead(selected.id, fields);
     setSaving(false);
@@ -116,134 +217,252 @@ export default function OperatorView({ profile, onLogout }) {
     showToast(e.name === 'Appuntamento fissato' ? '🎉 Appuntamento registrato!' : `Esito registrato: ${e.name}`);
   };
 
-  // ── Componenti interni ─────────────────────────────────────
-  const RigaLead = ({ l, evidenzia }) => (
-    <div onClick={() => { setSelected(l); setEsitoOpen(null); }}
-      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 'var(--r)', cursor: 'pointer', marginBottom: 6,
-        background: evidenzia ? '#FDF3E7' : 'var(--bg2, #fff)', border: `1px solid ${evidenzia ? '#E07B1A' : 'var(--border, #e3e6ea)'}` }}>
-      <div style={{ flex: 2, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.azienda || l.nome || '—'}</div>
-        <div className="text-muted fs-12" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.nome && l.azienda ? l.nome + ' · ' : ''}{l.categoria || ''}{l.citta ? ' · ' + l.citta : ''}</div>
+  // ── Componenti ─────────────────────────────────────────────
+  const statoInfo = s => ESITI_CHIAMATA.find(x => x.name === s) || { icon: '📞', color: BLU };
+
+  const Riga = ({ l, hot, mostraStato }) => (
+    <div className={'opv-row' + (hot ? ' hot' : '')} onClick={() => apriLead(l, mostraStato ? 'scheda' : 'esito')}>
+      <div className="who">
+        <div className="az">{l.azienda || l.nome || '—'}</div>
+        <div className="det">
+          {l.nome && l.azienda ? l.nome + ' · ' : ''}{l.categoria || ''}{l.citta ? ' · ' + l.citta : ''}
+          {hot && l.data_richiamo ? ` · richiamo ${new Date(l.data_richiamo + 'T12:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}` : ''}
+          {!hot && !mostraStato && l.tentativi > 0 ? ` · ${l.tentativi} tentativ${l.tentativi === 1 ? 'o' : 'i'}` : ''}
+        </div>
       </div>
-      <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: BLU }}>{l.telefono || '—'}</div>
-      <div className="fs-12 text-muted" style={{ width: 90, textAlign: 'right' }}>
-        {evidenzia ? <span style={{ color: '#E07B1A', fontWeight: 700 }}>{l.stato === 'Richiamare' ? '🔄 Richiamo' : '📅 Ricontatto'}</span>
-          : (l.tentativi > 0 ? `${l.tentativi} tentativ${l.tentativi === 1 ? 'o' : 'i'}` : 'mai chiamato')}
+      {hot && <span className="opv-tag" style={{ background: '#E07B1A20', color: '#B35F0E' }}>{l.stato === 'Richiamare' ? '🔄 Richiamo' : '📅 Ricontatto'}</span>}
+      {mostraStato && <span className="opv-statochip" style={{ background: statoInfo(l.stato).color + '18', color: statoInfo(l.stato).color }}>{statoInfo(l.stato).icon} {l.stato}</span>}
+      {l.telefono && <a className="opv-call" href={'tel:' + l.telefono.replace(/\s/g, '')} onClick={e => e.stopPropagation()}>📞 {l.telefono}</a>}
+      <button className="opv-open" onClick={e => { e.stopPropagation(); apriLead(l, 'esito'); }}>Registra esito</button>
+    </div>
+  );
+
+  const Sezione = ({ titolo, items, hot, vuoto, mostraStato }) => (
+    <div className="opv-card">
+      <div className="opv-card-title">{titolo} <span style={{ color: BLU }}>({items.length})</span></div>
+      {items.length === 0 ? <div className="opv-empty">{vuoto}</div> : items.map(l => <Riga key={l.id} l={l} hot={hot} mostraStato={mostraStato} />)}
+    </div>
+  );
+
+  const Filtri = ({ conStato }) => (
+    <div className="opv-card">
+      <div className="opv-filters">
+        <input className="opv-input opv-search" placeholder="🔎 Cerca nome, azienda, telefono, città..." value={cerca} onChange={e => setCerca(e.target.value)} />
+        <select className="opv-select" value={fCategoria} onChange={e => setFCategoria(e.target.value)}>
+          <option value="">Tutte le categorie</option>
+          {categoriePresenti.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {liste.length > 1 && (
+          <select className="opv-select" value={fLista} onChange={e => setFLista(e.target.value)}>
+            <option value="">Tutte le liste</option>
+            {liste.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        )}
+        {conStato && (
+          <select className="opv-select" value={fStato} onChange={e => setFStato(e.target.value)}>
+            <option value="">Tutti gli stati</option>
+            <option value="Da chiamare">Da chiamare</option>
+            {ESITI_CHIAMATA.map(e => <option key={e.name} value={e.name}>{e.icon} {e.name}</option>)}
+          </select>
+        )}
+        {(fCategoria || fLista || cerca || fStato) && <button className="opv-btn" onClick={() => { setFCategoria(''); setFLista(''); setCerca(''); setFStato(''); }}>✕ Azzera</button>}
       </div>
     </div>
   );
 
-  const Sezione = ({ titolo, items, evidenzia, vuoto }) => (
-    <div className="card">
-      <div className="card-title">{titolo} {items.length > 0 && <span style={{ color: BLU }}>({items.length})</span>}</div>
-      {items.length === 0 ? <div className="empty" style={{ padding: '10px 0' }}>{vuoto}</div>
-        : items.map(l => <RigaLead key={l.id} l={l} evidenzia={evidenzia} />)}
-    </div>
-  );
+  const titoli = { home: 'Dashboard', coda: 'Coda chiamate', richiami: 'Richiami', archivio: 'Archivio lead' };
+  const daFare = [...richiamiOggi, ...riconatti, ...daChiamare].slice(0, 5);
+  const archivioLeads = leads.filter(l => matchFiltri(l) && (!fStato || l.stato === fStato));
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-      <div style={{ width: 36, height: 36, border: '3px solid #f0efe9', borderTop: `3px solid ${BLU}`, borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    <div className="opv"><style>{CSS}</style>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', width: '100%' }}>
+        <div style={{ width: 38, height: 38, border: '3.5px solid #D4DEE9', borderTop: `3.5px solid ${BLU}`, borderRadius: '50%', animation: 'opvspin .8s linear infinite' }} />
+        <style>{`@keyframes opvspin{to{transform:rotate(360deg)}}`}</style>
+      </div>
     </div>
   );
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 16px 40px', fontFamily: 'DM Sans, sans-serif' }}>
-      {/* Intestazione */}
-      <div style={{ background: BLU, color: 'white', borderRadius: '0 0 14px 14px', padding: '18px 22px', marginBottom: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>Ciao {profile?.nome || ''} 👋</div>
-          <div style={{ fontSize: 12, opacity: .85 }}>{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+    <div className="opv">
+      <style>{CSS}</style>
+
+      <button className="opv-burger" onClick={() => setSideOpen(o => !o)}>{sideOpen ? '✕' : '☰'}</button>
+      <div className={'opv-overlay' + (sideOpen ? ' show' : '')} onClick={() => setSideOpen(false)} />
+
+      {/* ── Sidebar ── */}
+      <aside className={'opv-side' + (sideOpen ? ' open' : '')}>
+        <div className="opv-logo">
+          <div className="big">SalesPRO</div>
+          <div className="sub">Telemarketing</div>
         </div>
-        <button onClick={onLogout} style={{ background: 'rgba(255,255,255,.15)', color: 'white', border: '1px solid rgba(255,255,255,.4)', borderRadius: 8, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}>Esci</button>
-      </div>
+        <div className="opv-navlabel">Menu</div>
+        {NAV_OP.map(item => (
+          <button key={item.id} className={'opv-navitem' + (pageOp === item.id ? ' active' : '')}
+            onClick={() => { setPageOp(item.id); setSideOpen(false); }}>
+            <svg className="opv-navicon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d={item.icon} /></svg>
+            <span>{item.label}</span>
+            {item.badge && nRichiamiBadge > 0 && <span className="opv-navbadge">{nRichiamiBadge}</span>}
+          </button>
+        ))}
+        <div className="opv-sidefoot">
+          <strong>{profile?.nome || 'Operatore'}</strong>
+          <span>Il Sole 24 Ore Professionale</span>
+          <button className="opv-esci" onClick={onLogout}>Esci</button>
+        </div>
+      </aside>
 
-      {/* Contatori del giorno */}
-      <div className="metric-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 12, marginBottom: 16 }}>
-        <div className="metric-card"><div className="metric-label">Chiamate oggi</div><div className="metric-value" style={{ color: BLU }}>{esitiOggi}</div><div className="metric-sub">esiti registrati</div></div>
-        <div className="metric-card"><div className="metric-label">Appuntamenti oggi</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{apptOggi}</div><div className="metric-sub">fissati 🎯</div></div>
-        <div className="metric-card"><div className="metric-label">In coda</div><div className="metric-value">{daChiamare.length + richiami.length + riconatti.length}</div><div className="metric-sub">da lavorare</div></div>
-      </div>
+      {/* ── Contenuto ── */}
+      <main className="opv-main">
+        <div className="opv-topbar">
+          <span className="opv-title">{pageOp === 'home' ? `Ciao ${profile?.nome || ''} 👋` : titoli[pageOp]}</span>
+          <span className="opv-date">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+        </div>
 
-      {/* Grafico settimana */}
-      <div className="card">
-        <div className="card-title">La tua settimana</div>
-        <div style={{ height: 160, position: 'relative' }}><canvas ref={chartRef} /></div>
-      </div>
+        {/* ── DASHBOARD ── */}
+        {pageOp === 'home' && (
+          <>
+            <div className="opv-metrics">
+              <div className="opv-metric"><div className="lbl">Chiamate oggi</div><div className="val" style={{ color: BLU }}>{esitiOggi}</div><div className="sub">esiti registrati</div></div>
+              <div className="opv-metric"><div className="lbl">Appuntamenti</div><div className="val" style={{ color: '#1B7A3E' }}>{apptOggi}</div><div className="sub">fissati oggi 🎯</div></div>
+              <div className="opv-metric" style={{ cursor: 'pointer' }} onClick={() => setPageOp('richiami')}><div className="lbl">Richiami</div><div className="val" style={{ color: '#E07B1A' }}>{nRichiamiBadge}</div><div className="sub">da fare oggi →</div></div>
+              <div className="opv-metric" style={{ cursor: 'pointer' }} onClick={() => setPageOp('coda')}><div className="lbl">In coda</div><div className="val" style={{ color: '#33475B' }}>{daChiamare.length}</div><div className="sub">da chiamare →</div></div>
+            </div>
 
-      {/* Filtri */}
-      <div className="card" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span className="fs-12 text-muted" style={{ fontWeight: 700 }}>Filtra:</span>
-        <select className="form-control" style={{ width: 220, fontSize: 13 }} value={fCategoria} onChange={e => setFCategoria(e.target.value)}>
-          <option value="">Tutte le categorie</option>
-          {categoriePresenti.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select className="form-control" style={{ width: 220, fontSize: 13 }} value={fLista} onChange={e => setFLista(e.target.value)}>
-          <option value="">Tutte le liste</option>
-          {liste.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
-        {(fCategoria || fLista) && <button className="btn btn-sm" onClick={() => { setFCategoria(''); setFLista(''); }}>✕ Azzera</button>}
-      </div>
+            <div className="opv-card">
+              <div className="opv-card-title">▶ Da fare adesso</div>
+              {daFare.length === 0
+                ? <div className="opv-empty">{leads.length === 0 ? 'Nessuna lista caricata: appena Marco importa i lead, li troverai qui.' : 'Tutto lavorato per oggi 🎉'}</div>
+                : daFare.map(l => <Riga key={l.id} l={l} hot={l.stato === 'Richiamare' || l.stato === 'Non interessato'} />)}
+              {(richiamiOggi.length + riconatti.length + daChiamare.length) > 5 && (
+                <button className="opv-btn" style={{ width: '100%', marginTop: 4 }} onClick={() => setPageOp('coda')}>Vedi tutta la coda →</button>
+              )}
+            </div>
 
-      {/* Code di lavoro */}
-      {richiami.length > 0 && <Sezione titolo="🔄 Richiami di oggi" items={richiami} evidenzia vuoto="" />}
-      {riconatti.length > 0 && <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} evidenzia vuoto="" />}
-      <Sezione titolo="📞 Da chiamare" items={daChiamare} vuoto="Nessun lead in coda con questi filtri 🎉" />
-      {richiamiFuturi.length > 0 && <Sezione titolo="⏳ Richiami programmati (prossimi giorni)" items={richiamiFuturi} vuoto="" />}
-
-      {/* Scheda chiamata */}
-      {selected && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,30,40,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
-          onClick={() => { setSelected(null); setEsitoOpen(null); }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-              <div>
-                <div style={{ fontSize: 19, fontWeight: 700 }}>{selected.azienda || selected.nome || '—'}</div>
-                <div className="text-muted fs-12">{selected.nome && selected.azienda ? selected.nome + ' · ' : ''}{selected.categoria || ''}{selected.citta ? ' · ' + selected.citta : ''}{selected.provincia ? ' (' + selected.provincia + ')' : ''}</div>
+            {haAttivita && (
+              <div className="opv-card">
+                <div className="opv-card-title">La tua settimana</div>
+                <div style={{ height: 170, position: 'relative' }}><canvas ref={chartRef} /></div>
               </div>
-              <button className="btn btn-sm" onClick={() => { setSelected(null); setEsitoOpen(null); }}>✕</button>
+            )}
+          </>
+        )}
+
+        {/* ── CODA CHIAMATE ── */}
+        {pageOp === 'coda' && (
+          <>
+            <Filtri />
+            <Sezione titolo="📞 Da chiamare" items={daChiamare} vuoto={leads.length === 0 ? 'Nessuna lista caricata: appena Marco importa i lead, li troverai qui.' : 'Tutto lavorato con questi filtri 🎉'} />
+          </>
+        )}
+
+        {/* ── RICHIAMI ── */}
+        {pageOp === 'richiami' && (
+          <>
+            <Filtri />
+            <Sezione titolo="🔄 Richiami di oggi (e arretrati)" items={richiamiOggi} hot vuoto="Nessun richiamo in scadenza 🎉" />
+            <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" />
+            <Sezione titolo="⏳ Richiami programmati" items={richiamiFuturi} vuoto="Nessun richiamo futuro in agenda" />
+          </>
+        )}
+
+        {/* ── ARCHIVIO ── */}
+        {pageOp === 'archivio' && (
+          <>
+            <Filtri conStato />
+            <Sezione titolo="🗂 Tutti i lead" items={archivioLeads} mostraStato vuoto="Nessun lead con questi filtri" />
+          </>
+        )}
+      </main>
+
+      {/* ── Scheda lead ── */}
+      {selected && (
+        <div className="opv-modal-bg" onClick={() => { setSelected(null); setEsitoOpen(null); }}>
+          <div className="opv-modal" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 21, fontWeight: 800 }}>{selected.azienda || selected.nome || '—'}</div>
+                <div style={{ fontSize: 13, color: '#6B7A8C', marginTop: 2 }}>
+                  {selected.nome && selected.azienda ? selected.nome + ' · ' : ''}{selected.categoria || ''}{selected.citta ? ' · ' + selected.citta : ''}{selected.provincia ? ' (' + selected.provincia + ')' : ''}
+                </div>
+              </div>
+              <button className="opv-btn" onClick={() => { setSelected(null); setEsitoOpen(null); }}>✕</button>
             </div>
 
-            <a href={'tel:' + (selected.telefono || '').replace(/\s/g, '')} style={{ display: 'block', textAlign: 'center', background: BLU, color: 'white', borderRadius: 10, padding: '14px 10px', fontSize: 24, fontWeight: 700, textDecoration: 'none', margin: '14px 0' }}>
-              📞 {selected.telefono || 'Nessun numero'}
-            </a>
-            {selected.email && <div className="fs-12 text-muted" style={{ textAlign: 'center', marginBottom: 10 }}>✉ {selected.email}</div>}
-            <div className="fs-12 text-muted" style={{ textAlign: 'center', marginBottom: 14 }}>
-              Lista: <strong>{selected.lista || '—'}</strong> · Tentativi: <strong>{selected.tentativi || 0}</strong>{selected.ultimo_contatto ? <> · Ultimo: <strong>{fmtDT(selected.ultimo_contatto)}</strong></> : null}
+            <a className="opv-bigcall" href={'tel:' + (selected.telefono || '').replace(/\s/g, '')}>📞 {selected.telefono || 'Nessun numero'}</a>
+            <div style={{ textAlign: 'center', fontSize: 12, color: '#6B7A8C', marginBottom: 14 }}>
+              {selected.email ? <>✉ {selected.email} · </> : null}
+              Lista: <strong>{selected.lista || '—'}</strong> · Tentativi: <strong>{selected.tentativi || 0}</strong>
+              {selected.ultimo_contatto ? <> · Ultimo: <strong>{fmtDT(selected.ultimo_contatto)}</strong></> : null}
             </div>
 
-            {/* Esiti */}
-            {!esitoOpen ? (
+            <div className="opv-tabs">
+              <button className={'opv-tab' + (tab === 'esito' ? ' on' : '')} onClick={() => setTab('esito')}>📞 Registra esito</button>
+              <button className={'opv-tab' + (tab === 'scheda' ? ' on' : '')} onClick={() => { setTab('scheda'); setEsitoOpen(null); }}>📋 Scheda e storico</button>
+            </div>
+
+            {tab === 'scheda' && (
               <>
-                <div className="card-title" style={{ marginBottom: 8 }}>Com'è andata la chiamata?</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8 }}>
+                <dl className="opv-dl">
+                  {selected.nome && <><dt>Referente</dt><dd>{selected.nome}</dd></>}
+                  {selected.categoria && <><dt>Categoria</dt><dd>{selected.categoria}</dd></>}
+                  {selected.telefono && <><dt>Telefono</dt><dd>{selected.telefono}</dd></>}
+                  {selected.email && <><dt>Email</dt><dd>{selected.email}</dd></>}
+                  {(selected.citta || selected.provincia) && <><dt>Città</dt><dd>{selected.citta || ''}{selected.provincia ? ' (' + selected.provincia + ')' : ''}</dd></>}
+                  <dt>Lista</dt><dd>{selected.lista || '—'}</dd>
+                  <dt>Stato</dt><dd>{statoInfo(selected.stato).icon} {selected.stato}</dd>
+                  <dt>Tentativi</dt><dd>{selected.tentativi || 0}</dd>
+                  {selected.ultimo_contatto && <><dt>Ultimo contatto</dt><dd>{fmtDT(selected.ultimo_contatto)}</dd></>}
+                  {selected.data_richiamo && <><dt>Richiamo</dt><dd>🔄 {new Date(selected.data_richiamo + 'T12:00').toLocaleDateString('it-IT')}</dd></>}
+                  {selected.non_interessato_fino_a && <><dt>Ricontattabile dal</dt><dd>📅 {new Date(selected.non_interessato_fino_a + 'T12:00').toLocaleDateString('it-IT')}</dd></>}
+                </dl>
+                <div className="opv-card-title">Storico chiamate e note</div>
+                {(selected.note_storia || []).length === 0 ? (
+                  <div className="opv-empty">Nessuna chiamata registrata finora.</div>
+                ) : (
+                  [...selected.note_storia].reverse().map(h => {
+                    const e = ESITI_CHIAMATA.find(x => x.name === h.esito);
+                    return (
+                      <div key={h.id} className="opv-hist" style={{ borderColor: e?.color || BLU }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: e?.color || '#33475B' }}>{e?.icon || '📝'} {h.esito || 'Nota'} <span style={{ fontWeight: 400, color: '#8A97A6' }}>— {fmtDT(h.date)}</span></div>
+                        {h.testo && <div style={{ fontSize: 14 }}>{h.testo}</div>}
+                      </div>
+                    );
+                  })
+                )}
+              </>
+            )}
+
+            {tab === 'esito' && (!esitoOpen ? (
+              <>
+                <div className="opv-card-title">Com'è andata la chiamata?</div>
+                <div className="opv-esiti">
                   {ESITI_CHIAMATA.map(e => (
-                    <button key={e.name} onClick={() => apriEsito(e)}
-                      style={{ background: e.color + '15', border: `1.5px solid ${e.color}`, color: e.color, borderRadius: 10, padding: '12px 8px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    <button key={e.name} className="opv-esito-btn" onClick={() => apriEsito(e)}
+                      style={{ background: e.color + '14', border: `1.5px solid ${e.color}`, color: e.color }}>
                       {e.icon} {e.name}
                     </button>
                   ))}
                 </div>
               </>
             ) : (
-              <div style={{ background: esitoOpen.color + '0d', border: `1px solid ${esitoOpen.color}55`, borderRadius: 10, padding: 14 }}>
-                <div style={{ fontWeight: 700, color: esitoOpen.color, marginBottom: 10 }}>{esitoOpen.icon} {esitoOpen.name}</div>
+              <div style={{ background: esitoOpen.color + '0d', border: `1px solid ${esitoOpen.color}55`, borderRadius: 12, padding: 16 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: esitoOpen.color, marginBottom: 12 }}>{esitoOpen.icon} {esitoOpen.name}</div>
 
                 {esitoOpen.tipo === 'richiamo' && (
-                  <div className="form-group" style={{ marginBottom: 10 }}>
-                    <label className="form-label">Quando richiamare? *</label>
-                    <input type="date" className="form-control" min={today} value={dataRichiamo} onChange={e => setDataRichiamo(e.target.value)} />
+                  <div style={{ marginBottom: 12 }}>
+                    <label className="opv-form-label">Quando richiamare? *</label>
+                    <input type="date" className="opv-input" style={{ width: '100%' }} min={today} value={dataRichiamo} onChange={e => setDataRichiamo(e.target.value)} />
                   </div>
                 )}
 
                 {esitoOpen.tipo === 'noninteressato' && (
-                  <div className="form-group" style={{ marginBottom: 10 }}>
-                    <label className="form-label">Ricontattabile tra:</label>
+                  <div style={{ marginBottom: 12 }}>
+                    <label className="opv-form-label">Ricontattabile tra:</label>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {[['6m', '6 mesi'], ['12m', '12 mesi'], ['mai', 'Mai più']].map(([v, lab]) => (
-                        <button key={v} onClick={() => setRicontatto(v)}
-                          style={{ flex: 1, padding: '8px 4px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', border: `1.5px solid ${ricontatto === v ? BLU : 'var(--border,#dde)'}`, background: ricontatto === v ? BLU + '15' : 'white', color: ricontatto === v ? BLU : 'inherit' }}>
+                        <button key={v} className="opv-btn" onClick={() => setRicontatto(v)}
+                          style={{ flex: 1, ...(ricontatto === v ? { background: BLU + '15', borderColor: BLU, color: BLU } : {}) }}>
                           {lab}
                         </button>
                       ))}
@@ -252,49 +471,28 @@ export default function OperatorView({ profile, onLogout }) {
                 )}
 
                 {esitoOpen.tipo === 'appuntamento' && (
-                  <div style={{ background: '#1B7A3E15', border: '1px solid #1B7A3E55', borderRadius: 8, padding: 10, marginBottom: 10, fontSize: 13 }}>
+                  <div style={{ background: '#1B7A3E12', border: '1px solid #1B7A3E55', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 14 }}>
                     🎯 Ricorda di inviare il link per la prenotazione:<br />
                     <a href={DEFAULT_BRAND.callink} target="_blank" rel="noreferrer" style={{ color: '#1B7A3E', fontWeight: 700, fontSize: 12, wordBreak: 'break-all' }}>{DEFAULT_BRAND.callink}</a>
                   </div>
                 )}
 
-                <div className="form-group" style={{ marginBottom: 10 }}>
-                  <label className="form-label">Nota {esitoOpen.tipo === 'noninteressato' ? '(motivo, prodotto concorrente, scadenze...)' : '(facoltativa)'}</label>
-                  <textarea className="form-control" rows={2} value={nota} onChange={e => setNota(e.target.value)} placeholder="Es. richiamare dopo le 15, chiedere del titolare..." />
+                <div style={{ marginBottom: 4 }}>
+                  <label className="opv-form-label">Nota {esitoOpen.tipo === 'noninteressato' ? '(motivo, prodotto concorrente, scadenze...)' : '(facoltativa)'}</label>
+                  <textarea className="opv-textarea" rows={2} value={nota} onChange={e => setNota(e.target.value)} placeholder="Es. richiamare dopo le 15, chiedere del titolare..." />
                 </div>
 
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button className="btn" onClick={() => setEsitoOpen(null)} disabled={saving}>← Indietro</button>
-                  <button className="btn btn-primary" onClick={registraEsito} disabled={saving}>{saving ? '⏳ Salvataggio...' : 'Registra esito'}</button>
+                <div className="opv-actions">
+                  <button className="opv-btn" onClick={() => setEsitoOpen(null)} disabled={saving}>← Indietro</button>
+                  <button className="opv-btn primary" onClick={registraEsito} disabled={saving}>{saving ? '⏳ Salvataggio...' : 'Registra esito'}</button>
                 </div>
               </div>
-            )}
-
-            {/* Storico */}
-            {(selected.note_storia || []).length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <div className="card-title" style={{ marginBottom: 8 }}>Storico</div>
-                {[...selected.note_storia].reverse().map(h => {
-                  const e = ESITI_CHIAMATA.find(x => x.name === h.esito);
-                  return (
-                    <div key={h.id} style={{ borderLeft: `3px solid ${e?.color || BLU}`, padding: '4px 10px', marginBottom: 8 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: e?.color || 'inherit' }}>{e?.icon || '📝'} {h.esito || 'Nota'} <span className="text-muted" style={{ fontWeight: 400 }}>— {fmtDT(h.date)}</span></div>
-                      {h.testo && <div style={{ fontSize: 13 }}>{h.testo}</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            ))}
           </div>
         </div>
       )}
 
-      {/* Toast */}
-      {toast && (
-        <div style={{ position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)', background: toast.type === 'err' ? '#A32D2D' : '#1B7A3E', color: 'white', borderRadius: 10, padding: '10px 20px', fontSize: 14, fontWeight: 600, zIndex: 100, boxShadow: '0 4px 14px rgba(0,0,0,.25)' }}>
-          {toast.msg}
-        </div>
-      )}
+      {toast && <div className="opv-toast" style={{ background: toast.type === 'err' ? '#A32D2D' : '#1B7A3E' }}>{toast.msg}</div>}
     </div>
   );
 }
