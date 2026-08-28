@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Chart, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
+import { Chart, ArcElement, DoughnutController, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import { CATEGORIE, DEFAULT_BRAND, fmtDT } from '../constants';
-import { dbLoadLeads, dbUpdateLead } from '../supabase';
-Chart.register(BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend);
+import { dbLoadLeads, dbUpdateLead, supabase } from '../supabase';
+Chart.register(ArcElement, DoughnutController, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend);
 
 const BLU = '#0078D4';
 
@@ -157,13 +157,24 @@ export default function OperatorView({ profile, onLogout }) {
   const [ricontatto, setRicontatto] = useState('6m');
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [apptStats, setApptStats] = useState(null); // null = non ancora caricato, [] = errore/vuoto
   const chartRef = useRef(); const chartC = useRef();
+  const esitiChartRef = useRef(); const esitiChartC = useRef();
+  const catChartRef = useRef(); const catChartC = useRef();
+  const qualChartRef = useRef(); const qualChartC = useRef();
 
   const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', BLU);
     document.title = 'SalesPRO — Telemarketing';
+  }, []);
+
+  useEffect(() => {
+    supabase.rpc('get_appuntamenti_stats').then(({ data, error }) => {
+      if (error) { console.error('get_appuntamenti_stats:', error); setApptStats([]); }
+      else setApptStats(data || []);
+    });
   }, []);
 
   const load = useCallback(async () => {
@@ -201,6 +212,43 @@ export default function OperatorView({ profile, onLogout }) {
   const esitiOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === today).length, 0);
   const apptOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === today && h.esito === 'Appuntamento fissato').length, 0);
 
+  // ── KPI del mese ────────────────────────────────────────────
+  const curMonth = today.slice(0, 7);
+  const tuttiEsiti = [];
+  leads.forEach(l => (l.note_storia || []).forEach(h => tuttiEsiti.push(h)));
+  const esitiMese = tuttiEsiti.filter(h => (h.date || '').slice(0, 7) === curMonth);
+  const chiamateMese = esitiMese.length;
+  const conversazioniMese = esitiMese.filter(h => h.esito !== 'Non risponde' && h.esito !== 'Numero errato').length;
+  const apptMese = esitiMese.filter(h => h.esito === 'Appuntamento fissato').length;
+  const conversionePct = conversazioniMese > 0 ? Math.round(apptMese / conversazioniMese * 100) : 0;
+
+  // Media storica chiamate/giorno lavorato (esclude oggi per confronto onesto)
+  const giorniConAttivita = new Set(tuttiEsiti.filter(h => (h.date || '').slice(0, 10) !== today).map(h => (h.date || '').slice(0, 10)));
+  const mediaGiornaliera = giorniConAttivita.size > 0 ? Math.round(tuttiEsiti.filter(h => (h.date||'').slice(0,10) !== today).length / giorniConAttivita.size) : 0;
+
+  // Distribuzione esiti del mese (torta)
+  const distribEsiti = ESITI_CHIAMATA.map(e => ({ ...e, n: esitiMese.filter(h => h.esito === e.name).length })).filter(e => e.n > 0);
+
+  // Ricettività per categoria (dai lead lavorati)
+  const catStats = {};
+  leads.forEach(l => {
+    if (!l.categoria || (l.tentativi || 0) === 0) return;
+    if (!catStats[l.categoria]) catStats[l.categoria] = { tot: 0, appt: 0 };
+    catStats[l.categoria].tot++;
+    if ((l.note_storia || []).some(h => h.esito === 'Appuntamento fissato')) catStats[l.categoria].appt++;
+  });
+  const catRicettivita = Object.entries(catStats).map(([cat, s]) => ({ cat, tot: s.tot, appt: s.appt, pct: Math.round(s.appt / s.tot * 100) })).sort((a, b) => b.pct - a.pct);
+
+  // Qualità appuntamenti (dalla funzione SQL — già filtrata sul suo nome dal database)
+  const qualitaAppt = (() => {
+    if (!apptStats || !apptStats.length) return null;
+    const agg = {};
+    apptStats.forEach(r => { agg[r.stato] = (agg[r.stato] || 0) + Number(r.cnt); });
+    const tot = Object.values(agg).reduce((s, v) => s + v, 0);
+    const svolti = agg['Svolto'] || 0;
+    return { agg, tot, pctSvolti: tot > 0 ? Math.round(svolti / tot * 100) : 0 };
+  })();
+
   // ── Grafico settimana (pagina home) ────────────────────────
   const giorni = []; { const d = new Date(); while (giorni.length < 5) { if (d.getDay() !== 0 && d.getDay() !== 6) giorni.unshift(d.toISOString().slice(0, 10)); d.setDate(d.getDate() - 1); } }
   const chiamateGiorni = giorni.map(g => leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === g).length, 0));
@@ -217,6 +265,42 @@ export default function OperatorView({ profile, onLogout }) {
     ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { stepSize: 1 }, grid: { color: 'rgba(0,120,212,0.06)' } } } } });
     return () => chartC.current?.destroy();
   }, [leads, haAttivita, pageOp]);
+
+  // ── Torta esiti del mese ────────────────────────────────────
+  useEffect(() => {
+    if (pageOp !== 'home' || !esitiChartRef.current || !distribEsiti.length) { esitiChartC.current?.destroy(); esitiChartC.current = null; return; }
+    esitiChartC.current?.destroy();
+    esitiChartC.current = new Chart(esitiChartRef.current, { type: 'doughnut', data: {
+      labels: distribEsiti.map(e => e.name),
+      datasets: [{ data: distribEsiti.map(e => e.n), backgroundColor: distribEsiti.map(e => e.color), borderWidth: 0 }],
+    }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } } } } });
+    return () => esitiChartC.current?.destroy();
+  }, [pageOp, leads]);
+
+  // ── Ricettività per categoria ───────────────────────────────
+  useEffect(() => {
+    if (pageOp !== 'home' || !catChartRef.current || !catRicettivita.length) { catChartC.current?.destroy(); catChartC.current = null; return; }
+    catChartC.current?.destroy();
+    catChartC.current = new Chart(catChartRef.current, { type: 'bar', data: {
+      labels: catRicettivita.map(c => c.cat),
+      datasets: [{ label: 'Conversione in appuntamento', data: catRicettivita.map(c => c.pct), backgroundColor: '#0078D4', borderRadius: 5 }],
+    }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x}% (${catRicettivita[ctx.dataIndex].appt}/${catRicettivita[ctx.dataIndex].tot})` } } }, scales: { x: { max: 100, ticks: { callback: v => v + '%' }, grid: { color: 'rgba(0,120,212,0.06)' } }, y: { grid: { display: false } } } } });
+    return () => catChartC.current?.destroy();
+  }, [pageOp, leads]);
+
+  // ── Qualità appuntamenti (Svolto / Non presentato / Da rifissare...) ──
+  useEffect(() => {
+    if (pageOp !== 'home' || !qualChartRef.current || !qualitaAppt || !qualitaAppt.tot) { qualChartC.current?.destroy(); qualChartC.current = null; return; }
+    const ordine = ['Svolto', 'Non si è presentato', 'Da rifissare', 'Non effettuato', 'Programmato'];
+    const colori = { 'Svolto': '#1B7A3E', 'Non si è presentato': '#A32D2D', 'Da rifissare': '#E07B1A', 'Non effettuato': '#888888', 'Programmato': '#4DA6E8' };
+    const labels = ordine.filter(s => qualitaAppt.agg[s]);
+    qualChartC.current?.destroy();
+    qualChartC.current = new Chart(qualChartRef.current, { type: 'bar', data: {
+      labels,
+      datasets: [{ data: labels.map(s => qualitaAppt.agg[s]), backgroundColor: labels.map(s => colori[s]), borderRadius: 5 }],
+    }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { ticks: { stepSize: 1 }, grid: { color: 'rgba(0,120,212,0.06)' } } } } });
+    return () => qualChartC.current?.destroy();
+  }, [pageOp, apptStats]);
 
   // ── Registrazione esito ────────────────────────────────────
   const apriLead = (l, t = 'esito') => { setSelected(l); setEsitoOpen(null); setTab(t); };
@@ -436,6 +520,56 @@ export default function OperatorView({ profile, onLogout }) {
               <div className="opv-card">
                 <div className="opv-card-title">La tua settimana</div>
                 <div style={{ height: 170, position: 'relative' }}><canvas ref={chartRef} /></div>
+              </div>
+            )}
+
+            {chiamateMese > 0 && (
+              <div className="opv-card">
+                <div className="opv-card-title">📈 Il tuo mese — {new Date(curMonth + '-01T12:00').toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 14, marginBottom: 4 }}>
+                  <div>
+                    <div className="lbl" style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7A8C', textTransform: 'uppercase' }}>Chiamate</div>
+                    <div style={{ fontSize: 26, fontWeight: 800 }}>{chiamateMese}</div>
+                    {mediaGiornaliera > 0 && <div style={{ fontSize: 11.5, color: '#6B7A8C' }}>media {mediaGiornaliera}/giorno</div>}
+                  </div>
+                  <div>
+                    <div className="lbl" style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7A8C', textTransform: 'uppercase' }}>Appuntamenti</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: '#1B7A3E' }}>{apptMese}</div>
+                  </div>
+                  <div>
+                    <div className="lbl" style={{ fontSize: 10.5, fontWeight: 700, color: '#6B7A8C', textTransform: 'uppercase' }}>Tasso di conversione</div>
+                    <div style={{ fontSize: 26, fontWeight: 800, color: '#0078D4' }}>{conversionePct}%</div>
+                    <div style={{ fontSize: 11.5, color: '#6B7A8C' }}>su conversazioni utili</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(distribEsiti.length > 0 || catRicettivita.length > 0) && (
+              <div className="opv-grid2">
+                {distribEsiti.length > 0 && (
+                  <div className="opv-card">
+                    <div className="opv-card-title">🎯 Come sono andate le chiamate (mese)</div>
+                    <div style={{ height: 190, position: 'relative' }}><canvas ref={esitiChartRef} /></div>
+                  </div>
+                )}
+                {catRicettivita.length > 0 && (
+                  <div className="opv-card">
+                    <div className="opv-card-title">🏆 Categorie più ricettive</div>
+                    <div style={{ height: 190, position: 'relative' }}><canvas ref={catChartRef} /></div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {qualitaAppt && qualitaAppt.tot > 0 && (
+              <div className="opv-card">
+                <div className="opv-card-title">✨ Qualità dei tuoi appuntamenti (storico completo)</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 30, fontWeight: 800, color: '#1B7A3E' }}>{qualitaAppt.pctSvolti}%</span>
+                  <span style={{ fontSize: 13, color: '#6B7A8C' }}>si sono effettivamente svolti (su {qualitaAppt.tot} fissati)</span>
+                </div>
+                <div style={{ height: 160, position: 'relative' }}><canvas ref={qualChartRef} /></div>
               </div>
             )}
           </>
