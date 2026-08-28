@@ -227,7 +227,14 @@ export default function App() {
         c.nome.toLowerCase() === nome.toLowerCase()
       );
 
-      const dataAppt = r.data_appuntamento || '';
+      const toLocalDT = (iso) => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d)) return iso;
+        const p = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+      };
+      const dataAppt = toLocalDT(r.data_appuntamento);
       const newAppt = dataAppt ? { id: uid(), type: 'appt', date: dataAppt, stato: 'Programmato', esito: '' } : null;
 
       if (existingIdx >= 0) {
