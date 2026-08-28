@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { lsGet, lsSet, uid, parseDate, DEFAULT_STAGES, DEFAULT_BRAND, DEFAULT_GS, parseCSVRow } from './constants';
-import { dbLoadContacts, dbSave, dbSaveMany, dbDelete, dbDeleteMany, dbUpdateHistory, dbLoadBookingsInbox, dbMarkBookingsProcessed, supabase } from './supabase';
+import { dbLoadContacts, dbSave, dbSaveMany, dbDelete, dbDeleteMany, dbUpdateHistory, dbLoadBookingsInbox, dbMarkBookingsProcessed, dbLoadProfile, supabase } from './supabase';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Contacts from './components/Contacts';
@@ -11,6 +11,8 @@ import ChiusoPerMese from './components/ChiusoPerMese';
 import ArchivioKO from './components/ArchivioKO';
 import Calendly from './components/Calendly';
 import Settings from './components/Settings';
+import Telemarketing from './components/Telemarketing';
+import OperatorView from './components/OperatorView';
 import Modal from './components/Modal';
 import Toast from './components/Toast';
 import Login from './components/Login';
@@ -19,6 +21,7 @@ import './App.css';
 
 export default function App() {
   const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [page, setPage] = useState('dashboard');
   const [pageFilter, setPageFilter] = useState(null);
@@ -31,18 +34,22 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
 
-  // Auth check on mount
+  // Auth check on mount — carica profilo (ruolo) e, solo per admin, i contatti
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const init = async (session) => {
       setSession(session);
+      if (!session) { setProfile(null); setAuthLoading(false); setLoading(false); return; }
+      const p = await dbLoadProfile();
+      setProfile(p);
       setAuthLoading(false);
-      if (session) dbLoadContacts().then(data => { setContacts(data); setLoading(false); });
-      else setLoading(false);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) dbLoadContacts().then(data => setContacts(data));
-    });
+      if (!p || p.role !== 'operatore') {
+        const data = await dbLoadContacts();
+        setContacts(data);
+      }
+      setLoading(false);
+    };
+    supabase.auth.getSession().then(({ data: { session } }) => init(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => init(session));
     return () => subscription.unsubscribe();
   }, []);
 
@@ -304,9 +311,9 @@ export default function App() {
     setModal, showToast, today, navigateTo, pageFilter, setPageFilter,
   };
 
-  const logout = async () => { await supabase.auth.signOut(); setSession(null); setContacts([]); };
+  const logout = async () => { await supabase.auth.signOut(); setSession(null); setProfile(null); setContacts([]); };
 
-  const pages = { dashboard: Dashboard, contacts: Contacts, pipeline: Pipeline, appointments: Appointments, followups: FollowUps, chiuso: ChiusoPerMese, archivio: ArchivioKO, calendly: Calendly, settings: Settings };
+  const pages = { dashboard: Dashboard, contacts: Contacts, pipeline: Pipeline, appointments: Appointments, followups: FollowUps, chiuso: ChiusoPerMese, archivio: ArchivioKO, calendly: Calendly, telemarketing: Telemarketing, settings: Settings };
   const Page = pages[page] || Dashboard;
 
   if (authLoading) return (
@@ -317,6 +324,9 @@ export default function App() {
   );
 
   if (!session) return <Login onLogin={s => setSession(s)} />;
+
+  // Bivio per ruolo: l'operatore vede solo la sua postazione
+  if (profile?.role === 'operatore') return <OperatorView profile={profile} onLogout={logout} />;
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 16, fontFamily: 'DM Sans, sans-serif' }}>

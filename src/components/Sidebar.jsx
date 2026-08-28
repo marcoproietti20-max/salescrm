@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-
 const NAV = [
   { id: 'dashboard',    label: 'Dashboard',      icon: 'M2 2h5v5H2zm7 0h5v5H9zm-7 7h5v5H2zm7 0h5v5H9z' },
   { id: 'contacts',     label: 'Contatti',        icon: 'M8 8a3 3 0 100-6 3 3 0 000 6zm-6 6c0-3.3 2.7-6 6-6s6 2.7 6 6' },
@@ -9,20 +8,17 @@ const NAV = [
   { id: 'chiuso',       label: 'Chiuso per mese', icon: 'M2 12l4-4 3 3 5-6M1 15h14' },
   { id: 'archivio',     label: 'Archivio KO',     icon: 'M1 5h14l-2-3H3zm0 0v10a1 1 0 001 1h12a1 1 0 001-1V5M6 9h4' },
   { id: 'calendly',     label: 'Bookings',        icon: 'M8 2a6 6 0 100 12A6 6 0 008 2zm0 3v4l3 2' },
+  { id: 'telemarketing', label: 'Telemarketing',  icon: 'M2.5 2l3-1 1.8 3.6-2 1.6a10.5 10.5 0 004.5 4.5l1.6-2L15 10.5l-1 3C8 14.5 1.5 8 2.5 2z' },
   { id: 'settings',     label: 'Impostazioni',    icon: 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 1v2M8 13v2M1 8h2M13 8h2' },
 ];
-
 export default function Sidebar({ page, setPage, brand, urgentFU }) {
   const [open, setOpen] = useState(window.innerWidth > 900);
-
   useEffect(() => {
     const fn = () => { if (window.innerWidth > 900) setOpen(true); };
     window.addEventListener('resize', fn);
     return () => window.removeEventListener('resize', fn);
   }, []);
-
   const go = (id) => { setPage(id); if (window.innerWidth <= 900) setOpen(false); };
-
   return (
     <>
       {open && window.innerWidth <= 900 && (
