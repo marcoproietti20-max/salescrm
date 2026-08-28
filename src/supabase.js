@@ -47,3 +47,13 @@ export async function dbUpdateHistory(id, history) {
   const {error}=await supabase.from('contacts').update({history,updated_at:new Date().toISOString()}).eq('id',id);
   if(error) console.error('dbUpdateHistory:',error);
 }
+export async function dbLoadBookingsInbox() {
+  const {data,error}=await supabase.from('bookings_inbox').select('*').eq('processato',false).order('created_at',{ascending:true});
+  if(error){console.error('dbLoadBookingsInbox:',error);return null;}
+  return data||[];
+}
+export async function dbMarkBookingsProcessed(ids) {
+  if(!ids.length) return;
+  const {error}=await supabase.from('bookings_inbox').update({processato:true}).in('id',ids);
+  if(error) console.error('dbMarkBookingsProcessed:',error);
+}
