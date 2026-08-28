@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Chart, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
+import { Chart, ArcElement, DoughnutController, LineController, LineElement, PointElement, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import { FONTI, CATEGORIE, fmtDT } from '../constants';
-import { dbLoadLeads, dbInsertLeads, dbUpdateLead, dbDeleteLeads, normPhone } from '../supabase';
+import { dbLoadLeads, dbInsertLeads, dbUpdateLead, dbDeleteLeads, normPhone, supabase } from '../supabase';
 import { ESITI_CHIAMATA } from './OperatorView';
-Chart.register(BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend);
+Chart.register(ArcElement, DoughnutController, LineController, LineElement, PointElement, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend);
 
 const CAMPI_LEAD = [
   { key: 'azienda',   label: 'Azienda / Studio', kw: ['azienda', 'ragione', 'studio', 'denominaz', 'societ', 'ditta'] },
@@ -35,6 +35,11 @@ export default function Telemarketing({ contacts, showToast }) {
   const [fCategoria, setFCategoria] = useState('');
   const [selected, setSelected] = useState(null);
   const chartRef = useRef(); const chartC = useRef();
+  const trendRef = useRef(); const trendC = useRef();
+  const catRef = useRef(); const catC = useRef();
+  const catTrendRef = useRef(); const catTrendC = useRef();
+  const qualRef = useRef(); const qualC = useRef();
+  const [apptStats, setApptStats] = useState(null);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -43,6 +48,13 @@ export default function Telemarketing({ contacts, showToast }) {
     setLeads(data || []); setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    supabase.rpc('get_appuntamenti_stats').then(({ data, error }) => {
+      if (error) { console.error('get_appuntamenti_stats:', error); setApptStats([]); }
+      else setApptStats(data || []);
+    });
+  }, []);
 
   // ── Lettura file ───────────────────────────────────────────
   const handleFile = async (e) => {
@@ -163,13 +175,21 @@ export default function Telemarketing({ contacts, showToast }) {
     showToast('Importazione completata', `${r.importati} nuovi, ${r.riattivati} riattivati`);
   };
 
-  // ── Report di resa per lista ───────────────────────────────
+  // ── Report di resa per lista (arricchito) ──────────────────
   const liste = [...new Set(leads.map(l => l.lista).filter(Boolean))].sort();
+  const SCARTO_STATI = ['Numero errato', 'Già cliente'];
   const resa = liste.map(nome => {
     const ls = leads.filter(l => l.lista === nome);
     const lavorati = ls.filter(l => (l.tentativi || 0) > 0).length;
     const appt = ls.filter(l => (l.note_storia || []).some(h => h.esito === 'Appuntamento fissato')).length;
-    return { nome, totale: ls.length, lavorati, appt, conv: lavorati > 0 ? Math.round(appt / lavorati * 100) : 0 };
+    const risposte = ls.filter(l => (l.note_storia || []).some(h => h.esito && h.esito !== 'Non risponde' && h.esito !== 'Numero errato')).length;
+    const scarti = ls.filter(l => SCARTO_STATI.includes(l.stato)).length;
+    return {
+      nome, totale: ls.length, lavorati, appt,
+      conv: lavorati > 0 ? Math.round(appt / lavorati * 100) : 0,
+      tassoRisposta: lavorati > 0 ? Math.round(risposte / lavorati * 100) : 0,
+      tassoScarto: ls.length > 0 ? Math.round(scarti / ls.length * 100) : 0,
+    };
   });
 
   useEffect(() => {
@@ -183,6 +203,98 @@ export default function Telemarketing({ contacts, showToast }) {
     }
     return () => chartC.current?.destroy();
   }, [leads]);
+
+  // ── Andamento mensile (6 mesi) chiamate/appuntamenti + conversione ──
+  const mesiEtichette = Array.from({ length: 6 }, (_, i) => { const d = new Date(); d.setMonth(d.getMonth() - 5 + i); return d.toISOString().slice(0, 7); });
+  const tuttiEsitiAdmin = [];
+  leads.forEach(l => (l.note_storia || []).forEach(h => tuttiEsitiAdmin.push(h)));
+  const trendMensile = mesiEtichette.map(m => {
+    const esitiM = tuttiEsitiAdmin.filter(h => (h.date || '').slice(0, 7) === m);
+    const chiamate = esitiM.length;
+    const appt = esitiM.filter(h => h.esito === 'Appuntamento fissato').length;
+    const conversazioni = esitiM.filter(h => h.esito !== 'Non risponde' && h.esito !== 'Numero errato').length;
+    return { m, chiamate, appt, conv: conversazioni > 0 ? Math.round(appt / conversazioni * 100) : 0 };
+  });
+  const haStoricoMensile = trendMensile.some(x => x.chiamate > 0);
+
+  useEffect(() => {
+    if (!trendRef.current || !haStoricoMensile) { trendC.current?.destroy(); trendC.current = null; return; }
+    trendC.current?.destroy();
+    const labels = trendMensile.map(x => new Date(x.m + '-01T12:00').toLocaleDateString('it-IT', { month: 'short', year: '2-digit' }));
+    trendC.current = new Chart(trendRef.current, { data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Chiamate', data: trendMensile.map(x => x.chiamate), backgroundColor: '#C2DEFA', borderRadius: 4, order: 2, yAxisID: 'y' },
+        { type: 'bar', label: 'Appuntamenti', data: trendMensile.map(x => x.appt), backgroundColor: '#0050A0', borderRadius: 4, order: 2, yAxisID: 'y' },
+        { type: 'line', label: 'Conversione %', data: trendMensile.map(x => x.conv), borderColor: '#1B7A3E', backgroundColor: '#1B7A3E', borderWidth: 2, tension: .3, pointRadius: 3, order: 1, yAxisID: 'y1' },
+      ],
+    }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } } },
+      scales: { x: { grid: { display: false } }, y: { position: 'left', ticks: { stepSize: 1 }, grid: { color: 'rgba(0,120,212,0.06)' } }, y1: { position: 'right', min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { display: false } } } } });
+    return () => trendC.current?.destroy();
+  }, [leads, haStoricoMensile]);
+
+  // ── Ricettività per categoria (globale) ─────────────────────
+  const catStatsAdmin = {};
+  leads.forEach(l => {
+    if (!l.categoria || (l.tentativi || 0) === 0) return;
+    if (!catStatsAdmin[l.categoria]) catStatsAdmin[l.categoria] = { tot: 0, appt: 0 };
+    catStatsAdmin[l.categoria].tot++;
+    if ((l.note_storia || []).some(h => h.esito === 'Appuntamento fissato')) catStatsAdmin[l.categoria].appt++;
+  });
+  const catRicettivitaAdmin = Object.entries(catStatsAdmin).map(([cat, s]) => ({ cat, tot: s.tot, appt: s.appt, pct: Math.round(s.appt / s.tot * 100) })).sort((a, b) => b.pct - a.pct);
+
+  useEffect(() => {
+    if (!catRef.current || !catRicettivitaAdmin.length) { catC.current?.destroy(); catC.current = null; return; }
+    catC.current?.destroy();
+    catC.current = new Chart(catRef.current, { type: 'bar', data: {
+      labels: catRicettivitaAdmin.map(c => c.cat),
+      datasets: [{ label: 'Conversione in appuntamento', data: catRicettivitaAdmin.map(c => c.pct), backgroundColor: '#0078D4', borderRadius: 5 }],
+    }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x}% (${catRicettivitaAdmin[ctx.dataIndex].appt}/${catRicettivitaAdmin[ctx.dataIndex].tot})` } } }, scales: { x: { max: 100, ticks: { callback: v => v + '%' }, grid: { color: 'rgba(0,120,212,0.06)' } }, y: { grid: { display: false } } } } });
+    return () => catC.current?.destroy();
+  }, [leads]);
+
+  // ── Trend temporale per categoria (appuntamenti fissati/mese) ──
+  const CAT_COLORS = ['#0050A0', '#0078D4', '#4DA6E8', '#7B68EE', '#E07B1A', '#2E8B57', '#A32D2D', '#5A6B7E', '#C2185B', '#00838F'];
+  const categorieConDati = [...new Set(leads.filter(l => l.categoria).map(l => l.categoria))];
+  const catTrendData = categorieConDati.map((cat, i) => ({
+    cat, color: CAT_COLORS[i % CAT_COLORS.length],
+    valori: mesiEtichette.map(m => leads.filter(l => l.categoria === cat).reduce((n, l) => n + (l.note_storia || []).filter(h => h.esito === 'Appuntamento fissato' && (h.date || '').slice(0, 7) === m).length, 0)),
+  })).filter(c => c.valori.some(v => v > 0));
+
+  useEffect(() => {
+    if (!catTrendRef.current || !catTrendData.length) { catTrendC.current?.destroy(); catTrendC.current = null; return; }
+    catTrendC.current?.destroy();
+    const labels = mesiEtichette.map(m => new Date(m + '-01T12:00').toLocaleDateString('it-IT', { month: 'short', year: '2-digit' }));
+    catTrendC.current = new Chart(catTrendRef.current, { type: 'line', data: {
+      labels,
+      datasets: catTrendData.map(c => ({ label: c.cat, data: c.valori, borderColor: c.color, backgroundColor: c.color, borderWidth: 2, tension: .3, pointRadius: 3 })),
+    }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } } }, scales: { x: { grid: { display: false } }, y: { ticks: { stepSize: 1 }, grid: { color: 'rgba(0,120,212,0.06)' } } } } });
+    return () => catTrendC.current?.destroy();
+  }, [leads]);
+
+  // ── Qualità appuntamenti globale (funzione SQL, giorno zero = da oggi) ──
+  const qualitaApptAdmin = (() => {
+    if (!apptStats || !apptStats.length) return null;
+    const agg = {};
+    apptStats.forEach(r => { agg[r.stato] = (agg[r.stato] || 0) + Number(r.cnt); });
+    const nonVerificati = agg['Programmato'] || 0;
+    const aggVerificati = { ...agg }; delete aggVerificati['Programmato'];
+    const totVerificati = Object.values(aggVerificati).reduce((s, v) => s + v, 0);
+    const svolti = agg['Svolto'] || 0;
+    return { agg: aggVerificati, totVerificati, nonVerificati, pctSvolti: totVerificati > 0 ? Math.round(svolti / totVerificati * 100) : null };
+  })();
+
+  useEffect(() => {
+    if (!qualRef.current || !qualitaApptAdmin || !qualitaApptAdmin.totVerificati) { qualC.current?.destroy(); qualC.current = null; return; }
+    const ordine = ['Svolto', 'Non si è presentato', 'Da rifissare', 'Non effettuato'];
+    const colori = { 'Svolto': '#1B7A3E', 'Non si è presentato': '#A32D2D', 'Da rifissare': '#E07B1A', 'Non effettuato': '#888888' };
+    const labels = ordine.filter(s => qualitaApptAdmin.agg[s]);
+    qualC.current?.destroy();
+    qualC.current = new Chart(qualRef.current, { type: 'bar', data: {
+      labels, datasets: [{ data: labels.map(s => qualitaApptAdmin.agg[s]), backgroundColor: labels.map(s => colori[s]), borderRadius: 5 }],
+    }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { ticks: { stepSize: 1 }, grid: { color: 'rgba(0,120,212,0.06)' } } } } });
+    return () => qualC.current?.destroy();
+  }, [apptStats]);
 
   // ── Vista lead filtrata ────────────────────────────────────
   const filtered = leads.filter(l =>
@@ -289,14 +401,63 @@ export default function Telemarketing({ contacts, showToast }) {
           )}
         </div>
 
+        {/* ── ANDAMENTO MENSILE ── */}
+        {haStoricoMensile && (
+          <div className="card">
+            <div className="card-title">Andamento — ultimi 6 mesi</div>
+            <div style={{ height: 230, position: 'relative' }}><canvas ref={trendRef} /></div>
+          </div>
+        )}
+
+        {/* ── RICETTIVITÀ E TREND PER CATEGORIA ── */}
+        {(catRicettivitaAdmin.length > 0 || catTrendData.length > 0) && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))', gap: 16, marginTop: 16 }}>
+            {catRicettivitaAdmin.length > 0 && (
+              <div className="card" style={{ marginTop: 0 }}>
+                <div className="card-title">Categorie più ricettive</div>
+                <div style={{ height: 220, position: 'relative' }}><canvas ref={catRef} /></div>
+              </div>
+            )}
+            {catTrendData.length > 0 && (
+              <div className="card" style={{ marginTop: 0 }}>
+                <div className="card-title">Appuntamenti per categoria nel tempo</div>
+                <div style={{ height: 220, position: 'relative' }}><canvas ref={catTrendRef} /></div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── QUALITÀ APPUNTAMENTI (globale, da oggi) ── */}
+        {qualitaApptAdmin && (qualitaApptAdmin.totVerificati > 0 || qualitaApptAdmin.nonVerificati > 0) && (
+          <div className="card">
+            <div className="card-title">Qualità appuntamenti (da oggi in poi)</div>
+            {qualitaApptAdmin.totVerificati > 0 ? (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 28, fontWeight: 700, color: '#1B7A3E' }}>{qualitaApptAdmin.pctSvolti}%</span>
+                  <span className="text-muted fs-12">si sono effettivamente svolti (su {qualitaApptAdmin.totVerificati} verificati)</span>
+                </div>
+                <div style={{ height: 160, position: 'relative', marginTop: 10 }}><canvas ref={qualRef} /></div>
+              </>
+            ) : (
+              <div className="empty" style={{ padding: '10px 0' }}>Nessun appuntamento ancora verificato da oggi in poi.</div>
+            )}
+            {qualitaApptAdmin.nonVerificati > 0 && (
+              <div className="fs-11 text-muted" style={{ marginTop: 10 }}>
+                ⏳ {qualitaApptAdmin.nonVerificati} appuntament{qualitaApptAdmin.nonVerificati === 1 ? 'o' : 'i'} ancora da verificare (marca l'esito nella scheda contatto dopo l'incontro).
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── REPORT DI RESA ── */}
         {resa.length > 0 && (
           <div className="card">
             <div className="card-title">Resa per lista</div>
             <div style={{ height: 200, position: 'relative', marginBottom: 14 }}><canvas ref={chartRef} /></div>
             <div style={{ overflowX: 'auto' }}>
-              <table className="crm-table" style={{ minWidth: 500 }}>
-                <thead><tr><th>Lista</th><th style={{ textAlign: 'right' }}>Lead</th><th style={{ textAlign: 'right' }}>Chiamati</th><th style={{ textAlign: 'right' }}>Appuntamenti</th><th style={{ textAlign: 'right' }}>Conversione</th></tr></thead>
+              <table className="crm-table" style={{ minWidth: 700 }}>
+                <thead><tr><th>Lista</th><th style={{ textAlign: 'right' }}>Lead</th><th style={{ textAlign: 'right' }}>Chiamati</th><th style={{ textAlign: 'right' }}>Appuntamenti</th><th style={{ textAlign: 'right' }}>Conversione</th><th style={{ textAlign: 'right' }}>Tasso risposta</th><th style={{ textAlign: 'right' }}>Tasso scarto</th></tr></thead>
                 <tbody>
                   {resa.map(x => (
                     <tr key={x.nome}>
@@ -305,6 +466,8 @@ export default function Telemarketing({ contacts, showToast }) {
                       <td style={{ textAlign: 'right' }}>{x.lavorati}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700, color: '#0050A0' }}>{x.appt}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700, color: x.conv >= 10 ? '#1B7A3E' : 'inherit' }}>{x.conv}%</td>
+                      <td style={{ textAlign: 'right' }}>{x.tassoRisposta}%</td>
+                      <td style={{ textAlign: 'right', color: x.tassoScarto >= 15 ? '#A32D2D' : 'inherit' }}>{x.tassoScarto}%</td>
                     </tr>
                   ))}
                 </tbody>
