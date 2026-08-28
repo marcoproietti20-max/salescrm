@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { lsGet, lsSet, uid, parseDate, DEFAULT_STAGES, DEFAULT_BRAND, DEFAULT_GS, parseCSVRow } from './constants';
-import { dbLoadContacts, dbSave, dbSaveMany, dbDelete, dbDeleteMany, dbUpdateHistory, dbLoadBookingsInbox, dbMarkBookingsProcessed, dbLoadProfile, supabase } from './supabase';
+import { dbLoadContacts, dbSave, dbSaveMany, dbDelete, dbDeleteMany, dbUpdateHistory, dbLoadBookingsInbox, dbMarkBookingsProcessed, dbLoadProfile, dbLoadLeads, dbUpdateLead, normPhone, supabase } from './supabase';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Contacts from './components/Contacts';
@@ -221,6 +221,25 @@ export default function App() {
     if (rows === null) return { error: 'Errore di lettura da Supabase' };
     if (!rows.length) return { imported: 0, skipped: 0, updated: 0 };
 
+    // Carico i lead per l'aggancio fonte/storico (best-effort: se fallisce, si procede senza)
+    const leads = (await dbLoadLeads()) || [];
+    const leadByPhone = {}, leadByEmail = {};
+    leads.forEach(l => {
+      if (l.telefono_norm) leadByPhone[l.telefono_norm] = l;
+      else if (l.telefono) leadByPhone[normPhone(l.telefono)] = l;
+      if (l.email) leadByEmail[l.email.toLowerCase()] = l;
+    });
+    const leadsToUpdate = [];
+
+    const formatStoriaLead = (lead) => {
+      const righe = (lead.note_storia || []).map(h => {
+        const data = h.date ? new Date(h.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+        return `${data} — ${h.esito || 'Nota'}${h.testo ? ': ' + h.testo : ''}`;
+      });
+      if (!righe.length) return '';
+      return `📞 Storico telemarketing (lista "${lead.lista || '—'}"):\n` + righe.join('\n');
+    };
+
     let imported = 0, skipped = 0, updated = 0;
     const toInsert = [], toUpdateHist = [], processedIds = [];
     const current = [...contacts];
@@ -229,10 +248,14 @@ export default function App() {
       const nome = (r.nome_cliente || '').trim();
       if (!nome) { skipped++; processedIds.push(r.id); continue; }
       const email = (r.email || '').trim();
+      const telN = normPhone(r.telefono || '');
       const existingIdx = current.findIndex(c =>
         (email && c.email && c.email.toLowerCase() === email.toLowerCase()) ||
         c.nome.toLowerCase() === nome.toLowerCase()
       );
+
+      // Lead corrispondente per telefono o email — eredita fonte e storico
+      const matchedLead = (telN && leadByPhone[telN]) || (email && leadByEmail[email.toLowerCase()]) || null;
 
       const toLocalDT = (iso) => {
         if (!iso) return '';
@@ -257,10 +280,25 @@ export default function App() {
         } else { skipped++; }
         // Never overwrite fase, proposta, esito, contratti of existing contacts
       } else {
-        const nc = { id: uid(), nome, azienda: (r.azienda || '').trim(), email, telefono: (r.telefono || '').trim(), categoria: (r.categoria || '').trim(), fase: stages[1]?.name || 'Appuntamento', fonte: r.origine || 'Bookings', esito: '', proposta: 'Non inviata', importoProposta: 0, dataChiusura: '', contratti: [], testoProposta: '', noteInterne: '', history: newAppt ? [newAppt] : [], customData: {} };
+        const nc = {
+          id: uid(), nome,
+          azienda: (r.azienda || '').trim() || matchedLead?.azienda || '',
+          email, telefono: (r.telefono || '').trim(),
+          categoria: (r.categoria || '').trim() || matchedLead?.categoria || '',
+          fase: stages[1]?.name || 'Appuntamento',
+          fonte: matchedLead?.fonte || r.origine || 'Bookings',
+          esito: '', proposta: 'Non inviata', importoProposta: 0, dataChiusura: '', contratti: [], testoProposta: '',
+          noteInterne: matchedLead ? formatStoriaLead(matchedLead) : '',
+          history: newAppt ? [newAppt] : [], customData: {},
+        };
         current.push(nc);
         toInsert.push(nc);
         imported++;
+      }
+
+      // Marca il lead come convertito, se non lo è già (non blocca l'import se fallisce)
+      if (matchedLead && matchedLead.stato !== 'Appuntamento fissato') {
+        leadsToUpdate.push(matchedLead.id);
       }
       processedIds.push(r.id);
     }
@@ -269,6 +307,7 @@ export default function App() {
     await Promise.all(toUpdateHist.map(u => dbUpdateHistory(u.id, u.history)));
     if (toInsert.length) await dbSaveMany(toInsert);
     await dbMarkBookingsProcessed(processedIds);
+    await Promise.all(leadsToUpdate.map(id => dbUpdateLead(id, { stato: 'Appuntamento fissato' })));
 
     // Reload fresh from Supabase and update state directly
     const fresh = await dbLoadContacts();
