@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { lsGet, lsSet, uid, parseDate, DEFAULT_STAGES, DEFAULT_BRAND, DEFAULT_GS, parseCSVRow } from './constants';
-import { dbLoadContacts, dbSave, dbSaveMany, dbDelete, dbDeleteMany, dbUpdateHistory, supabase } from './supabase';
+import { dbLoadContacts, dbSave, dbSaveMany, dbDelete, dbDeleteMany, dbUpdateHistory, dbLoadBookingsInbox, dbMarkBookingsProcessed, supabase } from './supabase';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Contacts from './components/Contacts';
@@ -208,6 +208,62 @@ export default function App() {
     } catch (e) { return { error: e.message }; }
   }, [gsCfg, stages, contacts, showToast]);
 
+  // ── BOOKINGS INBOX SYNC (Supabase) ──────────────────────────
+  const syncFromBookingsInbox = useCallback(async () => {
+    const rows = await dbLoadBookingsInbox();
+    if (rows === null) return { error: 'Errore di lettura da Supabase' };
+    if (!rows.length) return { imported: 0, skipped: 0, updated: 0 };
+
+    let imported = 0, skipped = 0, updated = 0;
+    const toInsert = [], toUpdateHist = [], processedIds = [];
+    const current = [...contacts];
+
+    for (const r of rows) {
+      const nome = (r.nome_cliente || '').trim();
+      if (!nome) { skipped++; processedIds.push(r.id); continue; }
+      const email = (r.email || '').trim();
+      const existingIdx = current.findIndex(c =>
+        (email && c.email && c.email.toLowerCase() === email.toLowerCase()) ||
+        c.nome.toLowerCase() === nome.toLowerCase()
+      );
+
+      const dataAppt = r.data_appuntamento || '';
+      const newAppt = dataAppt ? { id: uid(), type: 'appt', date: dataAppt, stato: 'Programmato', esito: '' } : null;
+
+      if (existingIdx >= 0) {
+        const ex = current[existingIdx];
+        const existingDates = (ex.history || []).filter(h => h.type === 'appt').map(h => (h.date || '').slice(0, 10).trim());
+        const newDate = dataAppt ? dataAppt.slice(0, 10).trim() : '';
+        if (newAppt && newDate && !existingDates.some(d => d === newDate)) {
+          // Add new appt to history — never modify existing records
+          const updatedHist = [...(ex.history || []), newAppt];
+          current[existingIdx] = { ...ex, history: updatedHist };
+          toUpdateHist.push({ id: ex.id, history: updatedHist });
+          updated++;
+        } else { skipped++; }
+        // Never overwrite fase, proposta, esito, contratti of existing contacts
+      } else {
+        const nc = { id: uid(), nome, azienda: (r.azienda || '').trim(), email, telefono: (r.telefono || '').trim(), categoria: (r.categoria || '').trim(), fase: stages[1]?.name || 'Appuntamento', fonte: r.origine || 'Bookings', esito: '', proposta: 'Non inviata', importoProposta: 0, dataChiusura: '', contratti: [], testoProposta: '', noteInterne: '', history: newAppt ? [newAppt] : [], customData: {} };
+        current.push(nc);
+        toInsert.push(nc);
+        imported++;
+      }
+      processedIds.push(r.id);
+    }
+
+    // Write to Supabase: only history for existing, full for new
+    await Promise.all(toUpdateHist.map(u => dbUpdateHistory(u.id, u.history)));
+    if (toInsert.length) await dbSaveMany(toInsert);
+    await dbMarkBookingsProcessed(processedIds);
+
+    // Reload fresh from Supabase and update state directly
+    const fresh = await dbLoadContacts();
+    setContacts(fresh);
+
+    if (imported > 0 || updated > 0) showToast('Sincronizzazione Bookings completata', `${imported} nuovi, ${updated} aggiornati`);
+    return { imported, skipped, updated };
+  }, [contacts, stages, showToast]);
+
   // ── CSV/EXCEL IMPORT ────────────────────────────────────────
   const importFromCSV = useCallback(async (rows) => {
     let imported = 0, skipped = 0;
@@ -237,7 +293,7 @@ export default function App() {
     setContactsDirect: setContacts, // use after sync reload (already in Supabase)
     setStages, setCustomFields, setBrand, setGsCfg,
     saveContact, deleteContact, deleteContacts, updateContact,
-    syncFromGoogleSheet, importFromCSV,
+    syncFromGoogleSheet, syncFromBookingsInbox, importFromCSV,
     setModal, showToast, today, navigateTo, pageFilter, setPageFilter,
   };
 
