@@ -86,6 +86,33 @@ const CSS = `
   .opv-btn.primary { background: ${BLU}; border-color: ${BLU}; color: white; }
   .opv-btn.primary:disabled { opacity: .6; }
   .opv-hist { border-left: 3px solid ${BLU}; padding: 5px 12px; margin-bottom: 10px; }
+  .opv-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .opv-grid2 .opv-card { margin-top: 0; }
+  .opv-row .who .nota { font-size: 12px; color: #8A97A6; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .opv-weeknav { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+  .opv-weeknav .lbl { font-size: 12.5px; font-weight: 700; color: #33475B; text-transform: none; letter-spacing: 0; }
+  .opv-weekbtn { border: 1.5px solid #D4DEE9; background: white; border-radius: 8px; width: 30px; height: 30px; font-size: 15px; font-weight: 700; cursor: pointer; color: #33475B; font-family: inherit; }
+  .opv-weekbtn:hover { border-color: ${BLU}; color: ${BLU}; }
+  .opv-week { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .opv-day { background: #F6F9FC; border: 1px solid #E2E9F1; border-radius: 12px; padding: 10px; min-height: 130px; }
+  .opv-day.today { border-color: ${BLU}; background: rgba(0,120,212,.05); }
+  .opv-day-h { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #33475B; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
+  .opv-day-h .num { font-size: 15px; color: ${BLU}; }
+  .opv-mini { background: white; border: 1px solid #DDE6EF; border-left: 3px solid #4DA6E8; border-radius: 8px; padding: 7px 9px; margin-bottom: 7px; cursor: pointer; }
+  .opv-mini:hover { border-color: ${BLU}; box-shadow: 0 2px 8px rgba(0,120,212,.15); }
+  .opv-mini .n { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .opv-mini .t { font-size: 11.5px; color: #6B7A8C; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .opv-banner { background: #E07B1A; color: white; border-radius: 12px; padding: 12px 18px; font-weight: 700; font-size: 13.5px; cursor: pointer; margin-top: 16px; box-shadow: 0 2px 10px rgba(224,123,26,.3); }
+  .opv-banner:hover { background: #C96A12; }
+  .opv-chip { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 14px; margin-right: 5px; }
+  .opv-toggle { display: flex; gap: 6px; justify-content: flex-end; margin-top: 14px; }
+  .opv-togglebtn { padding: 7px 18px; border-radius: 20px; font-weight: 700; font-size: 13px; cursor: pointer; border: 1.5px solid #D4DEE9; background: white; color: #33475B; font-family: inherit; }
+  .opv-togglebtn.on { background: ${BLU}; color: white; border-color: ${BLU}; }
+  .opv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .opv-table th { text-align: left; font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #6B7A8C; padding: 9px 10px; border-bottom: 1px solid #E2E9F1; background: #F6F9FC; white-space: nowrap; }
+  .opv-table td { padding: 10px; border-bottom: 1px solid #EEF2F6; vertical-align: middle; }
+  .opv-table tbody tr { cursor: pointer; }
+  .opv-table tbody tr:hover { background: #F3F8FD; }
   .opv-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); color: white; border-radius: 12px; padding: 12px 24px; font-size: 15px; font-weight: 700; z-index: 100; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
   .opv-burger { display: none; position: fixed; top: 12px; left: 12px; z-index: 55; background: ${BLU}; color: white; border: none; border-radius: 10px; width: 40px; height: 40px; font-size: 18px; cursor: pointer; }
   .opv-overlay { display: none; }
@@ -105,6 +132,9 @@ const CSS = `
     .opv-open { flex: 1; }
     .opv-esiti { grid-template-columns: 1fr 1fr; }
     .opv-bigcall { font-size: 21px; }
+    .opv-grid2 { grid-template-columns: 1fr; }
+    .opv-week { grid-template-columns: 1fr; }
+    .opv-day { min-height: auto; }
   }
 `;
 
@@ -112,6 +142,8 @@ export default function OperatorView({ profile, onLogout }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pageOp, setPageOp] = useState('home');
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [richiamiView, setRichiamiView] = useState('cal');
   const [sideOpen, setSideOpen] = useState(false);
   const [fCategoria, setFCategoria] = useState('');
   const [fLista, setFLista] = useState('');
@@ -220,22 +252,29 @@ export default function OperatorView({ profile, onLogout }) {
   // ── Componenti ─────────────────────────────────────────────
   const statoInfo = s => ESITI_CHIAMATA.find(x => x.name === s) || { icon: '📞', color: BLU };
 
-  const Riga = ({ l, hot, mostraStato }) => (
+  const Riga = ({ l, hot, mostraStato }) => {
+    const ultimaNota = (l.note_storia || []).filter(h => h.testo).slice(-1)[0]?.testo;
+    return (
     <div className={'opv-row' + (hot ? ' hot' : '')} onClick={() => apriLead(l, mostraStato ? 'scheda' : 'esito')}>
       <div className="who">
         <div className="az">{l.azienda || l.nome || '—'}</div>
         <div className="det">
-          {l.nome && l.azienda ? l.nome + ' · ' : ''}{l.categoria || ''}{l.citta ? ' · ' + l.citta : ''}
+          {l.nome && l.azienda ? l.nome : ''}{l.citta ? (l.nome && l.azienda ? ' · ' : '') + l.citta : ''}
           {hot && l.data_richiamo ? ` · richiamo ${new Date(l.data_richiamo + 'T12:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}` : ''}
-          {!hot && !mostraStato && l.tentativi > 0 ? ` · ${l.tentativi} tentativ${l.tentativi === 1 ? 'o' : 'i'}` : ''}
+          {l.tentativi > 0 ? ` · ${l.tentativi} tentativ${l.tentativi === 1 ? 'o' : 'i'}` : ''}
         </div>
+        <div style={{ marginTop: 3 }}>
+          {l.categoria && <span className="opv-chip" style={{ background: 'rgba(0,120,212,.1)', color: '#005A9E' }}>{l.categoria}</span>}
+          {l.lista && <span className="opv-chip" style={{ background: '#EEF1F5', color: '#5A6B7E' }}>{l.lista}</span>}
+        </div>
+        {ultimaNota && <div className="nota">📝 {ultimaNota}</div>}
       </div>
       {hot && <span className="opv-tag" style={{ background: '#E07B1A20', color: '#B35F0E' }}>{l.stato === 'Richiamare' ? '🔄 Richiamo' : '📅 Ricontatto'}</span>}
       {mostraStato && <span className="opv-statochip" style={{ background: statoInfo(l.stato).color + '18', color: statoInfo(l.stato).color }}>{statoInfo(l.stato).icon} {l.stato}</span>}
       {l.telefono && <a className="opv-call" href={'tel:' + l.telefono.replace(/\s/g, '')} onClick={e => e.stopPropagation()}>📞 {l.telefono}</a>}
       <button className="opv-open" onClick={e => { e.stopPropagation(); apriLead(l, 'esito'); }}>Registra esito</button>
     </div>
-  );
+  );};
 
   const Sezione = ({ titolo, items, hot, vuoto, mostraStato }) => (
     <div className="opv-card">
@@ -267,6 +306,55 @@ export default function OperatorView({ profile, onLogout }) {
         )}
         {(fCategoria || fLista || cerca || fStato) && <button className="opv-btn" onClick={() => { setFCategoria(''); setFLista(''); setCerca(''); setFStato(''); }}>✕ Azzera</button>}
       </div>
+    </div>
+  );
+
+  // ── Agenda settimanale richiami ────────────────────────────
+  const lunedi = (() => { const d = new Date(); d.setDate(d.getDate() + weekOffset * 7); const g = (d.getDay() + 6) % 7; d.setDate(d.getDate() - g); return d; })();
+  const giorniSett = Array.from({ length: 5 }, (_, i) => { const d = new Date(lunedi); d.setDate(lunedi.getDate() + i); return d.toISOString().slice(0, 10); });
+  const richiamiGiorno = g => leads.filter(l => l.stato === 'Richiamare' && l.data_richiamo === g && matchFiltri(l));
+  const richiamiSenzaData = leads.filter(l => l.stato === 'Richiamare' && !l.data_richiamo && matchFiltri(l));
+  const labelSett = `${lunedi.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} – ${new Date(giorniSett[4] + 'T12:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+
+  const AgendaSettimana = () => (
+    <div className="opv-card">
+      <div className="opv-card-title">
+        🗓 Agenda richiami
+        <div className="opv-weeknav">
+          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5 }} onClick={() => setWeekOffset(w => w - 1)}>← Prec.</button>
+          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5, ...(weekOffset === 0 ? { borderColor: '#0078D4', color: '#0078D4' } : {}) }} onClick={() => setWeekOffset(0)}>Oggi</button>
+          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5 }} onClick={() => setWeekOffset(w => w + 1)}>Succ. →</button>
+          <span className="lbl">{labelSett}</span>
+        </div>
+      </div>
+      <div className="opv-week">
+        {giorniSett.map(g => {
+          const items = richiamiGiorno(g);
+          const d = new Date(g + 'T12:00');
+          const scaduto = g < today;
+          return (
+            <div key={g} className={'opv-day' + (g === today ? ' today' : '')}>
+              <div className="opv-day-h">
+                <span>{d.toLocaleDateString('it-IT', { weekday: 'short' })}</span>
+                <span className="num" style={scaduto ? { color: '#B35F0E' } : {}}>{d.getDate()}</span>
+              </div>
+              {items.length === 0
+                ? <div style={{ fontSize: 11.5, color: '#B0BCC9', textAlign: 'center', paddingTop: 8 }}>—</div>
+                : items.map(l => (
+                  <div key={l.id} className="opv-mini" style={scaduto ? { borderLeftColor: '#E07B1A' } : {}} onClick={() => apriLead(l, 'esito')}>
+                    <div className="n">{l.azienda || l.nome || '—'}</div>
+                    <div className="t">{l.telefono || ''}</div>
+                  </div>
+                ))}
+            </div>
+          );
+        })}
+      </div>
+      {richiamiSenzaData.length > 0 && (
+        <div style={{ marginTop: 12, fontSize: 12.5, color: '#6B7A8C' }}>
+          ⚠ {richiamiSenzaData.length} richiam{richiamiSenzaData.length === 1 ? 'o' : 'i'} senza data: {richiamiSenzaData.map(l => l.azienda || l.nome).join(', ')}
+        </div>
+      )}
     </div>
   );
 
@@ -322,6 +410,11 @@ export default function OperatorView({ profile, onLogout }) {
         {/* ── DASHBOARD ── */}
         {pageOp === 'home' && (
           <>
+            {nRichiamiBadge > 0 && (
+              <div className="opv-banner" onClick={() => setPageOp('richiami')}>
+                🔄 {nRichiamiBadge} {nRichiamiBadge === 1 ? 'richiamo' : 'richiami'} da fare oggi — Vedi →
+              </div>
+            )}
             <div className="opv-metrics">
               <div className="opv-metric"><div className="lbl">Chiamate oggi</div><div className="val" style={{ color: BLU }}>{esitiOggi}</div><div className="sub">esiti registrati</div></div>
               <div className="opv-metric"><div className="lbl">Appuntamenti</div><div className="val" style={{ color: '#1B7A3E' }}>{apptOggi}</div><div className="sub">fissati oggi 🎯</div></div>
@@ -359,10 +452,26 @@ export default function OperatorView({ profile, onLogout }) {
         {/* ── RICHIAMI ── */}
         {pageOp === 'richiami' && (
           <>
+            <div className="opv-toggle">
+              <button className={'opv-togglebtn' + (richiamiView === 'list' ? ' on' : '')} onClick={() => setRichiamiView('list')}>Lista</button>
+              <button className={'opv-togglebtn' + (richiamiView === 'cal' ? ' on' : '')} onClick={() => setRichiamiView('cal')}>Calendario</button>
+            </div>
             <Filtri />
-            <Sezione titolo="🔄 Richiami di oggi (e arretrati)" items={richiamiOggi} hot vuoto="Nessun richiamo in scadenza 🎉" />
-            <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" />
-            <Sezione titolo="⏳ Richiami programmati" items={richiamiFuturi} vuoto="Nessun richiamo futuro in agenda" />
+            {richiamiView === 'cal' ? (
+              <>
+                <div className="opv-grid2">
+                  <Sezione titolo="🔄 Richiami di oggi (e arretrati)" items={richiamiOggi} hot vuoto="Nessun richiamo in scadenza 🎉" />
+                  <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" />
+                </div>
+                <AgendaSettimana />
+              </>
+            ) : (
+              <>
+                <Sezione titolo="🔄 Richiami di oggi (e arretrati)" items={richiamiOggi} hot vuoto="Nessun richiamo in scadenza 🎉" />
+                <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" />
+                <Sezione titolo="⏳ Richiami programmati" items={richiamiFuturi} vuoto="Nessun richiamo futuro in agenda" />
+              </>
+            )}
           </>
         )}
 
@@ -370,7 +479,34 @@ export default function OperatorView({ profile, onLogout }) {
         {pageOp === 'archivio' && (
           <>
             <Filtri conStato />
-            <Sezione titolo="🗂 Tutti i lead" items={archivioLeads} mostraStato vuoto="Nessun lead con questi filtri" />
+            <div className="opv-card">
+              <div className="opv-card-title">🗂 Tutti i lead <span style={{ color: '#0078D4' }}>({archivioLeads.length})</span></div>
+              {archivioLeads.length === 0 ? <div className="opv-empty">Nessun lead con questi filtri</div> : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="opv-table">
+                    <thead><tr><th>Azienda / Referente</th><th>Categoria</th><th>Telefono</th><th>Lista</th><th>Stato</th><th style={{ textAlign: 'right' }}>Tent.</th><th>Ultima nota</th><th>Ultimo contatto</th></tr></thead>
+                    <tbody>
+                      {archivioLeads.map(l => {
+                        const un = (l.note_storia || []).filter(h => h.testo).slice(-1)[0]?.testo;
+                        const si = statoInfo(l.stato);
+                        return (
+                          <tr key={l.id} onClick={() => apriLead(l, 'scheda')}>
+                            <td><strong>{l.azienda || l.nome || '—'}</strong>{l.azienda && l.nome ? <div style={{ fontSize: 11.5, color: '#6B7A8C' }}>{l.nome}</div> : null}</td>
+                            <td>{l.categoria || '—'}</td>
+                            <td style={{ whiteSpace: 'nowrap' }}>{l.telefono || '—'}</td>
+                            <td>{l.lista || '—'}</td>
+                            <td><span className="opv-statochip" style={{ background: si.color + '18', color: si.color }}>{si.icon} {l.stato}</span></td>
+                            <td style={{ textAlign: 'right' }}>{l.tentativi || 0}</td>
+                            <td style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontStyle: un ? 'italic' : 'normal', color: un ? '#5A6B7E' : '#B0BCC9' }}>{un || '—'}</td>
+                            <td style={{ whiteSpace: 'nowrap' }}>{l.ultimo_contatto ? fmtDT(l.ultimo_contatto) : '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </>
         )}
       </main>
