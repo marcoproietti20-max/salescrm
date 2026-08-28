@@ -1,10 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { uid, parseCSVRow } from '../constants';
 
-export default function Calendly({ contacts, stages, setContacts, gsCfg, brand, syncFromGoogleSheet, importFromCSV, showToast }) {
+export default function Calendly({ contacts, stages, setContacts, gsCfg, brand, syncFromGoogleSheet, syncFromBookingsInbox, importFromCSV, showToast }) {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [lastSync] = useState(localStorage.getItem('crm_sync_last') || '');
+  const [syncingBk, setSyncingBk] = useState(false);
+  const [syncBkResult, setSyncBkResult] = useState(null);
+  const [lastSyncBk] = useState(localStorage.getItem('crm_sync_bk_last') || '');
   const [form, setForm] = useState({ nome: '', azienda: '', email: '', telefono: '', data: '', note: '' });
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -17,6 +20,14 @@ export default function Calendly({ contacts, stages, setContacts, gsCfg, brand, 
     const now = new Date().toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
     localStorage.setItem('crm_sync_last', now);
     setSyncResult(r); setSyncing(false);
+  };
+
+  const doSyncBookings = async () => {
+    setSyncingBk(true); setSyncBkResult(null);
+    const r = await syncFromBookingsInbox();
+    const now = new Date().toLocaleString('it-IT', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    localStorage.setItem('crm_sync_bk_last', now);
+    setSyncBkResult(r); setSyncingBk(false);
   };
 
   const importManual = () => {
@@ -59,12 +70,26 @@ export default function Calendly({ contacts, stages, setContacts, gsCfg, brand, 
       <div className="topbar"><span className="page-title">Bookings & Importazione</span></div>
       <div className="content">
         <div className="card">
-          <div className="card-title">Sincronizzazione da Google Sheet</div>
+          <div className="card-title">Sincronizzazione da Bookings ⚡</div>
+          <p className="text-muted fs-12" style={{ marginBottom: 14, lineHeight: 1.6 }}>
+            <strong>Power Automate</strong> scrive ogni nuova prenotazione da <strong>Microsoft Bookings</strong> direttamente nel database del CRM. Clicca <strong>Sincronizza ora</strong> per importare le prenotazioni in attesa — i duplicati vengono ignorati e i contatti esistenti non vengono sovrascritti.
+          </p>
+          {lastSyncBk && <div className="fs-11 text-muted" style={{ marginBottom: 10 }}>Ultima sincronizzazione: {lastSyncBk}</div>}
+          <button className="btn btn-primary" onClick={doSyncBookings} disabled={syncingBk}>{syncingBk ? '⏳ Sincronizzazione...' : '🔄 Sincronizza ora'}</button>
+          {syncBkResult && (
+            <div style={{ marginTop: 12, fontSize: 13 }}>
+              {syncBkResult.error ? <span style={{ color: '#A32D2D' }}>Errore: {syncBkResult.error}</span>
+                : <span><span style={{ color: '#3B6D11', fontWeight: 600 }}>Completato.</span> {syncBkResult.imported} nuovi, {syncBkResult.updated} aggiornati, {syncBkResult.skipped} ignorati.</span>}
+            </div>
+          )}
+        </div>
+        <div className="card">
+          <div className="card-title">Sincronizzazione da Google Sheet (vecchio canale)</div>
           <p className="text-muted fs-12" style={{ marginBottom: 14, lineHeight: 1.6 }}>
             <strong>Power Automate</strong> popola automaticamente il Google Sheet ad ogni nuova prenotazione da <strong>Microsoft Bookings</strong>. Clicca <strong>Sincronizza ora</strong> per importare i nuovi contatti — i duplicati vengono ignorati e i contratti esistenti non vengono sovrascritti.
           </p>
           {lastSync && <div className="fs-11 text-muted" style={{ marginBottom: 10 }}>Ultima sincronizzazione: {lastSync}</div>}
-          <button className="btn btn-primary" onClick={doSync} disabled={syncing}>{syncing ? '⏳ Sincronizzazione...' : '🔄 Sincronizza ora'}</button>
+          <button className="btn" onClick={doSync} disabled={syncing}>{syncing ? '⏳ Sincronizzazione...' : '🔄 Sincronizza ora'}</button>
           {syncResult && (
             <div style={{ marginTop: 12, fontSize: 13 }}>
               {syncResult.error ? <span style={{ color: '#A32D2D' }}>Errore: {syncResult.error}</span>
