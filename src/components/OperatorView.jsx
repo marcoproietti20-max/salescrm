@@ -240,13 +240,17 @@ export default function OperatorView({ profile, onLogout }) {
   const catRicettivita = Object.entries(catStats).map(([cat, s]) => ({ cat, tot: s.tot, appt: s.appt, pct: Math.round(s.appt / s.tot * 100) })).sort((a, b) => b.pct - a.pct);
 
   // Qualità appuntamenti (dalla funzione SQL — già filtrata sul suo nome dal database)
+  // Nota: "Programmato" = appuntamento non ancora chiuso da Marco dopo l'incontro.
+  // Non lo trattiamo come esito valido: la percentuale conta solo sui casi verificati.
   const qualitaAppt = (() => {
     if (!apptStats || !apptStats.length) return null;
     const agg = {};
     apptStats.forEach(r => { agg[r.stato] = (agg[r.stato] || 0) + Number(r.cnt); });
-    const tot = Object.values(agg).reduce((s, v) => s + v, 0);
+    const nonVerificati = agg['Programmato'] || 0;
+    const aggVerificati = { ...agg }; delete aggVerificati['Programmato'];
+    const totVerificati = Object.values(aggVerificati).reduce((s, v) => s + v, 0);
     const svolti = agg['Svolto'] || 0;
-    return { agg, tot, pctSvolti: tot > 0 ? Math.round(svolti / tot * 100) : 0 };
+    return { agg: aggVerificati, totVerificati, nonVerificati, totComplessivo: totVerificati + nonVerificati, pctSvolti: totVerificati > 0 ? Math.round(svolti / totVerificati * 100) : null };
   })();
 
   // ── Grafico settimana (pagina home) ────────────────────────
@@ -290,9 +294,9 @@ export default function OperatorView({ profile, onLogout }) {
 
   // ── Qualità appuntamenti (Svolto / Non presentato / Da rifissare...) ──
   useEffect(() => {
-    if (pageOp !== 'home' || !qualChartRef.current || !qualitaAppt || !qualitaAppt.tot) { qualChartC.current?.destroy(); qualChartC.current = null; return; }
-    const ordine = ['Svolto', 'Non si è presentato', 'Da rifissare', 'Non effettuato', 'Programmato'];
-    const colori = { 'Svolto': '#1B7A3E', 'Non si è presentato': '#A32D2D', 'Da rifissare': '#E07B1A', 'Non effettuato': '#888888', 'Programmato': '#4DA6E8' };
+    if (pageOp !== 'home' || !qualChartRef.current || !qualitaAppt || !qualitaAppt.totVerificati) { qualChartC.current?.destroy(); qualChartC.current = null; return; }
+    const ordine = ['Svolto', 'Non si è presentato', 'Da rifissare', 'Non effettuato'];
+    const colori = { 'Svolto': '#1B7A3E', 'Non si è presentato': '#A32D2D', 'Da rifissare': '#E07B1A', 'Non effettuato': '#888888' };
     const labels = ordine.filter(s => qualitaAppt.agg[s]);
     qualChartC.current?.destroy();
     qualChartC.current = new Chart(qualChartRef.current, { type: 'bar', data: {
@@ -562,14 +566,25 @@ export default function OperatorView({ profile, onLogout }) {
               </div>
             )}
 
-            {qualitaAppt && qualitaAppt.tot > 0 && (
+            {qualitaAppt && qualitaAppt.totComplessivo > 0 && (
               <div className="opv-card">
-                <div className="opv-card-title">✨ Qualità dei tuoi appuntamenti (storico completo)</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
-                  <span style={{ fontSize: 30, fontWeight: 800, color: '#1B7A3E' }}>{qualitaAppt.pctSvolti}%</span>
-                  <span style={{ fontSize: 13, color: '#6B7A8C' }}>si sono effettivamente svolti (su {qualitaAppt.tot} fissati)</span>
-                </div>
-                <div style={{ height: 160, position: 'relative' }}><canvas ref={qualChartRef} /></div>
+                <div className="opv-card-title">✨ Qualità dei tuoi appuntamenti</div>
+                {qualitaAppt.totVerificati > 0 ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 30, fontWeight: 800, color: '#1B7A3E' }}>{qualitaAppt.pctSvolti}%</span>
+                      <span style={{ fontSize: 13, color: '#6B7A8C' }}>si sono effettivamente svolti (su {qualitaAppt.totVerificati} verificati)</span>
+                    </div>
+                    <div style={{ height: 160, position: 'relative', marginTop: 10 }}><canvas ref={qualChartRef} /></div>
+                  </>
+                ) : (
+                  <div className="opv-empty">Nessun appuntamento ancora verificato da Marco.</div>
+                )}
+                {qualitaAppt.nonVerificati > 0 && (
+                  <div style={{ fontSize: 11.5, color: '#8A97A6', marginTop: 10 }}>
+                    ⏳ {qualitaAppt.nonVerificati} appuntament{qualitaAppt.nonVerificati === 1 ? 'o' : 'i'} in attesa di verifica da parte di Marco — non {qualitaAppt.nonVerificati === 1 ? 'è incluso' : 'sono inclusi'} nella percentuale.
+                  </div>
+                )}
               </div>
             )}
           </>
