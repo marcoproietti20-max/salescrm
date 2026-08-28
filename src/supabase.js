@@ -57,3 +57,40 @@ export async function dbMarkBookingsProcessed(ids) {
   const {error}=await supabase.from('bookings_inbox').update({processato:true}).in('id',ids);
   if(error) console.error('dbMarkBookingsProcessed:',error);
 }
+export async function dbLoadProfile() {
+  const {data:{user}}=await supabase.auth.getUser();
+  if(!user) return null;
+  const {data,error}=await supabase.from('profiles').select('*').eq('id',user.id).single();
+  if(error){console.error('dbLoadProfile:',error);return null;}
+  return data;
+}
+export async function dbLoadLeads() {
+  const {data,error}=await supabase.from('leads').select('*').order('created_at',{ascending:true});
+  if(error){console.error('dbLoadLeads:',error);return null;}
+  return data||[];
+}
+export async function dbInsertLeads(rows) {
+  if(!rows.length) return true;
+  const {error}=await supabase.from('leads').insert(rows);
+  if(error){console.error('dbInsertLeads:',error);return false;}
+  return true;
+}
+export async function dbUpdateLead(id, fields) {
+  const {error}=await supabase.from('leads').update(fields).eq('id',id);
+  if(error){console.error('dbUpdateLead:',error);return false;}
+  return true;
+}
+export async function dbDeleteLeads(ids) {
+  if(!ids.length) return true;
+  const {error}=await supabase.from('leads').delete().in('id',ids);
+  if(error){console.error('dbDeleteLeads:',error);return false;}
+  return true;
+}
+export function normPhone(t) {
+  if(!t) return '';
+  let n=String(t).replace(/[^0-9+]/g,'');
+  if(n.startsWith('00')) n='+'+n.slice(2);
+  if(n.startsWith('+39')) n=n.slice(3);
+  else if(n.startsWith('+')) n=n.slice(1);
+  return n;
+}
