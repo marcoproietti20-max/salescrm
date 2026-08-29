@@ -94,3 +94,19 @@ export function normPhone(t) {
   else if(n.startsWith('+')) n=n.slice(1);
   return n;
 }
+export async function dbLoadImportBatches() {
+  const {data,error}=await supabase.from('import_batches').select('*').order('created_at',{ascending:false});
+  if(error){console.error('dbLoadImportBatches:',error);return null;}
+  return data||[];
+}
+export async function dbCreateImportBatch(lista, leadIds) {
+  const {error}=await supabase.from('import_batches').insert({lista, lead_ids: leadIds, count: leadIds.length});
+  if(error) console.error('dbCreateImportBatch:',error);
+}
+export async function dbUndoImportBatch(batch) {
+  const ok = await dbDeleteLeads(batch.lead_ids);
+  if(!ok) return false;
+  const {error}=await supabase.from('import_batches').delete().eq('id',batch.id);
+  if(error){console.error('dbUndoImportBatch:',error);return false;}
+  return true;
+}
