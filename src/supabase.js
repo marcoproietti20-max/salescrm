@@ -22,9 +22,17 @@ function fromDb(r) {
   };
 }
 export async function dbLoadContacts() {
-  const {data,error}=await supabase.from('contacts').select('*').order('created_at',{ascending:true});
-  if(error){console.error(error);return[];}
-  return (data||[]).map(fromDb);
+  const PAGE = 1000;
+  let all = [];
+  let from = 0;
+  while (true) {
+    const {data,error}=await supabase.from('contacts').select('*').order('created_at',{ascending:true}).range(from, from+PAGE-1);
+    if(error){console.error(error); return all.length ? all.map(fromDb) : [];}
+    all = all.concat(data||[]);
+    if(!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all.map(fromDb);
 }
 export async function dbSave(contact) {
   const {error}=await supabase.from('contacts').upsert(toDb(contact),{onConflict:'id'});
@@ -65,9 +73,17 @@ export async function dbLoadProfile() {
   return data;
 }
 export async function dbLoadLeads() {
-  const {data,error}=await supabase.from('leads').select('*').order('created_at',{ascending:true});
-  if(error){console.error('dbLoadLeads:',error);return null;}
-  return data||[];
+  const PAGE = 1000;
+  let all = [];
+  let from = 0;
+  while (true) {
+    const {data,error}=await supabase.from('leads').select('*').order('created_at',{ascending:true}).range(from, from+PAGE-1);
+    if(error){console.error('dbLoadLeads:',error); return all.length ? all : null;}
+    all = all.concat(data||[]);
+    if(!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 export async function dbInsertLeads(rows) {
   if(!rows.length) return [];

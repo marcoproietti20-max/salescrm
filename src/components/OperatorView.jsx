@@ -15,6 +15,8 @@ export const ESITI_CHIAMATA = [
   { name: 'Da non richiamare',    icon: '⛔', color: '#5A6B7E', tipo: 'semplice' },
   { name: 'Già cliente',          icon: '💼', color: '#2E7D32', tipo: 'semplice' },
 ];
+// Voci "di servizio" nello storico (import, riattivazione, storico ordini) NON sono chiamate vere: vanno sempre escluse dai conteggi
+const ESITI_VALIDI = new Set(ESITI_CHIAMATA.map(e => e.name));
 
 const NAV_OP = [
   { id: 'home',     label: 'Dashboard',     icon: 'M2 2h5v5H2zm7 0h5v5H9zm-7 7h5v5H2zm7 0h5v5H9z' },
@@ -213,14 +215,14 @@ export default function OperatorView({ profile, onLogout }) {
   const liste = [...new Set(leads.map(l => l.lista).filter(Boolean))].sort();
   const categoriePresenti = CATEGORIE.filter(c => leads.some(l => l.categoria === c));
 
-  const esitiOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === today).length, 0);
+  const esitiOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => ESITI_VALIDI.has(h.esito) && (h.date || '').slice(0, 10) === today).length, 0);
   const apptOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === today && h.esito === 'Appuntamento fissato').length, 0);
 
   // ── KPI del mese ────────────────────────────────────────────
   const curMonth = today.slice(0, 7);
   const tuttiEsiti = [];
   leads.forEach(l => (l.note_storia || []).forEach(h => tuttiEsiti.push(h)));
-  const esitiMese = tuttiEsiti.filter(h => (h.date || '').slice(0, 7) === curMonth);
+  const esitiMese = tuttiEsiti.filter(h => (h.date || '').slice(0, 7) === curMonth && ESITI_VALIDI.has(h.esito));
   const chiamateMese = esitiMese.length;
   const conversazioniMese = esitiMese.filter(h => h.esito !== 'Non risponde' && h.esito !== 'Numero errato').length;
   const apptMese = esitiMese.filter(h => h.esito === 'Appuntamento fissato').length;

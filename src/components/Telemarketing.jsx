@@ -25,6 +25,8 @@ const CAMPI_LEAD = [
 ];
 
 const STATO_COLORS = { 'Da chiamare': '#0078D4', ...Object.fromEntries(ESITI_CHIAMATA.map(e => [e.name, e.color])) };
+// Voci "di servizio" nello storico (import, riattivazione, storico ordini) NON sono chiamate vere: vanno sempre escluse dai conteggi
+const ESITI_VALIDI = new Set(ESITI_CHIAMATA.map(e => e.name));
 
 export default function Telemarketing({ contacts, showToast }) {
   const [leads, setLeads] = useState([]);
@@ -260,7 +262,7 @@ export default function Telemarketing({ contacts, showToast }) {
     const ls = leads.filter(l => l.lista === nome);
     const lavorati = ls.filter(l => (l.tentativi || 0) > 0).length;
     const appt = ls.filter(l => (l.note_storia || []).some(h => h.esito === 'Appuntamento fissato')).length;
-    const risposte = ls.filter(l => (l.note_storia || []).some(h => h.esito && h.esito !== 'Non risponde' && h.esito !== 'Numero errato')).length;
+    const risposte = ls.filter(l => (l.note_storia || []).some(h => ESITI_VALIDI.has(h.esito) && h.esito !== 'Non risponde' && h.esito !== 'Numero errato')).length;
     const scarti = ls.filter(l => SCARTO_STATI.includes(l.stato)).length;
     return {
       nome, totale: ls.length, lavorati, appt,
@@ -287,7 +289,7 @@ export default function Telemarketing({ contacts, showToast }) {
   const tuttiEsitiAdmin = [];
   leads.forEach(l => (l.note_storia || []).forEach(h => tuttiEsitiAdmin.push(h)));
   const trendMensile = mesiEtichette.map(m => {
-    const esitiM = tuttiEsitiAdmin.filter(h => (h.date || '').slice(0, 7) === m);
+    const esitiM = tuttiEsitiAdmin.filter(h => (h.date || '').slice(0, 7) === m && ESITI_VALIDI.has(h.esito));
     const chiamate = esitiM.length;
     const appt = esitiM.filter(h => h.esito === 'Appuntamento fissato').length;
     const conversazioni = esitiM.filter(h => h.esito !== 'Non risponde' && h.esito !== 'Numero errato').length;
