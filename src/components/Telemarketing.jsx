@@ -29,6 +29,7 @@ export default function Telemarketing({ contacts, showToast }) {
   const [nomeLista, setNomeLista] = useState('');
   const [fonteDefault, setFonteDefault] = useState('Telemarketing Rosanna');
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(null);
   const [report, setReport] = useState(null);
   const [batches, setBatches] = useState([]);
   const fileRef = useRef();
@@ -168,11 +169,23 @@ export default function Telemarketing({ contacts, showToast }) {
       r.importati++;
     }
 
-    // Scritture
+    // Scritture — a lotti, per non superare i limiti di dimensione delle richieste
+    const BATCH_SIZE = 500;
     let insertedIds = [];
     if (toInsert.length) {
-      insertedIds = await dbInsertLeads(toInsert);
-      if (insertedIds === null) { showToast('Errore di scrittura su Supabase', 'Nessun dato importato', 'info'); setImporting(false); return; }
+      const totalBatches = Math.ceil(toInsert.length / BATCH_SIZE);
+      for (let b = 0; b < totalBatches; b++) {
+        const chunk = toInsert.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+        setImportProgress({ done: b * BATCH_SIZE, total: toInsert.length });
+        const ids = await dbInsertLeads(chunk);
+        if (ids === null) {
+          showToast('Errore di scrittura su Supabase', `Import interrotto dopo ${insertedIds.length} lead su ${toInsert.length}. I lead già scritti restano nel database — puoi annullarli dalla card "Importazioni recenti" se necessario.`, 'info');
+          setImporting(false); setImportProgress(null);
+          return;
+        }
+        insertedIds.push(...ids);
+      }
+      setImportProgress({ done: toInsert.length, total: toInsert.length });
     }
     for (const ex of riattivazioni) {
       const entry = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), date: new Date().toISOString(), esito: 'Riattivato', testo: `Ricomparso nella lista "${nomeLista.trim()}" — riattivato per ricontatto` };
@@ -188,7 +201,7 @@ export default function Telemarketing({ contacts, showToast }) {
 
     await load();
     setReport(r); setFileRows(null); setFileName('');
-    setImporting(false);
+    setImporting(false); setImportProgress(null);
     showToast('Importazione completata', `${r.importati} nuovi, ${r.riattivati} riattivati`);
   };
 
@@ -410,6 +423,14 @@ export default function Telemarketing({ contacts, showToast }) {
                 <button className="btn" onClick={() => { setFileRows(null); setFileName(''); }} disabled={importing}>Annulla</button>
                 <button className="btn btn-primary" onClick={doImport} disabled={importing}>{importing ? '⏳ Importazione...' : `Importa "${nomeLista || '...'}"`}</button>
               </div>
+              {importProgress && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ background: 'var(--bg3)', borderRadius: 8, height: 10, overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.round(importProgress.done / importProgress.total * 100)}%`, background: 'var(--accent)', height: '100%', transition: 'width .2s' }} />
+                  </div>
+                  <div className="fs-11 text-muted" style={{ marginTop: 4 }}>{importProgress.done.toLocaleString('it-IT')} / {importProgress.total.toLocaleString('it-IT')} righe scritte — non chiudere questa pagina</div>
+                </div>
+              )}
             </>
           )}
 
