@@ -47,6 +47,9 @@ export default function Telemarketing({ contacts, showToast }) {
   const [fLista, setFLista] = useState('');
   const [fCategoria, setFCategoria] = useState('');
   const [selected, setSelected] = useState(null);
+  const [checked, setChecked] = useState(new Set());
+  const [bulkProgress, setBulkProgress] = useState(null);
+  const [listaDaEliminare, setListaDaEliminare] = useState('');
   const chartRef = useRef(); const chartC = useRef();
   const trendRef = useRef(); const trendC = useRef();
   const catRef = useRef(); const catC = useRef();
@@ -391,6 +394,72 @@ export default function Telemarketing({ contacts, showToast }) {
     showToast('Lead eliminato', '', 'info');
   };
 
+  // ── Eliminazione a lotti (id in comune tra selezione manuale e "elimina lista") ──
+  const eliminaIdInBlocco = async (ids, etichetta) => {
+    if (!ids.length) return;
+    const BATCH = 200;
+    const totalBatches = Math.ceil(ids.length / BATCH);
+    for (let b = 0; b < totalBatches; b++) {
+      const chunk = ids.slice(b * BATCH, (b + 1) * BATCH);
+      setBulkProgress({ done: b * BATCH, total: ids.length });
+      const ok = await dbDeleteLeads(chunk);
+      if (!ok) {
+        showToast('Errore durante l\'eliminazione', `Interrotta dopo ${b * BATCH} lead su ${ids.length}. I lead non ancora eliminati sono al sicuro.`, 'info');
+        setBulkProgress(null);
+        await load();
+        return;
+      }
+    }
+    setBulkProgress(null);
+    const idSet = new Set(ids);
+    setLeads(prev => prev.filter(l => !idSet.has(l.id)));
+    setChecked(new Set());
+    showToast(`${ids.length} lead eliminati`, etichetta || '', 'info');
+  };
+
+  const eliminaSelezionati = async () => {
+    const ids = [...checked];
+    if (!ids.length) return;
+    if (!window.confirm(`Eliminare definitivamente ${ids.length} lead selezionati e il loro storico? L'operazione non è reversibile.`)) return;
+    await eliminaIdInBlocco(ids);
+  };
+
+  const eliminaListaIntera = async () => {
+    if (!listaDaEliminare) return;
+    const ids = leads.filter(l => l.lista === listaDaEliminare).map(l => l.id);
+    if (!ids.length) { showToast('Nessun lead in quella lista', '', 'info'); return; }
+    const conferma = window.prompt(`Stai per eliminare TUTTI i ${ids.length} lead della lista "${listaDaEliminare}", storico incluso.\n\nScrivi ELIMINA per confermare:`);
+    if (conferma !== 'ELIMINA') { showToast('Eliminazione annullata', '', 'info'); return; }
+    await eliminaIdInBlocco(ids, `lista "${listaDaEliminare}"`);
+    setListaDaEliminare('');
+  };
+
+  // ── Esportazione con storico leggibile ────────────────────────
+  const esportaLead = async (rows, nomeFile) => {
+    if (!rows.length) { showToast('Niente da esportare', '', 'info'); return; }
+    const XLSX = await import('xlsx');
+    const data = rows.map(l => ({
+      Azienda: l.azienda || '', Referente: l.nome || '',
+      Telefono: l.telefono || '', 'Telefono 2': l.telefono2 || '', 'Telefono 3': l.telefono3 || '',
+      Email: l.email || '', Categoria: l.categoria || '', Città: l.citta || '', Provincia: l.provincia || '',
+      Stato: l.stato || '', Lista: l.lista || '', Fonte: l.fonte || '',
+      Tentativi: l.tentativi || 0,
+      'Ultimo contatto': l.ultimo_contatto ? fmtDT(l.ultimo_contatto) : '',
+      'Data richiamo': l.data_richiamo || '',
+      'Ricontattabile dal': l.non_interessato_fino_a || '',
+      'Storico chiamate': (l.note_storia || []).map(h => `${h.date ? fmtDT(h.date) : ''} — ${h.esito || 'Nota'}${h.testo ? ': ' + h.testo : ''}`).join('\n'),
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = Object.keys(data[0] || {}).map(k => ({ wch: k === 'Storico chiamate' ? 60 : 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Lead');
+    XLSX.writeFile(wb, `${nomeFile}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    showToast('Esportazione completata', `${rows.length} lead in "${nomeFile}...xlsx"`);
+  };
+
+  const toggleChecked = (id) => setChecked(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleCheckedAll = () => setChecked(prev => prev.size === filtered.length ? new Set() : new Set(filtered.map(l => l.id)));
+
   const StatoBadge = ({ stato }) => (
     <span style={{ background: (STATO_COLORS[stato] || '#888') + '18', color: STATO_COLORS[stato] || '#888', border: `1px solid ${(STATO_COLORS[stato] || '#888')}55`, borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{stato}</span>
   );
@@ -596,6 +665,28 @@ export default function Telemarketing({ contacts, showToast }) {
           </div>
         )}
 
+        {/* ── STRUMENTI DI GESTIONE LISTA ── */}
+        <div className="card">
+          <div className="card-title">Gestione lista</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select className="form-control" style={{ width: 260, fontSize: 13 }} value={listaDaEliminare} onChange={e => setListaDaEliminare(e.target.value)}>
+              <option value="">— scegli una lista da eliminare —</option>
+              {liste.map(l => <option key={l} value={l}>{l} ({leads.filter(x => x.lista === l).length})</option>)}
+            </select>
+            <button className="btn" style={{ color: '#A32D2D', borderColor: '#A32D2D55' }} disabled={!listaDaEliminare} onClick={eliminaListaIntera}>🗑 Elimina l'intera lista</button>
+            <span style={{ flex: 1 }} />
+            <button className="btn" onClick={() => esportaLead(filtered, (fLista || 'lead_filtrati').replace(/[^a-z0-9]+/gi, '_'))}>⬇ Esporta i {filtered.length} lead filtrati</button>
+          </div>
+          {bulkProgress && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ background: 'var(--bg3)', borderRadius: 8, height: 10, overflow: 'hidden' }}>
+                <div style={{ width: `${Math.round(bulkProgress.done / bulkProgress.total * 100)}%`, background: '#A32D2D', height: '100%', transition: 'width .2s' }} />
+              </div>
+              <div className="fs-11 text-muted" style={{ marginTop: 4 }}>Eliminazione: {bulkProgress.done.toLocaleString('it-IT')} / {bulkProgress.total.toLocaleString('it-IT')} — non chiudere questa pagina</div>
+            </div>
+          )}
+        </div>
+
         {/* ── ELENCO LEAD ── */}
         <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-title" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -614,13 +705,27 @@ export default function Telemarketing({ contacts, showToast }) {
               {CATEGORIE.filter(c => leads.some(l => l.categoria === c)).map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+
+          {checked.size > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#A32D2D0d', border: '1px solid #A32D2D33', borderRadius: 'var(--r)', padding: '8px 12px', marginBottom: 10 }}>
+              <strong style={{ fontSize: 13 }}>{checked.size} selezionati</strong>
+              <button className="btn btn-sm" style={{ color: '#A32D2D', borderColor: '#A32D2D55' }} onClick={eliminaSelezionati}>🗑 Elimina selezionati</button>
+              <button className="btn btn-sm" onClick={() => esportaLead(filtered.filter(l => checked.has(l.id)), 'lead_selezionati')}>⬇ Esporta selezionati</button>
+              <button className="btn btn-sm" onClick={() => setChecked(new Set())}>✕ Deseleziona</button>
+            </div>
+          )}
+
           {filtered.length === 0 ? <div className="empty" style={{ padding: '14px 0' }}>Nessun lead. Importa la prima lista qui sopra. 👆</div> : (
             <div style={{ overflowX: 'auto' }}>
               <table className="crm-table" style={{ minWidth: 700 }}>
-                <thead><tr><th>Azienda / Referente</th><th>Categoria</th><th>Telefono</th><th>Lista</th><th>Stato</th><th style={{ textAlign: 'right' }}>Tent.</th><th>Ultimo contatto</th></tr></thead>
+                <thead><tr>
+                  <th style={{ width: 30 }}><input type="checkbox" checked={checked.size === filtered.length && filtered.length > 0} onChange={toggleCheckedAll} /></th>
+                  <th>Azienda / Referente</th><th>Categoria</th><th>Telefono</th><th>Lista</th><th>Stato</th><th style={{ textAlign: 'right' }}>Tent.</th><th>Ultimo contatto</th>
+                </tr></thead>
                 <tbody>
                   {filtered.map(l => (
                     <tr key={l.id} onClick={() => setSelected(l)} style={{ cursor: 'pointer' }}>
+                      <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={checked.has(l.id)} onChange={() => toggleChecked(l.id)} /></td>
                       <td><strong>{l.azienda || l.nome || '—'}</strong>{l.azienda && l.nome ? <div className="fs-11 text-muted">{l.nome}</div> : null}</td>
                       <td style={{ fontSize: 12 }}>{l.categoria || '—'}</td>
                       <td style={{ fontSize: 12 }}>{l.telefono || '—'}</td>
@@ -668,7 +773,8 @@ export default function Telemarketing({ contacts, showToast }) {
                   })}
                 </>
               )}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
+                <button className="btn" onClick={() => esportaLead([selected], (selected.azienda || selected.nome || 'lead').replace(/[^a-z0-9]+/gi, '_'))}>⬇ Esporta storico</button>
                 <button className="btn" style={{ color: '#A32D2D', borderColor: '#A32D2D55' }} onClick={() => eliminaLead(selected.id)}>🗑 Elimina lead</button>
               </div>
             </div>
