@@ -70,10 +70,10 @@ export async function dbLoadLeads() {
   return data||[];
 }
 export async function dbInsertLeads(rows) {
-  if(!rows.length) return true;
-  const {error}=await supabase.from('leads').insert(rows);
-  if(error){console.error('dbInsertLeads:',error);return false;}
-  return true;
+  if(!rows.length) return [];
+  const {data,error}=await supabase.from('leads').insert(rows).select('id');
+  if(error){console.error('dbInsertLeads:',error);return null;}
+  return data.map(r=>r.id);
 }
 export async function dbUpdateLead(id, fields) {
   const {error}=await supabase.from('leads').update(fields).eq('id',id);
