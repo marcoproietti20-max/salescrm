@@ -745,19 +745,19 @@ export default function OperatorView({ profile, onLogout }) {
                 <AgendaSettimana />
                 <div className="opv-grid2">
                   <Sezione titolo="🔄 Richiami di oggi" items={richiamiOggi} hot vuoto="Nessun richiamo fissato in scadenza 🎉" />
-                  <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" visCount={visRiconatti} setVisCount={setVisRiconatti} />
+                  <Sezione
+                    titolo="🗂 Arretrato da smaltire (dall'importazione)"
+                    items={richiamiArretratoImport}
+                    vuoto="Arretrato smaltito, ottimo lavoro 🎉"
+                    visCount={visArretrato} setVisCount={setVisArretrato}
+                    extra={
+                      <select className="opv-select" style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => setOrdinaCoda(e.target.value)}>
+                        {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                      </select>
+                    }
+                  />
                 </div>
-                <Sezione
-                  titolo="🗂 Arretrato da smaltire (dall'importazione)"
-                  items={richiamiArretratoImport}
-                  vuoto="Arretrato smaltito, ottimo lavoro 🎉"
-                  visCount={visArretrato} setVisCount={setVisArretrato}
-                  extra={
-                    <select className="opv-select" style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => setOrdinaCoda(e.target.value)}>
-                      {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-                    </select>
-                  }
-                />
+                <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} vuoto="Nessun ricontatto maturato" visCount={visRiconatti} setVisCount={setVisRiconatti} />
               </>
             ) : (
               <>
@@ -768,7 +768,6 @@ export default function OperatorView({ profile, onLogout }) {
                   </select>
                 </div>
                 <Sezione titolo="🔄 Richiami di oggi" items={richiamiOggi} hot vuoto="Nessun richiamo fissato in scadenza 🎉" visCount={visRichiami} setVisCount={setVisRichiami} />
-                <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" visCount={visRiconatti} setVisCount={setVisRiconatti} />
                 <Sezione titolo="⏳ Richiami programmati (prossimi giorni)" items={richiamiFuturi} vuoto="Nessun richiamo futuro in agenda" />
 
                 <div className="opv-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -778,6 +777,7 @@ export default function OperatorView({ profile, onLogout }) {
                   </select>
                 </div>
                 <Sezione titolo="🗂 Arretrato da smaltire (dall'importazione)" items={richiamiArretratoImport} vuoto="Arretrato smaltito, ottimo lavoro 🎉" visCount={visArretrato} setVisCount={setVisArretrato} />
+                <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} vuoto="Nessun ricontatto maturato" visCount={visRiconatti} setVisCount={setVisRiconatti} />
               </>
             )}
           </>
