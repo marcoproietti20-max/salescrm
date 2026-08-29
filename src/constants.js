@@ -12,7 +12,8 @@ export const FONTI = [
 ];
 export const CATEGORIE = [
   'Avvocato / Studio Legale','Architetto','Azienda','Caf/Patronato',
-  'Commercialista','Consulente del Lavoro','Geometra','Ingegnere','Notaio','Tributarista','Altro',
+  'Commercialista','Consulente del Lavoro','Geometra','Ingegnere','Notaio','Tributarista',
+  'Professionisti Generici / CED','Multiprofessionale','Amministratore di Condominio','Altro',
 ];
 export const ESITI = [
   { name: 'Positivo', color: '#639922' },
