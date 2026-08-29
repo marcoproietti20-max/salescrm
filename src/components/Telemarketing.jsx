@@ -136,102 +136,111 @@ export default function Telemarketing({ contacts, showToast }) {
     if (!nomeLista.trim()) { showToast('Dai un nome alla lista', '', 'info'); return; }
     if (!mapping.telefono && !mapping.email) { showToast('Mappa almeno Telefono o Email', 'Servono per la deduplica', 'info'); return; }
     setImporting(true);
+    setImportProgress({ fase: 'elaborazione', done: 0, total: fileRows.length });
 
-    // Indici esistenti
-    const leadByPhone = {}, leadByEmail = {};
-    leads.forEach(l => {
-      if (l.telefono_norm) leadByPhone[l.telefono_norm] = l;
-      if (l.email) leadByEmail[l.email.toLowerCase()] = l;
-    });
-    const contactPhones = new Set(), contactEmails = new Set();
-    (contacts || []).forEach(c => {
-      const p = normPhone(c.telefono); if (p) contactPhones.add(p);
-      if (c.email) contactEmails.add(c.email.toLowerCase());
-    });
-
-    const r = { totale: fileRows.length, importati: 0, riattivati: 0, giaLavorati: 0, inLavorazione: 0, appFissati: 0, giaClienti: 0, giaContatti: 0, dupFile: 0, senzaRecapiti: 0 };
-    const toInsert = [];
-    const seenPhone = new Set(), seenEmail = new Set();
-    const riattivazioni = [];
-
-    for (const row of fileRows) {
-      const tel = g(row, 'telefono'); const telN = normPhone(tel);
-      const em = g(row, 'email').toLowerCase();
-      if (!telN && !em) { r.senzaRecapiti++; continue; }
-      // Duplicati interni al file
-      if ((telN && seenPhone.has(telN)) || (em && seenEmail.has(em))) { r.dupFile++; continue; }
-      if (telN) seenPhone.add(telN); if (em) seenEmail.add(em);
-      // Match con contatti CRM
-      if ((telN && contactPhones.has(telN)) || (em && contactEmails.has(em))) { r.giaContatti++; continue; }
-      // Match con lead esistenti
-      const ex = (telN && leadByPhone[telN]) || (em && leadByEmail[em]) || null;
-      if (ex) {
-        if (ex.stato === 'Non interessato') {
-          if (ex.non_interessato_fino_a && ex.non_interessato_fino_a <= today) {
-            riattivazioni.push(ex); r.riattivati++;
-          } else r.giaLavorati++;
-        }
-        else if (ex.stato === 'Numero errato' || ex.stato === 'Da non richiamare') r.giaLavorati++;
-        else if (ex.stato === 'Già cliente') r.giaClienti++;
-        else if (ex.stato === 'Appuntamento fissato') r.appFissati++;
-        else r.inLavorazione++;
-        continue;
-      }
-      // Nuovo lead
-      const statoFile = g(row, 'stato');
-      const statoFinale = VALID_STATI.has(statoFile) ? statoFile : 'Da chiamare';
-      const tentativiFile = parseInt(g(row, 'tentativi'), 10);
-      const oggiIso = new Date().toISOString();
-      toInsert.push({
-        nome: g(row, 'nome') || null, azienda: g(row, 'azienda') || null,
-        telefono: tel || null, telefono_norm: telN || null,
-        telefono2: g(row, 'telefono2') || null, telefono3: g(row, 'telefono3') || null,
-        email: em || null,
-        categoria: g(row, 'categoria') || null, citta: g(row, 'citta') || null, provincia: g(row, 'provincia') || null,
-        stato: statoFinale, lista: nomeLista.trim(), fonte: fonteDefault,
-        tentativi: Number.isFinite(tentativiFile) ? tentativiFile : 0,
-        data_richiamo: statoFinale === 'Richiamare' ? (parseDataSicura(g(row, 'data_richiamo')) || null) : null,
-        non_interessato_fino_a: statoFinale === 'Non interessato' ? (parseDataSicura(g(row, 'non_interessato_fino_a')) || null) : null,
-        ultimo_contatto: parseDataSicura(g(row, 'ultimo_contatto')) || null,
-        note_storia: parseStorico(g(row, 'note_storia'), statoFinale, oggiIso),
+    try {
+      // Indici esistenti
+      const leadByPhone = {}, leadByEmail = {};
+      leads.forEach(l => {
+        if (l.telefono_norm) leadByPhone[l.telefono_norm] = l;
+        if (l.email) leadByEmail[l.email.toLowerCase()] = l;
       });
-      r.importati++;
-    }
+      const contactPhones = new Set(), contactEmails = new Set();
+      (contacts || []).forEach(c => {
+        const p = normPhone(c.telefono); if (p) contactPhones.add(p);
+        if (c.email) contactEmails.add(c.email.toLowerCase());
+      });
 
-    // Scritture — a lotti, per non superare i limiti di dimensione delle richieste
-    const BATCH_SIZE = 500;
-    let insertedIds = [];
-    if (toInsert.length) {
-      const totalBatches = Math.ceil(toInsert.length / BATCH_SIZE);
-      for (let b = 0; b < totalBatches; b++) {
-        const chunk = toInsert.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
-        setImportProgress({ done: b * BATCH_SIZE, total: toInsert.length });
-        const ids = await dbInsertLeads(chunk);
-        if (ids === null) {
-          showToast('Errore di scrittura su Supabase', `Import interrotto dopo ${insertedIds.length} lead su ${toInsert.length}. I lead già scritti restano nel database — puoi annullarli dalla card "Importazioni recenti" se necessario.`, 'info');
-          setImporting(false); setImportProgress(null);
-          return;
+      const r = { totale: fileRows.length, importati: 0, riattivati: 0, giaLavorati: 0, inLavorazione: 0, appFissati: 0, giaClienti: 0, giaContatti: 0, dupFile: 0, senzaRecapiti: 0 };
+      const toInsert = [];
+      const seenPhone = new Set(), seenEmail = new Set();
+      const riattivazioni = [];
+
+      // Elaborazione a blocchi: lascia respirare il browser ogni 1000 righe, così l'interfaccia resta viva e la barra avanza davvero
+      const CHUNK = 1000;
+      for (let start = 0; start < fileRows.length; start += CHUNK) {
+        const slice = fileRows.slice(start, start + CHUNK);
+        for (const row of slice) {
+          const tel = g(row, 'telefono'); const telN = normPhone(tel);
+          const em = g(row, 'email').toLowerCase();
+          if (!telN && !em) { r.senzaRecapiti++; continue; }
+          if ((telN && seenPhone.has(telN)) || (em && seenEmail.has(em))) { r.dupFile++; continue; }
+          if (telN) seenPhone.add(telN); if (em) seenEmail.add(em);
+          if ((telN && contactPhones.has(telN)) || (em && contactEmails.has(em))) { r.giaContatti++; continue; }
+          const ex = (telN && leadByPhone[telN]) || (em && leadByEmail[em]) || null;
+          if (ex) {
+            if (ex.stato === 'Non interessato') {
+              if (ex.non_interessato_fino_a && ex.non_interessato_fino_a <= today) { riattivazioni.push(ex); r.riattivati++; }
+              else r.giaLavorati++;
+            }
+            else if (ex.stato === 'Numero errato' || ex.stato === 'Da non richiamare') r.giaLavorati++;
+            else if (ex.stato === 'Già cliente') r.giaClienti++;
+            else if (ex.stato === 'Appuntamento fissato') r.appFissati++;
+            else r.inLavorazione++;
+            continue;
+          }
+          const statoFile = g(row, 'stato');
+          const statoFinale = VALID_STATI.has(statoFile) ? statoFile : 'Da chiamare';
+          const tentativiFile = parseInt(g(row, 'tentativi'), 10);
+          const oggiIso = new Date().toISOString();
+          toInsert.push({
+            nome: g(row, 'nome') || null, azienda: g(row, 'azienda') || null,
+            telefono: tel || null, telefono_norm: telN || null,
+            telefono2: g(row, 'telefono2') || null, telefono3: g(row, 'telefono3') || null,
+            email: em || null,
+            categoria: g(row, 'categoria') || null, citta: g(row, 'citta') || null, provincia: g(row, 'provincia') || null,
+            stato: statoFinale, lista: nomeLista.trim(), fonte: fonteDefault,
+            tentativi: Number.isFinite(tentativiFile) ? tentativiFile : 0,
+            data_richiamo: statoFinale === 'Richiamare' ? (parseDataSicura(g(row, 'data_richiamo')) || null) : null,
+            non_interessato_fino_a: statoFinale === 'Non interessato' ? (parseDataSicura(g(row, 'non_interessato_fino_a')) || null) : null,
+            ultimo_contatto: parseDataSicura(g(row, 'ultimo_contatto')) || null,
+            note_storia: parseStorico(g(row, 'note_storia'), statoFinale, oggiIso),
+          });
+          r.importati++;
         }
-        insertedIds.push(...ids);
+        setImportProgress({ fase: 'elaborazione', done: Math.min(start + CHUNK, fileRows.length), total: fileRows.length });
+        await new Promise(resolve => setTimeout(resolve, 0)); // cede il controllo al browser tra un blocco e l'altro
       }
-      setImportProgress({ done: toInsert.length, total: toInsert.length });
-    }
-    for (const ex of riattivazioni) {
-      const entry = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), date: new Date().toISOString(), esito: 'Riattivato', testo: `Ricomparso nella lista "${nomeLista.trim()}" — riattivato per ricontatto` };
-      await dbUpdateLead(ex.id, { stato: 'Da chiamare', non_interessato_fino_a: null, note_storia: [...(ex.note_storia || []), entry] });
-    }
 
-    // Registro il lotto per un eventuale annullamento (solo i lead NUOVI, non le riattivazioni)
-    if (insertedIds.length) {
-      await dbCreateImportBatch(nomeLista.trim(), insertedIds);
-      const b = await dbLoadImportBatches();
-      setBatches(b || []);
-    }
+      // Scritture — a lotti, per non superare i limiti di dimensione delle richieste
+      const BATCH_SIZE = 500;
+      let insertedIds = [];
+      if (toInsert.length) {
+        const totalBatches = Math.ceil(toInsert.length / BATCH_SIZE);
+        for (let b = 0; b < totalBatches; b++) {
+          const chunk = toInsert.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+          setImportProgress({ fase: 'scrittura', done: b * BATCH_SIZE, total: toInsert.length });
+          const ids = await dbInsertLeads(chunk);
+          if (ids === null) {
+            showToast('Errore di scrittura su Supabase', `Import interrotto dopo ${insertedIds.length} lead su ${toInsert.length}. I lead già scritti restano nel database — puoi annullarli dalla card "Importazioni recenti" se necessario.`, 'info');
+            setImporting(false); setImportProgress(null);
+            return;
+          }
+          insertedIds.push(...ids);
+        }
+        setImportProgress({ fase: 'scrittura', done: toInsert.length, total: toInsert.length });
+      }
+      for (const ex of riattivazioni) {
+        const entry = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), date: new Date().toISOString(), esito: 'Riattivato', testo: `Ricomparso nella lista "${nomeLista.trim()}" — riattivato per ricontatto` };
+        await dbUpdateLead(ex.id, { stato: 'Da chiamare', non_interessato_fino_a: null, note_storia: [...(ex.note_storia || []), entry] });
+      }
 
-    await load();
-    setReport(r); setFileRows(null); setFileName('');
-    setImporting(false); setImportProgress(null);
-    showToast('Importazione completata', `${r.importati} nuovi, ${r.riattivati} riattivati`);
+      // Registro il lotto per un eventuale annullamento (solo i lead NUOVI, non le riattivazioni)
+      if (insertedIds.length) {
+        await dbCreateImportBatch(nomeLista.trim(), insertedIds);
+        const b = await dbLoadImportBatches();
+        setBatches(b || []);
+      }
+
+      await load();
+      setReport(r); setFileRows(null); setFileName('');
+      setImporting(false); setImportProgress(null);
+      showToast('Importazione completata', `${r.importati} nuovi, ${r.riattivati} riattivati`);
+    } catch (err) {
+      console.error('Errore import:', err);
+      showToast('Errore imprevisto durante l\'importazione', err?.message || 'Controlla la console (F12) per il dettaglio tecnico', 'info');
+      setImporting(false); setImportProgress(null);
+    }
   };
 
   const annullaImport = async (batch) => {
@@ -469,7 +478,10 @@ export default function Telemarketing({ contacts, showToast }) {
                   <div style={{ background: 'var(--bg3)', borderRadius: 8, height: 10, overflow: 'hidden' }}>
                     <div style={{ width: `${Math.round(importProgress.done / importProgress.total * 100)}%`, background: 'var(--accent)', height: '100%', transition: 'width .2s' }} />
                   </div>
-                  <div className="fs-11 text-muted" style={{ marginTop: 4 }}>{importProgress.done.toLocaleString('it-IT')} / {importProgress.total.toLocaleString('it-IT')} righe scritte — non chiudere questa pagina</div>
+                  <div className="fs-11 text-muted" style={{ marginTop: 4 }}>
+                    {importProgress.fase === 'elaborazione' ? '🔎 Analisi e deduplica: ' : '💾 Scrittura su database: '}
+                    {importProgress.done.toLocaleString('it-IT')} / {importProgress.total.toLocaleString('it-IT')} — non chiudere questa pagina
+                  </div>
                 </div>
               )}
             </>
