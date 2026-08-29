@@ -178,6 +178,8 @@ export default function OperatorView({ profile, onLogout }) {
   const [ultimaAzione, setUltimaAzione] = useState(null); // per "Annulla ultima registrazione"
   const [visCoda, setVisCoda] = useState(50);
   const [visRichiami, setVisRichiami] = useState(50);
+  const [visRiconatti, setVisRiconatti] = useState(50);
+  const [visArretrato, setVisArretrato] = useState(50);
   const [visArchivio, setVisArchivio] = useState(50);
   const chartRef = useRef(); const chartC = useRef();
   const esitiChartRef = useRef(); const esitiChartC = useRef();
@@ -740,22 +742,22 @@ export default function OperatorView({ profile, onLogout }) {
             <Filtri />
             {richiamiView === 'cal' ? (
               <>
+                <AgendaSettimana />
                 <div className="opv-grid2">
                   <Sezione titolo="🔄 Richiami di oggi" items={richiamiOggi} hot vuoto="Nessun richiamo fissato in scadenza 🎉" />
-                  <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" />
+                  <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" visCount={visRiconatti} setVisCount={setVisRiconatti} />
                 </div>
-                <AgendaSettimana />
-                <div className="opv-card">
-                  <div className="opv-card-title">
-                    🗂 Arretrato da smaltire (dall'importazione) <span style={{ color: '#0078D4' }}>({richiamiArretratoImport.length})</span>
+                <Sezione
+                  titolo="🗂 Arretrato da smaltire (dall'importazione)"
+                  items={richiamiArretratoImport}
+                  vuoto="Arretrato smaltito, ottimo lavoro 🎉"
+                  visCount={visArretrato} setVisCount={setVisArretrato}
+                  extra={
                     <select className="opv-select" style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => setOrdinaCoda(e.target.value)}>
                       {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
-                  </div>
-                  <p className="fs-11" style={{ color: '#8A97A6', marginBottom: 10 }}>Questi lead avevano già chiesto un richiamo prima che il sistema esistesse: la data non è precisa, ma lo storico sì — dagli un'occhiata prima di chiamare. Non hanno una scadenza: lavorali quando hai tempo, senza fretta.</p>
-                  {richiamiArretratoImport.length === 0 ? <div className="opv-empty">Arretrato smaltito, ottimo lavoro 🎉</div> : richiamiArretratoImport.slice(0, 20).map(l => <Riga key={l.id} l={l} coda={richiamiArretratoImport} />)}
-                  {richiamiArretratoImport.length > 20 && <div className="fs-11" style={{ textAlign: 'center', color: '#8A97A6', marginTop: 6 }}>Altri {richiamiArretratoImport.length - 20} in coda — passa alla vista Lista per vederli tutti</div>}
-                </div>
+                  }
+                />
               </>
             ) : (
               <>
@@ -766,7 +768,7 @@ export default function OperatorView({ profile, onLogout }) {
                   </select>
                 </div>
                 <Sezione titolo="🔄 Richiami di oggi" items={richiamiOggi} hot vuoto="Nessun richiamo fissato in scadenza 🎉" visCount={visRichiami} setVisCount={setVisRichiami} />
-                <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" />
+                <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" visCount={visRiconatti} setVisCount={setVisRiconatti} />
                 <Sezione titolo="⏳ Richiami programmati (prossimi giorni)" items={richiamiFuturi} vuoto="Nessun richiamo futuro in agenda" />
 
                 <div className="opv-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -775,7 +777,7 @@ export default function OperatorView({ profile, onLogout }) {
                     {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                   </select>
                 </div>
-                <Sezione titolo="🗂 Arretrato da smaltire (dall'importazione)" items={richiamiArretratoImport} vuoto="Arretrato smaltito, ottimo lavoro 🎉" visCount={visRichiami} setVisCount={setVisRichiami} />
+                <Sezione titolo="🗂 Arretrato da smaltire (dall'importazione)" items={richiamiArretratoImport} vuoto="Arretrato smaltito, ottimo lavoro 🎉" visCount={visArretrato} setVisCount={setVisArretrato} />
               </>
             )}
           </>
