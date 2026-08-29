@@ -15,6 +15,13 @@ const CAMPI_LEAD = [
   { key: 'categoria', label: 'Categoria',        kw: ['categoria', 'tipolog', 'professione', 'attivit'] },
   { key: 'citta',     label: 'Città',            kw: ['citt', 'comune', 'localit', 'city'] },
   { key: 'provincia', label: 'Provincia',        kw: ['prov', 'pr.'] },
+  // Campi avanzati — solo per file già lavorati (storico, esiti). Lasciali vuoti per una lista grezza mai chiamata.
+  { key: 'stato',        label: 'Stato (avanzato)',            kw: ['stato'], avanzato: true },
+  { key: 'tentativi',    label: 'Tentativi (avanzato)',         kw: ['tentativi'], avanzato: true },
+  { key: 'data_richiamo', label: 'Data richiamo (avanzato)',    kw: ['data_richiamo', 'data richiamo'], avanzato: true },
+  { key: 'non_interessato_fino_a', label: 'Ricontattabile dal (avanzato)', kw: ['non_interessato', 'ricontattabile'], avanzato: true },
+  { key: 'ultimo_contatto', label: 'Ultimo contatto (avanzato)', kw: ['ultimo_contatto', 'ultimo contatto'], avanzato: true },
+  { key: 'note_storia',  label: 'Storico chiamate (avanzato)',  kw: ['note_storia', 'storico'], avanzato: true },
 ];
 
 const STATO_COLORS = { 'Da chiamare': '#0078D4', ...Object.fromEntries(ESITI_CHIAMATA.map(e => [e.name, e.color])) };
@@ -109,13 +116,26 @@ export default function Telemarketing({ contacts, showToast }) {
   };
 
   // ── Import con deduplica ───────────────────────────────────
+  const g = (row, key) => mapping[key] ? String(row[mapping[key]] ?? '').trim() : '';
+
+  const VALID_STATI = new Set(['Da chiamare', ...ESITI_CHIAMATA.map(e => e.name)]);
+  const parseDataSicura = (v) => (/^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 16) : null);
+  const parseStorico = (v, fallbackStato, oggi) => {
+    if (v) {
+      try {
+        const parsed = JSON.parse(v);
+        if (Array.isArray(parsed)) return parsed;
+      } catch { /* non era JSON valido: lo trattiamo come nota unica sotto */ }
+      return [{ id: 'imp-' + Math.random().toString(36).slice(2, 8), date: oggi, esito: 'Import', testo: String(v) }];
+    }
+    return [];
+  };
+
   const doImport = async () => {
     if (!fileRows || importing) return;
     if (!nomeLista.trim()) { showToast('Dai un nome alla lista', '', 'info'); return; }
     if (!mapping.telefono && !mapping.email) { showToast('Mappa almeno Telefono o Email', 'Servono per la deduplica', 'info'); return; }
     setImporting(true);
-
-    const g = (row, key) => mapping[key] ? String(row[mapping[key]] ?? '').trim() : '';
 
     // Indici esistenti
     const leadByPhone = {}, leadByEmail = {};
@@ -158,13 +178,22 @@ export default function Telemarketing({ contacts, showToast }) {
         continue;
       }
       // Nuovo lead
+      const statoFile = g(row, 'stato');
+      const statoFinale = VALID_STATI.has(statoFile) ? statoFile : 'Da chiamare';
+      const tentativiFile = parseInt(g(row, 'tentativi'), 10);
+      const oggiIso = new Date().toISOString();
       toInsert.push({
         nome: g(row, 'nome') || null, azienda: g(row, 'azienda') || null,
         telefono: tel || null, telefono_norm: telN || null,
         telefono2: g(row, 'telefono2') || null, telefono3: g(row, 'telefono3') || null,
         email: em || null,
         categoria: g(row, 'categoria') || null, citta: g(row, 'citta') || null, provincia: g(row, 'provincia') || null,
-        stato: 'Da chiamare', lista: nomeLista.trim(), fonte: fonteDefault, note_storia: [],
+        stato: statoFinale, lista: nomeLista.trim(), fonte: fonteDefault,
+        tentativi: Number.isFinite(tentativiFile) ? tentativiFile : 0,
+        data_richiamo: statoFinale === 'Richiamare' ? (parseDataSicura(g(row, 'data_richiamo')) || null) : null,
+        non_interessato_fino_a: statoFinale === 'Non interessato' ? (parseDataSicura(g(row, 'non_interessato_fino_a')) || null) : null,
+        ultimo_contatto: parseDataSicura(g(row, 'ultimo_contatto')) || null,
+        note_storia: parseStorico(g(row, 'note_storia'), statoFinale, oggiIso),
       });
       r.importati++;
     }
@@ -395,10 +424,22 @@ export default function Telemarketing({ contacts, showToast }) {
                 )}
                 <button className="btn btn-sm" onClick={salvaTemplate}>💾 Salva come template</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 10, marginBottom: 14 }}>
-                {CAMPI_LEAD.map(f => (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 10, marginBottom: 6 }}>
+                {CAMPI_LEAD.filter(f => !f.avanzato).map(f => (
                   <div key={f.key} className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">{f.label}{(f.key === 'telefono') ? ' ★' : ''}</label>
+                    <select className="form-control" value={mapping[f.key] || ''} onChange={e => setMapping(m => ({ ...m, [f.key]: e.target.value || undefined }))}>
+                      <option value="">— ignora —</option>
+                      {Object.keys(fileRows[0]).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <div className="fs-11 text-muted" style={{ margin: '10px 0 6px' }}>Campi avanzati — mappali solo se il file contiene già uno storico di chiamate (lascia vuoti per una lista mai lavorata prima)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 10, marginBottom: 14, opacity: .85 }}>
+                {CAMPI_LEAD.filter(f => f.avanzato).map(f => (
+                  <div key={f.key} className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">{f.label}</label>
                     <select className="form-control" value={mapping[f.key] || ''} onChange={e => setMapping(m => ({ ...m, [f.key]: e.target.value || undefined }))}>
                       <option value="">— ignora —</option>
                       {Object.keys(fileRows[0]).map(c => <option key={c} value={c}>{c}</option>)}
