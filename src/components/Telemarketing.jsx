@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chart, ArcElement, DoughnutController, LineController, LineElement, PointElement, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import { FONTI, CATEGORIE, fmtDT } from '../constants';
-import { dbLoadLeads, dbInsertLeads, dbUpdateLead, dbDeleteLeads, normPhone, supabase } from '../supabase';
+import { dbLoadLeads, dbInsertLeads, dbUpdateLead, dbDeleteLeads, normPhone, supabase, dbLoadImportBatches, dbCreateImportBatch, dbUndoImportBatch } from '../supabase';
 import { ESITI_CHIAMATA } from './OperatorView';
 Chart.register(ArcElement, DoughnutController, LineController, LineElement, PointElement, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -9,6 +9,8 @@ const CAMPI_LEAD = [
   { key: 'azienda',   label: 'Azienda / Studio', kw: ['azienda', 'ragione', 'studio', 'denominaz', 'societ', 'ditta'] },
   { key: 'nome',      label: 'Referente',        kw: ['referente', 'nome', 'contatto', 'titolare'] },
   { key: 'telefono',  label: 'Telefono',         kw: ['tel', 'cell', 'phone'] },
+  { key: 'telefono2', label: 'Telefono 2',       kw: ['telefono2', 'telefono 2', 'tel2', 'tel 2', 'cellulare'] },
+  { key: 'telefono3', label: 'Telefono 3',       kw: ['telefono3', 'telefono 3', 'tel3', 'tel 3'] },
   { key: 'email',     label: 'Email',            kw: ['mail', 'pec'] },
   { key: 'categoria', label: 'Categoria',        kw: ['categoria', 'tipolog', 'professione', 'attivit'] },
   { key: 'citta',     label: 'Città',            kw: ['citt', 'comune', 'localit', 'city'] },
@@ -28,6 +30,7 @@ export default function Telemarketing({ contacts, showToast }) {
   const [fonteDefault, setFonteDefault] = useState('Telemarketing Rosanna');
   const [importing, setImporting] = useState(false);
   const [report, setReport] = useState(null);
+  const [batches, setBatches] = useState([]);
   const fileRef = useRef();
   // Vista lead
   const [fStato, setFStato] = useState('');
@@ -48,6 +51,10 @@ export default function Telemarketing({ contacts, showToast }) {
     setLeads(data || []); setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    dbLoadImportBatches().then(b => setBatches(b || []));
+  }, []);
 
   useEffect(() => {
     supabase.rpc('get_appuntamenti_stats').then(({ data, error }) => {
@@ -152,7 +159,9 @@ export default function Telemarketing({ contacts, showToast }) {
       // Nuovo lead
       toInsert.push({
         nome: g(row, 'nome') || null, azienda: g(row, 'azienda') || null,
-        telefono: tel || null, telefono_norm: telN || null, email: em || null,
+        telefono: tel || null, telefono_norm: telN || null,
+        telefono2: g(row, 'telefono2') || null, telefono3: g(row, 'telefono3') || null,
+        email: em || null,
         categoria: g(row, 'categoria') || null, citta: g(row, 'citta') || null, provincia: g(row, 'provincia') || null,
         stato: 'Da chiamare', lista: nomeLista.trim(), fonte: fonteDefault, note_storia: [],
       });
@@ -160,19 +169,37 @@ export default function Telemarketing({ contacts, showToast }) {
     }
 
     // Scritture
+    let insertedIds = [];
     if (toInsert.length) {
-      const ok = await dbInsertLeads(toInsert);
-      if (!ok) { showToast('Errore di scrittura su Supabase', 'Nessun dato importato', 'info'); setImporting(false); return; }
+      insertedIds = await dbInsertLeads(toInsert);
+      if (insertedIds === null) { showToast('Errore di scrittura su Supabase', 'Nessun dato importato', 'info'); setImporting(false); return; }
     }
     for (const ex of riattivazioni) {
       const entry = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), date: new Date().toISOString(), esito: 'Riattivato', testo: `Ricomparso nella lista "${nomeLista.trim()}" — riattivato per ricontatto` };
       await dbUpdateLead(ex.id, { stato: 'Da chiamare', non_interessato_fino_a: null, note_storia: [...(ex.note_storia || []), entry] });
     }
 
+    // Registro il lotto per un eventuale annullamento (solo i lead NUOVI, non le riattivazioni)
+    if (insertedIds.length) {
+      await dbCreateImportBatch(nomeLista.trim(), insertedIds);
+      const b = await dbLoadImportBatches();
+      setBatches(b || []);
+    }
+
     await load();
     setReport(r); setFileRows(null); setFileName('');
     setImporting(false);
     showToast('Importazione completata', `${r.importati} nuovi, ${r.riattivati} riattivati`);
+  };
+
+  const annullaImport = async (batch) => {
+    if (!window.confirm(`Annullare l'importazione "${batch.lista}"? Verranno eliminati ${batch.count} lead appena importati (le riattivazioni di lead già esistenti non vengono toccate).`)) return;
+    const ok = await dbUndoImportBatch(batch);
+    if (!ok) { showToast('Errore durante l\'annullamento', '', 'info'); return; }
+    await load();
+    const b = await dbLoadImportBatches();
+    setBatches(b || []);
+    showToast('Importazione annullata', `${batch.count} lead rimossi`, 'info');
   };
 
   // ── Report di resa per lista (arricchito) ──────────────────
@@ -400,6 +427,23 @@ export default function Telemarketing({ contacts, showToast }) {
             </div>
           )}
         </div>
+
+        {/* ── IMPORTAZIONI RECENTI (annullabili) ── */}
+        {batches.length > 0 && (
+          <div className="card">
+            <div className="card-title">Importazioni recenti</div>
+            <p className="text-muted fs-12" style={{ marginBottom: 10 }}>Se un'importazione contiene errori, puoi annullarla: verranno eliminati solo i lead nuovi creati in quel lotto (le riattivazioni di lead già esistenti non vengono toccate).</p>
+            {batches.slice(0, 5).map(b => (
+              <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 13 }}>
+                  <strong>{b.lista}</strong> — {b.count} lead
+                  <span className="text-muted" style={{ marginLeft: 8 }}>{fmtDT(b.created_at)}</span>
+                </div>
+                <button className="btn btn-sm" style={{ color: '#A32D2D', borderColor: '#A32D2D55' }} onClick={() => annullaImport(b)}>Annulla</button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* ── ANDAMENTO MENSILE ── */}
         {haStoricoMensile && (
