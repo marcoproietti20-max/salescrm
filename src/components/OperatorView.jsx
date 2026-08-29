@@ -119,6 +119,12 @@ const CSS = `
   .opv-table td { padding: 10px; border-bottom: 1px solid #EEF2F6; vertical-align: middle; }
   .opv-table tbody tr { cursor: pointer; }
   .opv-table tbody tr:hover { background: #F3F8FD; }
+  .opv-sessionbadge { background: #1B7A3E15; color: #1B7A3E; font-weight: 700; font-size: 12px; padding: 4px 12px; border-radius: 20px; white-space: nowrap; }
+  .opv-notachip { border: 1.5px solid #D4DEE9; background: white; border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; color: #33475B; cursor: pointer; font-family: inherit; }
+  .opv-notachip:hover { border-color: ${BLU}; color: ${BLU}; }
+  .opv-undobar { display: flex; align-items: center; gap: 10px; background: #33475B; color: white; border-radius: 10px; padding: 8px 14px; margin-bottom: 14px; font-size: 13px; }
+  .opv-undobtn { background: rgba(255,255,255,.18); color: white; border: 1px solid rgba(255,255,255,.4); border-radius: 8px; padding: 5px 12px; font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .opv-undobtn:hover { background: rgba(255,255,255,.3); }
   .opv-toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); color: white; border-radius: 12px; padding: 12px 24px; font-size: 15px; font-weight: 700; z-index: 100; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
   .opv-burger { display: none; position: fixed; top: 12px; left: 12px; z-index: 55; background: ${BLU}; color: white; border: none; border-radius: 10px; width: 40px; height: 40px; font-size: 18px; cursor: pointer; }
   .opv-overlay { display: none; }
@@ -164,6 +170,15 @@ export default function OperatorView({ profile, onLogout }) {
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
   const [apptStats, setApptStats] = useState(null); // null = non ancora caricato, [] = errore/vuoto
+  const [ordinaCoda, setOrdinaCoda] = useState('tentativi_asc');
+  const [ordinaRichiami, setOrdinaRichiami] = useState('data_richiamo_asc');
+  const [codaCorrente, setCodaCorrente] = useState(null); // snapshot degli id per "Prossimo →"
+  const [codaIndice, setCodaIndice] = useState(0);
+  const [sessionCount, setSessionCount] = useState(0);
+  const [ultimaAzione, setUltimaAzione] = useState(null); // per "Annulla ultima registrazione"
+  const [visCoda, setVisCoda] = useState(50);
+  const [visRichiami, setVisRichiami] = useState(50);
+  const [visArchivio, setVisArchivio] = useState(50);
   const chartRef = useRef(); const chartC = useRef();
   const esitiChartRef = useRef(); const esitiChartC = useRef();
   const catChartRef = useRef(); const catChartC = useRef();
@@ -206,11 +221,44 @@ export default function OperatorView({ profile, onLogout }) {
   };
 
   const byRichiamo = (a, b) => (a.data_richiamo || '').localeCompare(b.data_richiamo || '');
-  const richiamiOggi = leads.filter(l => l.stato === 'Richiamare' && l.data_richiamo && l.data_richiamo <= today && matchFiltri(l)).sort(byRichiamo);
+
+  // Ordinamento configurabile: chi ha meno tentativi, chi aspetta da più tempo, alfabetico, o l'ordine di caricamento
+  const applicaOrdine = (arr, criterio) => {
+    const out = [...arr];
+    switch (criterio) {
+      case 'tentativi_asc': return out.sort((a, b) => (a.tentativi || 0) - (b.tentativi || 0));
+      case 'tentativi_desc': return out.sort((a, b) => (b.tentativi || 0) - (a.tentativi || 0));
+      case 'contatto_vecchio': return out.sort((a, b) => (a.ultimo_contatto || '').localeCompare(b.ultimo_contatto || '') || (a.ultimo_contatto ? 0 : -1));
+      case 'contatto_recente': return out.sort((a, b) => (b.ultimo_contatto || '').localeCompare(a.ultimo_contatto || ''));
+      case 'azienda_az': return out.sort((a, b) => (a.azienda || a.nome || '').localeCompare(b.azienda || b.nome || ''));
+      case 'data_richiamo_asc': return out.sort(byRichiamo);
+      default: return out; // ordine di caricamento
+    }
+  };
+
+  // "richiamo_fissato_da" distingue un richiamo vero (fissato al telefono da te, data precisa)
+  // da un richiamo di massa recuperato dall'importazione (data non significativa, solo un arretrato da smaltire)
+  const richiamiOggi = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo && l.data_richiamo <= today && matchFiltri(l)), ordinaRichiami);
+  const richiamiArretratoImport = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da === 'import' && matchFiltri(l)), ordinaCoda);
   const riconatti = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today && matchFiltri(l));
-  const daChiamare = leads.filter(l => (l.stato === 'Da chiamare' || l.stato === 'Non risponde') && matchFiltri(l));
-  const richiamiFuturi = leads.filter(l => l.stato === 'Richiamare' && (!l.data_richiamo || l.data_richiamo > today) && matchFiltri(l)).sort(byRichiamo);
-  const nRichiamiBadge = leads.filter(l => (l.stato === 'Richiamare' && l.data_richiamo && l.data_richiamo <= today) || (l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today)).length;
+  const daChiamare = applicaOrdine(leads.filter(l => (l.stato === 'Da chiamare' || l.stato === 'Non risponde') && matchFiltri(l)), ordinaCoda);
+  const richiamiFuturi = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && (!l.data_richiamo || l.data_richiamo > today) && matchFiltri(l)), ordinaRichiami);
+  const nRichiamiBadge = leads.filter(l => (l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo && l.data_richiamo <= today) || (l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today)).length;
+
+  const OPZIONI_ORDINE_CODA = [
+    { v: 'tentativi_asc', l: '↑ Meno tentativi prima' },
+    { v: 'tentativi_desc', l: '↓ Più tentativi prima' },
+    { v: 'contatto_vecchio', l: 'Contattati da più tempo' },
+    { v: 'contatto_recente', l: 'Contattati di recente' },
+    { v: 'azienda_az', l: 'Azienda A-Z' },
+    { v: 'default', l: 'Ordine di caricamento' },
+  ];
+  const OPZIONI_ORDINE_RICHIAMI = [
+    { v: 'data_richiamo_asc', l: 'Data richiamo (prima le scadenze vicine)' },
+    { v: 'tentativi_asc', l: '↑ Meno tentativi prima' },
+    { v: 'azienda_az', l: 'Azienda A-Z' },
+    { v: 'default', l: 'Ordine di caricamento' },
+  ];
 
   const liste = [...new Set(leads.map(l => l.lista).filter(Boolean))].sort();
   const categoriePresenti = CATEGORIE.filter(c => leads.some(l => l.categoria === c));
@@ -313,16 +361,25 @@ export default function OperatorView({ profile, onLogout }) {
   }, [pageOp, apptStats]);
 
   // ── Registrazione esito ────────────────────────────────────
-  const apriLead = (l, t = 'esito') => { setSelected(l); setEsitoOpen(null); setTab(t); };
+  // apriLead: se richiamato da una riga di una coda (coda=array), memorizza la coda per il pulsante "Prossimo →"
+  const apriLead = (l, t = 'esito', coda = null) => {
+    setSelected(l); setEsitoOpen(null); setTab(t);
+    if (coda) { setCodaCorrente(coda.map(x => x.id)); setCodaIndice(coda.findIndex(x => x.id === l.id)); }
+    else { setCodaCorrente(null); setCodaIndice(0); }
+  };
   const apriEsito = (esito) => { setEsitoOpen(esito); setNota(''); setDataRichiamo(''); setRicontatto('6m'); };
 
-  const registraEsito = async () => {
+  const NOTE_RAPIDE = ['Non disponibile al momento', 'Richiamare dopo pranzo', 'Numero non più attivo', 'Chiedere del titolare', 'Segreteria, non ha voluto passare la chiamata'];
+
+  const registraEsito = async (vaiAlProssimoDopo) => {
     if (!selected || !esitoOpen || saving) return;
     const e = esitoOpen;
     if (e.tipo === 'richiamo' && !dataRichiamo) { showToast('Indica la data di richiamo', 'err'); return; }
     setSaving(true);
     const nowIso = new Date().toISOString();
     const entry = { id: Date.now().toString(36), date: nowIso, esito: e.name, testo: nota.trim() };
+    // Salvo lo stato precedente per l'eventuale "Annulla ultima registrazione"
+    const prima = { stato: selected.stato, tentativi: selected.tentativi, ultimo_contatto: selected.ultimo_contatto, note_storia: selected.note_storia, data_richiamo: selected.data_richiamo, non_interessato_fino_a: selected.non_interessato_fino_a, richiamo_fissato_da: selected.richiamo_fissato_da };
     const fields = {
       stato: e.name,
       tentativi: (selected.tentativi || 0) + 1,
@@ -330,26 +387,62 @@ export default function OperatorView({ profile, onLogout }) {
       note_storia: [...(selected.note_storia || []), entry],
       data_richiamo: e.tipo === 'richiamo' ? dataRichiamo : null,
       non_interessato_fino_a: null,
+      richiamo_fissato_da: e.tipo === 'richiamo' ? 'operatore' : null,
     };
     if (e.tipo === 'noninteressato' && ricontatto !== 'mai') {
       const d = new Date(); d.setMonth(d.getMonth() + (ricontatto === '6m' ? 6 : 12));
       fields.non_interessato_fino_a = d.toISOString().slice(0, 10);
     }
-    const ok = await dbUpdateLead(selected.id, fields);
+    const leadIdAppenaSalvato = selected.id;
+    const ok = await dbUpdateLead(leadIdAppenaSalvato, fields);
     setSaving(false);
     if (!ok) { showToast('Salvataggio non riuscito. Riprova.', 'err'); return; }
-    setLeads(prev => prev.map(l => l.id === selected.id ? { ...l, ...fields } : l));
-    setSelected(null); setEsitoOpen(null);
+    setLeads(prev => prev.map(l => l.id === leadIdAppenaSalvato ? { ...l, ...fields } : l));
+    setSessionCount(n => n + 1);
+    setUltimaAzione({ leadId: leadIdAppenaSalvato, nomeAzienda: selected.azienda || selected.nome || 'il lead', esitoNome: e.name, campiPrima: prima });
+    setEsitoOpen(null);
+
+    if (vaiAlProssimoDopo && codaCorrente && codaCorrente.length) {
+      const prossimoIndice = codaIndice + 1;
+      const prossimoId = codaCorrente[prossimoIndice];
+      if (prossimoId) {
+        // il lead aggiornato potrebbe non essere più nella lista "leads" fresca al momento giusto: lo cerco dopo l'aggiornamento locale
+        setTimeout(() => {
+          setLeads(curr => {
+            const prossimo = curr.find(x => x.id === prossimoId);
+            if (prossimo) { setSelected(prossimo); setCodaIndice(prossimoIndice); setTab('esito'); }
+            else { setSelected(null); setCodaCorrente(null); showToast('Coda completata! 🎉'); }
+            return curr;
+          });
+        }, 0);
+        showToast(e.name === 'Appuntamento fissato' ? '🎉 Appuntamento registrato!' : `Esito registrato: ${e.name}`);
+        return;
+      }
+      setSelected(null); setCodaCorrente(null);
+      showToast('Coda completata! 🎉');
+      return;
+    }
+    setSelected(null);
     showToast(e.name === 'Appuntamento fissato' ? '🎉 Appuntamento registrato!' : `Esito registrato: ${e.name}`);
+  };
+
+  const annullaUltimaAzione = async () => {
+    if (!ultimaAzione) return;
+    const ok = await dbUpdateLead(ultimaAzione.leadId, ultimaAzione.campiPrima);
+    if (!ok) { showToast('Impossibile annullare, riprova.', 'err'); return; }
+    setLeads(prev => prev.map(l => l.id === ultimaAzione.leadId ? { ...l, ...ultimaAzione.campiPrima } : l));
+    setSessionCount(n => Math.max(0, n - 1));
+    showToast(`Registrazione annullata per ${ultimaAzione.nomeAzienda}`, 'info');
+    setUltimaAzione(null);
   };
 
   // ── Componenti ─────────────────────────────────────────────
   const statoInfo = s => ESITI_CHIAMATA.find(x => x.name === s) || { icon: '📞', color: BLU };
 
-  const Riga = ({ l, hot, mostraStato }) => {
+  const Riga = ({ l, hot, mostraStato, coda }) => {
     const ultimaNota = (l.note_storia || []).filter(h => h.testo).slice(-1)[0]?.testo;
     return (
-    <div className={'opv-row' + (hot ? ' hot' : '')} onClick={() => apriLead(l, mostraStato ? 'scheda' : 'esito')}>
+    <div className={'opv-row' + (hot ? ' hot' : '')} onClick={() => apriLead(l, mostraStato ? 'scheda' : 'esito', coda)}>
       <div className="who">
         <div className="az">{l.azienda || l.nome || '—'}</div>
         <div className="det">
@@ -366,16 +459,24 @@ export default function OperatorView({ profile, onLogout }) {
       {hot && <span className="opv-tag" style={{ background: '#E07B1A20', color: '#B35F0E' }}>{l.stato === 'Richiamare' ? '🔄 Richiamo' : '📅 Ricontatto'}</span>}
       {mostraStato && <span className="opv-statochip" style={{ background: statoInfo(l.stato).color + '18', color: statoInfo(l.stato).color }}>{statoInfo(l.stato).icon} {l.stato}</span>}
       {l.telefono && <a className="opv-call" href={'tel:' + l.telefono.replace(/\s/g, '')} onClick={e => e.stopPropagation()}>📞 {l.telefono}{(l.telefono2 || l.telefono3) && <span style={{ opacity: .75, fontWeight: 400 }}> +{[l.telefono2, l.telefono3].filter(Boolean).length}</span>}</a>}
-      <button className="opv-open" onClick={e => { e.stopPropagation(); apriLead(l, 'esito'); }}>Registra esito</button>
+      <button className="opv-open" onClick={e => { e.stopPropagation(); apriLead(l, 'esito', coda); }}>Registra esito</button>
     </div>
   );};
 
-  const Sezione = ({ titolo, items, hot, vuoto, mostraStato }) => (
+  const Sezione = ({ titolo, items, hot, vuoto, mostraStato, visCount, setVisCount, extra }) => {
+    const mostrati = visCount ? items.slice(0, visCount) : items;
+    return (
     <div className="opv-card">
-      <div className="opv-card-title">{titolo} <span style={{ color: BLU }}>({items.length})</span></div>
-      {items.length === 0 ? <div className="opv-empty">{vuoto}</div> : items.map(l => <Riga key={l.id} l={l} hot={hot} mostraStato={mostraStato} />)}
+      <div className="opv-card-title">
+        {titolo} <span style={{ color: BLU }}>({items.length})</span>
+        {extra}
+      </div>
+      {items.length === 0 ? <div className="opv-empty">{vuoto}</div> : mostrati.map(l => <Riga key={l.id} l={l} hot={hot} mostraStato={mostraStato} coda={items} />)}
+      {visCount && items.length > visCount && (
+        <button className="opv-btn" style={{ width: '100%', marginTop: 6 }} onClick={() => setVisCount(v => v + 50)}>Mostra altri 50 (di {items.length - visCount} rimanenti)</button>
+      )}
     </div>
-  );
+  );};
 
   const Filtri = ({ conStato }) => (
     <div className="opv-card">
@@ -406,8 +507,8 @@ export default function OperatorView({ profile, onLogout }) {
   // ── Agenda settimanale richiami ────────────────────────────
   const lunedi = (() => { const d = new Date(); d.setDate(d.getDate() + weekOffset * 7); const g = (d.getDay() + 6) % 7; d.setDate(d.getDate() - g); return d; })();
   const giorniSett = Array.from({ length: 5 }, (_, i) => { const d = new Date(lunedi); d.setDate(lunedi.getDate() + i); return d.toISOString().slice(0, 10); });
-  const richiamiGiorno = g => leads.filter(l => l.stato === 'Richiamare' && l.data_richiamo === g && matchFiltri(l));
-  const richiamiSenzaData = leads.filter(l => l.stato === 'Richiamare' && !l.data_richiamo && matchFiltri(l));
+  const richiamiGiorno = g => leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo === g && matchFiltri(l));
+  const richiamiSenzaData = leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && !l.data_richiamo && matchFiltri(l));
   const labelSett = `${lunedi.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} – ${new Date(giorniSett[4] + 'T12:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
   const AgendaSettimana = () => (
@@ -498,8 +599,19 @@ export default function OperatorView({ profile, onLogout }) {
       <main className="opv-main">
         <div className="opv-topbar">
           <span className="opv-title">{pageOp === 'home' ? `Ciao ${profile?.nome || ''} 👋` : titoli[pageOp]}</span>
-          <span className="opv-date">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            {sessionCount > 0 && <span className="opv-sessionbadge">✓ {sessionCount} lavorati in questa sessione</span>}
+            <span className="opv-date">{new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</span>
+          </span>
         </div>
+
+        {ultimaAzione && !selected && (
+          <div className="opv-undobar">
+            <span>✓ Registrato <strong>{ultimaAzione.esitoNome}</strong> per {ultimaAzione.nomeAzienda}</span>
+            <button className="opv-undobtn" onClick={annullaUltimaAzione}>↩ Annulla</button>
+            <button className="opv-undobtn" style={{ marginLeft: 'auto', background: 'transparent', border: 'none' }} onClick={() => setUltimaAzione(null)}>✕</button>
+          </div>
+        )}
 
         {/* ── DASHBOARD ── */}
         {pageOp === 'home' && (
@@ -507,6 +619,11 @@ export default function OperatorView({ profile, onLogout }) {
             {nRichiamiBadge > 0 && (
               <div className="opv-banner" onClick={() => setPageOp('richiami')}>
                 🔄 {nRichiamiBadge} {nRichiamiBadge === 1 ? 'richiamo' : 'richiami'} da fare oggi — Vedi →
+              </div>
+            )}
+            {richiamiArretratoImport.length > 0 && (
+              <div className="fs-12" style={{ color: '#6B7A8C', marginTop: 8, cursor: 'pointer' }} onClick={() => setPageOp('richiami')}>
+                🗂 Hai anche {richiamiArretratoImport.length.toLocaleString('it-IT')} lead in arretrato dall'importazione, senza scadenza — lavorali con calma quando vuoi →
               </div>
             )}
             <div className="opv-metrics">
@@ -520,7 +637,7 @@ export default function OperatorView({ profile, onLogout }) {
               <div className="opv-card-title">▶ Da fare adesso</div>
               {daFare.length === 0
                 ? <div className="opv-empty">{leads.length === 0 ? 'Nessuna lista caricata: appena Marco importa i lead, li troverai qui.' : 'Tutto lavorato per oggi 🎉'}</div>
-                : daFare.map(l => <Riga key={l.id} l={l} hot={l.stato === 'Richiamare' || l.stato === 'Non interessato'} />)}
+                : daFare.map(l => <Riga key={l.id} l={l} hot={l.stato === 'Richiamare' || l.stato === 'Non interessato'} coda={daFare} />)}
               {(richiamiOggi.length + riconatti.length + daChiamare.length) > 5 && (
                 <button className="opv-btn" style={{ width: '100%', marginTop: 4 }} onClick={() => setPageOp('coda')}>Vedi tutta la coda →</button>
               )}
@@ -600,7 +717,16 @@ export default function OperatorView({ profile, onLogout }) {
         {pageOp === 'coda' && (
           <>
             <Filtri />
-            <Sezione titolo="📞 Da chiamare" items={daChiamare} vuoto={leads.length === 0 ? 'Nessuna lista caricata: appena Marco importa i lead, li troverai qui.' : 'Tutto lavorato con questi filtri 🎉'} />
+            <Sezione
+              titolo="📞 Da chiamare" items={daChiamare}
+              vuoto={leads.length === 0 ? 'Nessuna lista caricata: appena Marco importa i lead, li troverai qui.' : 'Tutto lavorato con questi filtri 🎉'}
+              visCount={visCoda} setVisCount={setVisCoda}
+              extra={
+                <select className="opv-select" style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => { setOrdinaCoda(e.target.value); setVisCoda(50); }}>
+                  {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
+              }
+            />
           </>
         )}
 
@@ -615,16 +741,41 @@ export default function OperatorView({ profile, onLogout }) {
             {richiamiView === 'cal' ? (
               <>
                 <div className="opv-grid2">
-                  <Sezione titolo="🔄 Richiami di oggi (e arretrati)" items={richiamiOggi} hot vuoto="Nessun richiamo in scadenza 🎉" />
+                  <Sezione titolo="🔄 Richiami di oggi" items={richiamiOggi} hot vuoto="Nessun richiamo fissato in scadenza 🎉" />
                   <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" />
                 </div>
                 <AgendaSettimana />
+                <div className="opv-card">
+                  <div className="opv-card-title">
+                    🗂 Arretrato da smaltire (dall'importazione) <span style={{ color: '#0078D4' }}>({richiamiArretratoImport.length})</span>
+                    <select className="opv-select" style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => setOrdinaCoda(e.target.value)}>
+                      {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                    </select>
+                  </div>
+                  <p className="fs-11" style={{ color: '#8A97A6', marginBottom: 10 }}>Questi lead avevano già chiesto un richiamo prima che il sistema esistesse: la data non è precisa, ma lo storico sì — dagli un'occhiata prima di chiamare. Non hanno una scadenza: lavorali quando hai tempo, senza fretta.</p>
+                  {richiamiArretratoImport.length === 0 ? <div className="opv-empty">Arretrato smaltito, ottimo lavoro 🎉</div> : richiamiArretratoImport.slice(0, 20).map(l => <Riga key={l.id} l={l} coda={richiamiArretratoImport} />)}
+                  {richiamiArretratoImport.length > 20 && <div className="fs-11" style={{ textAlign: 'center', color: '#8A97A6', marginTop: 6 }}>Altri {richiamiArretratoImport.length - 20} in coda — passa alla vista Lista per vederli tutti</div>}
+                </div>
               </>
             ) : (
               <>
-                <Sezione titolo="🔄 Richiami di oggi (e arretrati)" items={richiamiOggi} hot vuoto="Nessun richiamo in scadenza 🎉" />
+                <div className="opv-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="fs-12" style={{ fontWeight: 700, color: '#33475B' }}>Ordina richiami fissati:</span>
+                  <select className="opv-select" style={{ fontSize: 12, padding: '5px 8px' }} value={ordinaRichiami} onChange={e => setOrdinaRichiami(e.target.value)}>
+                    {OPZIONI_ORDINE_RICHIAMI.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                  </select>
+                </div>
+                <Sezione titolo="🔄 Richiami di oggi" items={richiamiOggi} hot vuoto="Nessun richiamo fissato in scadenza 🎉" visCount={visRichiami} setVisCount={setVisRichiami} />
                 <Sezione titolo="📅 Da ricontattare (erano non interessati)" items={riconatti} hot vuoto="Nessun ricontatto maturato" />
-                <Sezione titolo="⏳ Richiami programmati" items={richiamiFuturi} vuoto="Nessun richiamo futuro in agenda" />
+                <Sezione titolo="⏳ Richiami programmati (prossimi giorni)" items={richiamiFuturi} vuoto="Nessun richiamo futuro in agenda" />
+
+                <div className="opv-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="fs-12" style={{ fontWeight: 700, color: '#33475B' }}>Ordina arretrato:</span>
+                  <select className="opv-select" style={{ fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => setOrdinaCoda(e.target.value)}>
+                    {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                  </select>
+                </div>
+                <Sezione titolo="🗂 Arretrato da smaltire (dall'importazione)" items={richiamiArretratoImport} vuoto="Arretrato smaltito, ottimo lavoro 🎉" visCount={visRichiami} setVisCount={setVisRichiami} />
               </>
             )}
           </>
@@ -635,13 +786,18 @@ export default function OperatorView({ profile, onLogout }) {
           <>
             <Filtri conStato />
             <div className="opv-card">
-              <div className="opv-card-title">🗂 Tutti i lead <span style={{ color: '#0078D4' }}>({archivioLeads.length})</span></div>
+              <div className="opv-card-title" style={{ flexWrap: 'wrap' }}>
+                🗂 Tutti i lead <span style={{ color: '#0078D4' }}>({archivioLeads.length})</span>
+                <select className="opv-select" style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => { setOrdinaCoda(e.target.value); setVisArchivio(50); }}>
+                  {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
+              </div>
               {archivioLeads.length === 0 ? <div className="opv-empty">Nessun lead con questi filtri</div> : (
                 <div style={{ overflowX: 'auto' }}>
                   <table className="opv-table">
                     <thead><tr><th>Azienda / Referente</th><th>Categoria</th><th>Telefono</th><th>Lista</th><th>Stato</th><th style={{ textAlign: 'right' }}>Tent.</th><th>Ultima nota</th><th>Ultimo contatto</th></tr></thead>
                     <tbody>
-                      {archivioLeads.map(l => {
+                      {applicaOrdine(archivioLeads, ordinaCoda).slice(0, visArchivio).map(l => {
                         const un = (l.note_storia || []).filter(h => h.testo).slice(-1)[0]?.testo;
                         const si = statoInfo(l.stato);
                         return (
@@ -659,6 +815,9 @@ export default function OperatorView({ profile, onLogout }) {
                       })}
                     </tbody>
                   </table>
+                  {archivioLeads.length > visArchivio && (
+                    <button className="opv-btn" style={{ width: '100%', marginTop: 10 }} onClick={() => setVisArchivio(v => v + 50)}>Mostra altri 50 (di {archivioLeads.length - visArchivio} rimanenti)</button>
+                  )}
                 </div>
               )}
             </div>
@@ -776,12 +935,18 @@ export default function OperatorView({ profile, onLogout }) {
 
                 <div style={{ marginBottom: 4 }}>
                   <label className="opv-form-label">Nota {esitoOpen.tipo === 'noninteressato' ? '(motivo, prodotto concorrente, scadenze...)' : '(facoltativa)'}</label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {NOTE_RAPIDE.map(nr => (
+                      <button key={nr} type="button" className="opv-notachip" onClick={() => setNota(n => n ? n + ' · ' + nr : nr)}>{nr}</button>
+                    ))}
+                  </div>
                   <textarea className="opv-textarea" rows={2} value={nota} onChange={e => setNota(e.target.value)} placeholder="Es. richiamare dopo le 15, chiedere del titolare..." />
                 </div>
 
                 <div className="opv-actions">
                   <button className="opv-btn" onClick={() => setEsitoOpen(null)} disabled={saving}>← Indietro</button>
-                  <button className="opv-btn primary" onClick={registraEsito} disabled={saving}>{saving ? '⏳ Salvataggio...' : 'Registra esito'}</button>
+                  <button className="opv-btn" onClick={() => registraEsito(false)} disabled={saving}>{saving ? '⏳...' : 'Registra e chiudi'}</button>
+                  <button className="opv-btn primary" onClick={() => registraEsito(true)} disabled={saving}>{saving ? '⏳ Salvataggio...' : (codaCorrente && codaCorrente.length ? 'Registra e prossimo →' : 'Registra esito')}</button>
                 </div>
               </div>
             ))}

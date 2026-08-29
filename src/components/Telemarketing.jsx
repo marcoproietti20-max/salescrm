@@ -46,6 +46,8 @@ export default function Telemarketing({ contacts, showToast }) {
   const [fStato, setFStato] = useState('');
   const [fLista, setFLista] = useState('');
   const [fCategoria, setFCategoria] = useState('');
+  const [ordinaLead, setOrdinaLead] = useState('default');
+  const [visLead, setVisLead] = useState(50);
   const [selected, setSelected] = useState(null);
   const [checked, setChecked] = useState(new Set());
   const [bulkProgress, setBulkProgress] = useState(null);
@@ -197,6 +199,7 @@ export default function Telemarketing({ contacts, showToast }) {
             stato: statoFinale, lista: nomeLista.trim(), fonte: fonteDefault,
             tentativi: Number.isFinite(tentativiFile) ? tentativiFile : 0,
             data_richiamo: statoFinale === 'Richiamare' ? (parseDataSicura(g(row, 'data_richiamo')) || null) : null,
+            richiamo_fissato_da: statoFinale === 'Richiamare' ? 'import' : null,
             non_interessato_fino_a: statoFinale === 'Non interessato' ? (parseDataSicura(g(row, 'non_interessato_fino_a')) || null) : null,
             ultimo_contatto: parseDataSicura(g(row, 'ultimo_contatto')) || null,
             note_storia: parseStorico(g(row, 'note_storia'), statoFinale, oggiIso),
@@ -379,12 +382,32 @@ export default function Telemarketing({ contacts, showToast }) {
     return () => qualC.current?.destroy();
   }, [apptStats]);
 
-  // ── Vista lead filtrata ────────────────────────────────────
-  const filtered = leads.filter(l =>
+  // ── Vista lead filtrata + ordinata ──────────────────────────
+  const OPZIONI_ORDINE_LEAD = [
+    { v: 'default', l: 'Ordine di caricamento' },
+    { v: 'tentativi_asc', l: '↑ Meno tentativi prima' },
+    { v: 'tentativi_desc', l: '↓ Più tentativi prima' },
+    { v: 'contatto_recente', l: 'Ultimo contatto (più recente)' },
+    { v: 'contatto_vecchio', l: 'Ultimo contatto (più vecchio)' },
+    { v: 'azienda_az', l: 'Azienda A-Z' },
+  ];
+  const applicaOrdineLead = (arr, criterio) => {
+    const out = [...arr];
+    switch (criterio) {
+      case 'tentativi_asc': return out.sort((a, b) => (a.tentativi || 0) - (b.tentativi || 0));
+      case 'tentativi_desc': return out.sort((a, b) => (b.tentativi || 0) - (a.tentativi || 0));
+      case 'contatto_recente': return out.sort((a, b) => (b.ultimo_contatto || '').localeCompare(a.ultimo_contatto || ''));
+      case 'contatto_vecchio': return out.sort((a, b) => (a.ultimo_contatto || '').localeCompare(b.ultimo_contatto || '') || (a.ultimo_contatto ? 0 : 1));
+      case 'azienda_az': return out.sort((a, b) => (a.azienda || a.nome || '').localeCompare(b.azienda || b.nome || ''));
+      default: return out;
+    }
+  };
+  const filtered = applicaOrdineLead(leads.filter(l =>
     (!fStato || l.stato === fStato) &&
     (!fLista || l.lista === fLista) &&
     (!fCategoria || l.categoria === fCategoria)
-  );
+  ), ordinaLead);
+  const filteredVisibili = filtered.slice(0, visLead);
 
   const eliminaLead = async (id) => {
     if (!window.confirm('Eliminare definitivamente questo lead e il suo storico?')) return;
@@ -730,7 +753,7 @@ export default function Telemarketing({ contacts, showToast }) {
                       <td style={{ fontSize: 12 }}>{l.categoria || '—'}</td>
                       <td style={{ fontSize: 12 }}>{l.telefono || '—'}</td>
                       <td style={{ fontSize: 12 }}>{l.lista || '—'}</td>
-                      <td><StatoBadge stato={l.stato} /></td>
+                      <td><StatoBadge stato={l.stato} />{l.stato === 'Richiamare' && l.richiamo_fissato_da === 'import' && <span title="Arretrato dall'importazione, data non precisa" style={{ marginLeft: 5, fontSize: 11 }}>🗂</span>}</td>
                       <td style={{ textAlign: 'right' }}>{l.tentativi || 0}</td>
                       <td style={{ fontSize: 12 }}>{l.ultimo_contatto ? fmtDT(l.ultimo_contatto) : '—'}</td>
                     </tr>
