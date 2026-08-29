@@ -70,6 +70,10 @@ const CSS = `
   .opv-modal-bg { position: fixed; inset: 0; background: rgba(15,30,50,.5); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 14px; }
   .opv-modal { background: white; border-radius: 16px; width: 100%; max-width: 620px; max-height: 92vh; overflow-y: auto; padding: 24px; }
   .opv-bigcall { display: flex; align-items: center; justify-content: center; gap: 10px; background: ${BLU}; color: white; border-radius: 12px; padding: 15px; font-size: 25px; font-weight: 800; text-decoration: none; margin: 15px 0 8px; }
+  .opv-callrow { display: flex; gap: 8px; margin-bottom: 8px; }
+  .opv-callrow:last-of-type { margin-bottom: 8px; }
+  .opv-bigcall.small { flex: 1; font-size: 16px; padding: 10px; margin: 0; background: white; color: ${BLU}; border: 1.5px solid ${BLU}; }
+  .opv-bigcall.small:hover { background: ${BLU}15; }
   .opv-tabs { display: flex; gap: 6px; background: #EEF3F9; border-radius: 12px; padding: 5px; margin-bottom: 16px; }
   .opv-tab { flex: 1; border: none; border-radius: 9px; padding: 10px 8px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; background: transparent; color: #6B7A8C; }
   .opv-tab.on { background: white; color: ${BLU}; box-shadow: 0 1px 5px rgba(0,60,120,.12); }
@@ -359,7 +363,7 @@ export default function OperatorView({ profile, onLogout }) {
       </div>
       {hot && <span className="opv-tag" style={{ background: '#E07B1A20', color: '#B35F0E' }}>{l.stato === 'Richiamare' ? '🔄 Richiamo' : '📅 Ricontatto'}</span>}
       {mostraStato && <span className="opv-statochip" style={{ background: statoInfo(l.stato).color + '18', color: statoInfo(l.stato).color }}>{statoInfo(l.stato).icon} {l.stato}</span>}
-      {l.telefono && <a className="opv-call" href={'tel:' + l.telefono.replace(/\s/g, '')} onClick={e => e.stopPropagation()}>📞 {l.telefono}</a>}
+      {l.telefono && <a className="opv-call" href={'tel:' + l.telefono.replace(/\s/g, '')} onClick={e => e.stopPropagation()}>📞 {l.telefono}{(l.telefono2 || l.telefono3) && <span style={{ opacity: .75, fontWeight: 400 }}> +{[l.telefono2, l.telefono3].filter(Boolean).length}</span>}</a>}
       <button className="opv-open" onClick={e => { e.stopPropagation(); apriLead(l, 'esito'); }}>Registra esito</button>
     </div>
   );};
@@ -675,6 +679,12 @@ export default function OperatorView({ profile, onLogout }) {
             </div>
 
             <a className="opv-bigcall" href={'tel:' + (selected.telefono || '').replace(/\s/g, '')}>📞 {selected.telefono || 'Nessun numero'}</a>
+            {(selected.telefono2 || selected.telefono3) && (
+              <div className="opv-callrow">
+                {selected.telefono2 && <a className="opv-bigcall small" href={'tel:' + selected.telefono2.replace(/\s/g, '')}>☎ {selected.telefono2}</a>}
+                {selected.telefono3 && <a className="opv-bigcall small" href={'tel:' + selected.telefono3.replace(/\s/g, '')}>☎ {selected.telefono3}</a>}
+              </div>
+            )}
             <div style={{ textAlign: 'center', fontSize: 12, color: '#6B7A8C', marginBottom: 14 }}>
               {selected.email ? <>✉ {selected.email} · </> : null}
               Lista: <strong>{selected.lista || '—'}</strong> · Tentativi: <strong>{selected.tentativi || 0}</strong>
