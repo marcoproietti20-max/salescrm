@@ -246,7 +246,10 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const riconatti = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today && matchFiltri(l));
   const daChiamare = applicaOrdine(leads.filter(l => (l.stato === 'Da chiamare' || l.stato === 'Non risponde') && matchFiltri(l)), ordinaCoda);
   const richiamiFuturi = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && (!l.data_richiamo || l.data_richiamo > today) && matchFiltri(l)), ordinaRichiami);
-  const nRichiamiBadge = leads.filter(l => (l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo && l.data_richiamo <= today) || (l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today)).length;
+  // Il badge rosso in sidebar segnala solo le PROMESSE da rispettare oggi (richiami veri, fissati da te).
+  // Le riattivazioni "Non interessato" sono opportunità, non scadenze: restano visibili in pagina ma non generano allarme.
+  const nRichiamiBadge = leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo && l.data_richiamo <= today).length;
+  const nRiconattiBadge = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today).length;
 
   const OPZIONI_ORDINE_CODA = [
     { v: 'tentativi_asc', l: '↑ Meno tentativi prima' },
@@ -627,6 +630,11 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
             {nRichiamiBadge > 0 && (
               <div className="opv-banner" onClick={() => setPageOp('richiami')}>
                 🔄 {nRichiamiBadge} {nRichiamiBadge === 1 ? 'richiamo' : 'richiami'} da fare oggi — Vedi →
+              </div>
+            )}
+            {nRiconattiBadge > 0 && (
+              <div className="fs-12" style={{ color: '#6B7A8C', marginTop: 8, cursor: 'pointer' }} onClick={() => setPageOp('richiami')}>
+                📅 {nRiconattiBadge.toLocaleString('it-IT')} {nRiconattiBadge === 1 ? 'contatto è tornato disponibile' : 'contatti sono tornati disponibili'} per un ricontatto — nessuna scadenza, valutali quando vuoi →
               </div>
             )}
             {richiamiArretratoImport.length > 0 && (
