@@ -38,6 +38,7 @@ export default function GlobalSearch({ contacts, stages, setModal, navigateTo })
         c.email?.toLowerCase().includes(ql) ? 2 : 0,
         c.telefono?.toLowerCase().includes(ql) ? 2 : 0,
         c.categoria?.toLowerCase().includes(ql) ? 1 : 0,
+        (c.specializzazioni||[]).some(t => t.toLowerCase().includes(ql)) ? 2 : 0,
         (c.history||[]).some(h => h.text?.toLowerCase().includes(ql) || h.esito?.toLowerCase().includes(ql)) ? 1 : 0,
         getContratti(c).some(ct => (ct.prodotti||[]).some(p => p.nome?.toLowerCase().includes(ql) || p.categoria?.toLowerCase().includes(ql))) ? 1 : 0,
         c.testoProposta?.toLowerCase().includes(ql) ? 1 : 0,
@@ -58,6 +59,8 @@ export default function GlobalSearch({ contacts, stages, setModal, navigateTo })
 
   const getMatchContext = (c) => {
     const ql = q.toLowerCase();
+    const spec = (c.specializzazioni||[]).find(t => t.toLowerCase().includes(ql));
+    if (spec) return `Specializzazione: ${spec}`;
     const note = (c.history||[]).find(h => h.text?.toLowerCase().includes(ql));
     if (note) return `Nota: ${note.text.slice(0,60)}...`;
     const ct = getContratti(c).find(ct => (ct.prodotti||[]).some(p => p.nome?.toLowerCase().includes(ql) || p.categoria?.toLowerCase().includes(ql)));
@@ -93,7 +96,7 @@ export default function GlobalSearch({ contacts, stages, setModal, navigateTo })
                 ref={inputRef}
                 value={q}
                 onChange={e => setQ(e.target.value)}
-                placeholder="Cerca contatti, note, contratti, proposte..."
+                placeholder="Cerca contatti, note, contratti, proposte, specializzazioni..."
                 style={{ flex:1, border:'none', outline:'none', fontSize:15, fontFamily:'var(--font)', background:'transparent', color:'var(--text)' }}
                 autoFocus
               />

@@ -11,6 +11,7 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
   const [fProp, setFProp] = useState('');
   const [fEsito, setFEsito] = useState('');
   const [fPrev, setFPrev] = useState(false);
+  const [fSpec, setFSpec] = useState('');
   const [selIds, setSelIds] = useState(new Set());
   const [openId, setOpenId] = useState(null);
   const [openContact, setOpenContact] = useState(null);
@@ -31,14 +32,21 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
 
   const sort = (key) => { if (sortK === key) setSortD(d => d === 'asc' ? 'desc' : 'asc'); else { setSortK(key); setSortD('asc'); } };
 
+  const specializzazioniUniche = useMemo(() => {
+    const set = new Set();
+    contacts.forEach(c => (c.specializzazioni || []).forEach(t => set.add(t)));
+    return [...set].sort((a, b) => a.localeCompare(b, 'it'));
+  }, [contacts]);
+
   const filtered = useMemo(() => {
     let list = contacts.filter(c => {
-      if (q && !(c.nome + (c.azienda || '') + (c.email || '')).toLowerCase().includes(q.toLowerCase())) return false;
+      if (q && !(c.nome + (c.azienda || '') + (c.email || '') + (c.specializzazioni || []).join(' ')).toLowerCase().includes(q.toLowerCase())) return false;
       if (fFase && c.fase !== fFase) return false;
       if (fFonte && c.fonte !== fFonte) return false;
       if (fProp && c.proposta !== fProp) return false;
       if (fEsito && c.esito !== fEsito) return false;
       if (fPrev && !getPreventivato(c)) return false;
+      if (fSpec && !(c.specializzazioni || []).includes(fSpec)) return false;
       return true;
     });
     if (sortK) list = [...list].sort((a, b) => {
@@ -57,7 +65,7 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
       return sortD === 'asc' ? cmp : -cmp;
     });
     return list;
-  }, [contacts, q, fFase, fFonte, fProp, fEsito, fPrev, sortK, sortD]);
+  }, [contacts, q, fFase, fFonte, fProp, fEsito, fPrev, fSpec, sortK, sortD]);
 
   const allChecked = filtered.length > 0 && filtered.every(c => selIds.has(c.id));
   const toggleOne = (id) => setSelIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -114,6 +122,12 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
             <option value="">Tutti gli esiti</option>
             {ESITI.map(e => <option key={e.name} value={e.name}>{e.name}</option>)}
           </select>
+          {specializzazioniUniche.length > 0 && (
+            <select className="form-control" style={{ width: 180 }} value={fSpec} onChange={e => setFSpec(e.target.value)}>
+              <option value="">Tutte le specializzazioni</option>
+              {specializzazioniUniche.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
           {fPrev && <button className="btn btn-sm btn-primary" onClick={() => setFPrev(false)}>Con preventivo ×</button>}
         </div>
 
@@ -178,7 +192,17 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
                         <input type="checkbox" checked={isChecked} onChange={() => toggleOne(c.id)} />
                       </td>
                       <td><span className="fw-600">{c.nome}</span></td>
-                      <td>{c.azienda || '—'}</td>
+                      <td>
+                        {c.azienda || '—'}
+                        {(c.specializzazioni || []).length > 0 && (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 3 }}>
+                            {c.specializzazioni.slice(0, 3).map((t, i) => (
+                              <span key={i} style={{ background: 'var(--accent-lt)', color: 'var(--accent-dk)', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}>{t}</span>
+                            ))}
+                            {c.specializzazioni.length > 3 && <span className="fs-11 text-muted">+{c.specializzazioni.length - 3}</span>}
+                          </div>
+                        )}
+                      </td>
                       <td className="fs-12">{c.telefono || '—'}</td>
                       <td className="fs-12" style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email || '—'}</td>
                       <td><StageBadge name={c.fase} stages={stages} /></td>
@@ -245,6 +269,17 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
               <div className="info-item"><label>Importo proposta</label><span style={{ fontWeight: 600, color: '#185FA5' }}>{getPreventivato(openContact) > 0 ? '€' + getPreventivato(openContact).toLocaleString('it-IT') : '—'}</span></div>
               <div className="info-item"><label>Data chiusura</label><span>{openContact.dataChiusura ? fmt(openContact.dataChiusura) : '—'}</span></div>
             </div>
+
+            {(openContact.specializzazioni || []).length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div className="form-label" style={{ marginBottom: 6 }}>Specializzazioni</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {openContact.specializzazioni.map((t, i) => (
+                    <span key={i} style={{ background: 'var(--accent-lt)', color: 'var(--accent-dk)', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 600 }}>{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Contratti */}
             <div style={{ marginBottom: 16 }}>

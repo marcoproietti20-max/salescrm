@@ -101,6 +101,7 @@ export default function Modal({ modal, setModal, contacts, stages, customFields,
           proposta: keep.proposta || merge.proposta,
           esito: keep.esito || merge.esito,
           fase: keep.fase || merge.fase,
+          specializzazioni: [...new Set([...(keep.specializzazioni || []), ...(merge.specializzazioni || [])])],
         };
         updateContact(keepId, () => merged);
         deleteContact(mergeId);
@@ -127,6 +128,52 @@ function Overlay({ onClose, children, wide }) {
   );
 }
 
+// ── Tag Input (usato per le Specializzazioni) ──────────────────
+function TagInput({ value, onChange, placeholder }) {
+  const [draft, setDraft] = useState('');
+  const tags = value || [];
+
+  const addTag = () => {
+    const t = draft.trim();
+    if (!t) return;
+    if (!tags.some(x => x.toLowerCase() === t.toLowerCase())) {
+      onChange([...tags, t]);
+    }
+    setDraft('');
+  };
+  const removeTag = (i) => onChange(tags.filter((_, idx) => idx !== i));
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addTag();
+    } else if (e.key === 'Backspace' && !draft && tags.length) {
+      onChange(tags.slice(0, -1));
+    }
+  };
+
+  return (
+    <div className="form-control" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', minHeight: 40, height: 'auto', padding: '6px 8px' }}>
+      {tags.map((t, i) => (
+        <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: 'var(--accent-lt)', color: 'var(--accent-dk)', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+          {t}
+          <button type="button" onClick={() => removeTag(i)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 15, lineHeight: 1, padding: 0, marginLeft: 2 }}
+            aria-label={`Rimuovi ${t}`}>×</button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={addTag}
+        placeholder={tags.length === 0 ? (placeholder || 'Scrivi e premi Invio...') : ''}
+        style={{ border: 'none', outline: 'none', flex: 1, minWidth: 120, fontSize: 13, background: 'transparent' }}
+      />
+    </div>
+  );
+}
+
 // ── Contact Form ─────────────────────────────────────────────
 function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
   const isNew = !c?.id;
@@ -139,6 +186,7 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
     importoProposta: c?.importoProposta || 0,
     dataChiusura: c?.dataChiusura || '',
     noteInterne: c?.noteInterne || '',
+    specializzazioni: c?.specializzazioni || [],
     customData: c?.customData || {}, history: c?.history || [],
     contratti: c?.contratti || [],
   });
@@ -172,6 +220,13 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
             </select>
           </div>
         </div>
+
+        <div className="form-group">
+          <label className="form-label">Specializzazioni</label>
+          <TagInput value={f.specializzazioni} onChange={v => s('specializzazioni', v)} placeholder="Es. Diritto Tributario, Concordato Preventivo... premi Invio per aggiungere" />
+          <div className="fs-11 text-muted" style={{ marginTop: 3 }}>Usali per trovare rapidamente i contatti in target quando organizzi un corso o un'iniziativa su un tema specifico.</div>
+        </div>
+
         <div className="form-row">
           <div className="form-group"><label className="form-label">Fonte</label>
             <select className="form-control" value={f.fonte} onChange={e => s('fonte', e.target.value)}>
@@ -599,6 +654,17 @@ function SchedaModal({ contact: initialContact, contacts, stages, setModal, upda
             <div className="info-item"><label>Esito</label><EsitoBadge name={c.esito} /></div>
             <div className="info-item"><label>Data chiusura</label><span>{c.dataChiusura ? fmt(c.dataChiusura) : '—'}</span></div>
           </div>
+
+          {(c.specializzazioni || []).length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div className="form-label" style={{ marginBottom: 6 }}>Specializzazioni</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {c.specializzazioni.map((t, i) => (
+                  <span key={i} style={{ background: 'var(--accent-lt)', color: 'var(--accent-dk)', borderRadius: 20, padding: '3px 10px', fontSize: 12, fontWeight: 600 }}>{t}</span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {getContratti(c).length > 0 && (
             <div style={{ marginBottom: 16 }}>
