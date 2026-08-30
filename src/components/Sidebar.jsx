@@ -9,6 +9,7 @@ const NAV = [
   { id: 'archivio',     label: 'Archivio KO',     icon: 'M1 5h14l-2-3H3zm0 0v10a1 1 0 001 1h12a1 1 0 001-1V5M6 9h4' },
   { id: 'calendly',     label: 'Bookings',        icon: 'M8 2a6 6 0 100 12A6 6 0 008 2zm0 3v4l3 2' },
   { id: 'telemarketing', label: 'Telemarketing',  icon: 'M2.5 2l3-1 1.8 3.6-2 1.6a10.5 10.5 0 004.5 4.5l1.6-2L15 10.5l-1 3C8 14.5 1.5 8 2.5 2z' },
+  { id: 'vista_operatore', label: 'Vista Operatore', icon: 'M8 3C4 3 1.5 6 1 8c.5 2 3 5 7 5s6.5-3 7-5c-.5-2-3-5-7-5zm0 8a3 3 0 100-6 3 3 0 000 6z' },
   { id: 'settings',     label: 'Impostazioni',    icon: 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 1v2M8 13v2M1 8h2M13 8h2' },
 ];
 export default function Sidebar({ page, setPage, brand, urgentFU }) {

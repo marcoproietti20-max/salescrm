@@ -45,6 +45,7 @@ const CSS = `
   .opv-esci:hover { background: rgba(255,255,255,.25); }
   .opv-main { flex: 1; margin-left: 230px; padding: 0 26px 60px; }
   .opv-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0 6px; }
+  .opv-preview-banner { background: #E07B1A; color: white; font-size: 12.5px; font-weight: 700; text-align: center; padding: 8px 14px; border-radius: 10px; margin: 16px 0 -4px; }
   .opv-title { font-size: 20px; font-weight: 800; }
   .opv-date { font-size: 12.5px; color: #6B7A8C; text-transform: capitalize; }
   .opv-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 12px; }
@@ -150,7 +151,7 @@ const CSS = `
   }
 `;
 
-export default function OperatorView({ profile, onLogout }) {
+export default function OperatorView({ profile, onLogout, fonteOverride, previewMode }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pageOp, setPageOp] = useState('home');
@@ -194,7 +195,7 @@ export default function OperatorView({ profile, onLogout }) {
   }, []);
 
   useEffect(() => {
-    supabase.rpc('get_appuntamenti_stats').then(({ data, error }) => {
+    supabase.rpc('get_appuntamenti_stats', fonteOverride ? { p_fonte: fonteOverride } : {}).then(({ data, error }) => {
       if (error) { console.error('get_appuntamenti_stats:', error); setApptStats([]); }
       else setApptStats(data || []);
     });
@@ -593,12 +594,17 @@ export default function OperatorView({ profile, onLogout }) {
         <div className="opv-sidefoot">
           <strong>{profile?.nome || 'Operatore'}</strong>
           <span>Il Sole 24 Ore Professionale</span>
-          <button className="opv-esci" onClick={onLogout}>Esci</button>
+          <button className="opv-esci" onClick={onLogout}>{previewMode ? '← Torna al CRM' : 'Esci'}</button>
         </div>
       </aside>
 
       {/* ── Contenuto ── */}
       <main className="opv-main">
+        {previewMode && (
+          <div className="opv-preview-banner">
+            👁 Stai vedendo l'app esattamente come la vede {profile?.nome || 'l\'operatore'} — è la versione live: qualunque esito registri qui modifica davvero i dati reali.
+          </div>
+        )}
         <div className="opv-topbar">
           <span className="opv-title">{pageOp === 'home' ? `Ciao ${profile?.nome || ''} 👋` : titoli[pageOp]}</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 14 }}>

@@ -367,6 +367,17 @@ export default function App() {
   // Bivio per ruolo: l'operatore vede solo la sua postazione
   if (profile?.role === 'operatore') return <OperatorView profile={profile} onLogout={logout} />;
 
+  // Vista amministratore: guarda l'app esattamente come la vede Rosanna, senza uscire dalla propria sessione.
+  // Non è una fotografia: è la stessa app live, con i dati reali — l'unica differenza è come si esce.
+  if (page === 'vista_operatore') return (
+    <OperatorView
+      profile={{ nome: 'Rosanna', role: 'operatore' }}
+      onLogout={() => setPage('dashboard')}
+      fonteOverride="Telemarketing Rosanna"
+      previewMode
+    />
+  );
+
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 16, fontFamily: 'DM Sans, sans-serif' }}>
       <div style={{ width: 36, height: 36, border: '3px solid #f0efe9', borderTop: '3px solid #c8102e', borderRadius: '50%', animation: 'spin .8s linear infinite' }} />
