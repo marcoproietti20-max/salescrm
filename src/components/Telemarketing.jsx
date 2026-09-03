@@ -67,7 +67,7 @@ async function parseFileSmart(file) {
 const COL_OP = {
   ragioneSociale: 'Ragione Sociale', codiceSap: 'Codice Cliente SAP', telefono: 'Telefono', email: 'Posta Elettronica',
   citta: 'Località', provincia: 'Provincia', valoreCliente: 'Valore Cliente', bloccatoSole: 'Bloccato Sole',
-  statoBlocco: 'Stato Blocco Amministrativo', prodotto: 'Descrizione Prodotto', importo: 'Totale Imponibile', scadenza: 'Data Scadenza Ordine',
+  statoBlocco: 'Stato Blocco Amministrativo', prodotto: 'Descrizione Prodotto', importo: 'Prezzo Imponibile Annuo', scadenza: 'Data Scadenza Ordine',
 };
 const COL_FORM = {
   codiceSap: 'Cod.Cliente SAP', ragioneSociale: 'Account: Ragione Sociale', citta: 'Account: Località',
@@ -80,7 +80,25 @@ function parseDataIt(s) {
   if (!m) return null;
   return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
 }
-const numPulito = v => Number(String(v ?? '0').replace(/[^\d.-]/g, '')) || 0;
+function numPulito(v) {
+  if (v === null || v === undefined) return 0;
+  let s = String(v).trim().replace(/[^\d.,\-]/g, ''); // via valuta, spazi, altri simboli
+  if (!s) return 0;
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+  if (hasComma && hasDot) {
+    // Formato italiano completo: punto = migliaia, virgola = decimali → "3.072,14"
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    // Solo virgola: è il separatore decimale italiano → "3072,14"
+    s = s.replace(',', '.');
+  } else if (hasDot) {
+    // Solo punto: se è un raggruppamento di migliaia (gruppi da 3 cifre, es. "3.072") lo tolgo;
+    // altrimenti lo tratto come già un separatore decimale standard (es. "3072.14")
+    if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
+  }
+  return Number(s) || 0;
+}
 
 // Raggruppa le righe (una per prodotto) dell'Operativo in un oggetto per cliente
 function aggregaOperativo(rows) {
@@ -96,7 +114,6 @@ function aggregaOperativo(rows) {
         email: String(r[COL_OP.email] || '').trim(),
         citta: String(r[COL_OP.citta] || '').trim(),
         provincia: String(r[COL_OP.provincia] || '').trim(),
-        valore_cliente: numPulito(r[COL_OP.valoreCliente]),
         stato_amministrativo: null,
         prodotti: [],
         scadenze: [],
@@ -113,13 +130,19 @@ function aggregaOperativo(rows) {
       g.stato_amministrativo = parts.join(' · ');
     }
     const prod = String(r[COL_OP.prodotto] || '').trim();
-    if (prod) g.prodotti.push({ nome: prod, importo: numPulito(r[COL_OP.importo]) });
+    if (prod) {
+      const imp = numPulito(r[COL_OP.importo]);
+      const esistente = g.prodotti.find(p => p.nome === prod);
+      if (esistente) { if (imp > esistente.importo) esistente.importo = imp; }
+      else g.prodotti.push({ nome: prod, importo: imp });
+    }
     const sc = parseDataIt(r[COL_OP.scadenza]);
     if (sc) g.scadenze.push(sc);
   }
   return Object.values(gruppi).map(g => ({
     ...g,
     prodotti_attivi: g.prodotti,
+    valore_cliente: g.prodotti.reduce((s, p) => s + (Number(p.importo) || 0), 0),
     prossima_scadenza: g.scadenze.length ? g.scadenze.sort()[0] : null,
   }));
 }
@@ -133,7 +156,6 @@ function normalizzaFormale(rows) {
     email: String(r[COL_FORM.email] || '').trim(),
     citta: String(r[COL_FORM.citta] || '').trim(),
     provincia: String(r[COL_FORM.provincia] || '').trim(),
-    valore_cliente: numPulito(r[COL_FORM.valoreCliente]),
   })).filter(c => c.codice_cliente_sap);
 }
 
@@ -163,6 +185,8 @@ export default function Telemarketing({ contacts, showToast }) {
   const [ordinaLead, setOrdinaLead] = useState('default');
   const [visLead, setVisLead] = useState(50);
   const [selected, setSelected] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState(null);
   const [checked, setChecked] = useState(new Set());
   const [bulkProgress, setBulkProgress] = useState(null);
   const [listaDaEliminare, setListaDaEliminare] = useState('');
@@ -277,13 +301,14 @@ export default function Telemarketing({ contacts, showToast }) {
       for (const c of clienti) {
         const ex = byCod[c.codice_cliente_sap];
         if (ex) {
-          daAggiornare.push({ id: ex.id, fields: { azienda: c.azienda || ex.azienda, telefono: c.telefono || ex.telefono, email: c.email || ex.email, citta: c.citta || ex.citta, provincia: c.provincia || ex.provincia, valore_cliente: c.valore_cliente, portafoglio_uscito: false } });
+          // Il Formale non ha dettaglio prodotti: non tocca mai valore_cliente/prodotti_attivi, che restano quelli calcolati dall'ultimo Operativo
+          daAggiornare.push({ id: ex.id, fields: { azienda: c.azienda || ex.azienda, telefono: c.telefono || ex.telefono, email: c.email || ex.email, citta: c.citta || ex.citta, provincia: c.provincia || ex.provincia, portafoglio_uscito: false } });
         } else {
           daInserire.push({
             nome: null, azienda: c.azienda || null, telefono: c.telefono || null, email: c.email || null,
             citta: c.citta || null, provincia: c.provincia || null, categoria: null,
             stato: 'Da chiamare', lista: 'Portafoglio', fonte: 'Portafoglio', tentativi: 0,
-            codice_cliente_sap: c.codice_cliente_sap, valore_cliente: c.valore_cliente,
+            codice_cliente_sap: c.codice_cliente_sap, valore_cliente: 0,
             prodotti_attivi: [], prossima_scadenza: null, stato_amministrativo: null, portafoglio_uscito: false,
             note_storia: [{ id: 'imp-' + c.codice_cliente_sap, date: oggiIso, esito: 'Import', testo: 'Importato dal Portafoglio Formale (riassegnazione annuale).' }],
           });
@@ -694,6 +719,36 @@ export default function Telemarketing({ contacts, showToast }) {
     showToast('Lead eliminato', '', 'info');
   };
 
+  // ── Modifica manuale del lead ────────────────────────────────
+  const apriModifica = () => {
+    setEditForm({
+      azienda: selected.azienda || '', nome: selected.nome || '', telefono: selected.telefono || '',
+      email: selected.email || '', categoria: selected.categoria || '', citta: selected.citta || '', provincia: selected.provincia || '',
+      valore_cliente: selected.valore_cliente || '', prodotti_attivi: selected.prodotti_attivi || [],
+    });
+    setEditMode(true);
+  };
+  const ef = (k, v) => setEditForm(p => ({ ...p, [k]: v }));
+  const efProdotto = (i, k, v) => setEditForm(p => ({ ...p, prodotti_attivi: p.prodotti_attivi.map((pr, idx) => idx === i ? { ...pr, [k]: v } : pr) }));
+  const efRimuoviProdotto = (i) => setEditForm(p => ({ ...p, prodotti_attivi: p.prodotti_attivi.filter((_, idx) => idx !== i) }));
+  const efAggiungiProdotto = () => setEditForm(p => ({ ...p, prodotti_attivi: [...p.prodotti_attivi, { nome: '', importo: 0 }] }));
+
+  const salvaModificheLead = async () => {
+    const fields = {
+      azienda: editForm.azienda.trim() || null, nome: editForm.nome.trim() || null,
+      telefono: editForm.telefono.trim() || null, email: editForm.email.trim() || null,
+      categoria: editForm.categoria || null, citta: editForm.citta.trim() || null, provincia: editForm.provincia.trim() || null,
+      valore_cliente: editForm.valore_cliente === '' ? null : Number(editForm.valore_cliente) || 0,
+      prodotti_attivi: editForm.prodotti_attivi.filter(p => p.nome.trim()),
+    };
+    const ok = await dbUpdateLead(selected.id, fields);
+    if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
+    setLeads(prev => prev.map(l => l.id === selected.id ? { ...l, ...fields } : l));
+    setSelected(prev => ({ ...prev, ...fields }));
+    setEditMode(false);
+    showToast('Modifiche salvate', '');
+  };
+
   // ── Eliminazione a lotti (id in comune tra selezione manuale e "elimina lista") ──
   const eliminaIdInBlocco = async (ids, etichetta) => {
     if (!ids.length) return;
@@ -1068,7 +1123,7 @@ export default function Telemarketing({ contacts, showToast }) {
                 </tr></thead>
                 <tbody>
                   {filtered.map(l => (
-                    <tr key={l.id} onClick={() => setSelected(l)} style={{ cursor: 'pointer' }}>
+                    <tr key={l.id} onClick={() => { setSelected(l); setEditMode(false); }} style={{ cursor: 'pointer' }}>
                       <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={checked.has(l.id)} onChange={() => toggleChecked(l.id)} /></td>
                       <td><strong>{l.azienda || l.nome || '—'}</strong>{l.azienda && l.nome ? <div className="fs-11 text-muted">{l.nome}</div> : null}</td>
                       <td style={{ fontSize: 12 }}>{l.categoria || '—'}</td>
@@ -1087,40 +1142,106 @@ export default function Telemarketing({ contacts, showToast }) {
 
         {/* ── DETTAGLIO LEAD ── */}
         {selected && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,30,40,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setSelected(null)}>
-            <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,30,40,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => { setSelected(null); setEditMode(false); }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 700 }}>{selected.azienda || selected.nome || '—'}</div>
                   <div className="text-muted fs-12">{selected.nome && selected.azienda ? selected.nome + ' · ' : ''}{selected.categoria || ''}{selected.citta ? ' · ' + selected.citta : ''}{selected.provincia ? ' (' + selected.provincia + ')' : ''}</div>
                 </div>
-                <button className="btn btn-sm" onClick={() => setSelected(null)}>✕</button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {!editMode && <button className="btn btn-sm" onClick={apriModifica}>✏️ Modifica</button>}
+                  <button className="btn btn-sm" onClick={() => { setSelected(null); setEditMode(false); }}>✕</button>
+                </div>
               </div>
-              <div style={{ margin: '12px 0', fontSize: 13, lineHeight: 1.9 }}>
-                📞 <strong>{selected.telefono || '—'}</strong>{selected.email ? <> · ✉ {selected.email}</> : null}<br />
-                Lista: <strong>{selected.lista || '—'}</strong> · Fonte: <strong>{selected.fonte || '—'}</strong> · <StatoBadge stato={selected.stato} /><br />
-                Tentativi: <strong>{selected.tentativi || 0}</strong>{selected.ultimo_contatto ? <> · Ultimo contatto: <strong>{fmtDT(selected.ultimo_contatto)}</strong></> : null}
-                {selected.data_richiamo ? <><br />🔄 Richiamo previsto: <strong>{selected.data_richiamo}</strong></> : null}
-                {selected.non_interessato_fino_a ? <><br />📅 Ricontattabile dal: <strong>{selected.non_interessato_fino_a}</strong></> : null}
-              </div>
-              {(selected.note_storia || []).length > 0 && (
+
+              {!editMode ? (
                 <>
-                  <div className="card-title" style={{ marginBottom: 8 }}>Storico</div>
-                  {[...selected.note_storia].reverse().map(h => {
-                    const e = ESITI_CHIAMATA.find(x => x.name === h.esito);
-                    return (
-                      <div key={h.id} style={{ borderLeft: `3px solid ${e?.color || '#0078D4'}`, padding: '4px 10px', marginBottom: 8 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: e?.color || 'inherit' }}>{e?.icon || '📝'} {h.esito || 'Nota'} <span className="text-muted" style={{ fontWeight: 400 }}>— {fmtDT(h.date)}</span></div>
-                        {h.testo && <div style={{ fontSize: 13 }}>{h.testo}</div>}
-                      </div>
-                    );
-                  })}
+                  <div style={{ margin: '12px 0', fontSize: 13, lineHeight: 1.9 }}>
+                    📞 <strong>{selected.telefono || '—'}</strong>{selected.email ? <> · ✉ {selected.email}</> : null}<br />
+                    Lista: <strong>{selected.lista || '—'}</strong> · Fonte: <strong>{selected.fonte || '—'}</strong> · <StatoBadge stato={selected.stato} /><br />
+                    Tentativi: <strong>{selected.tentativi || 0}</strong>{selected.ultimo_contatto ? <> · Ultimo contatto: <strong>{fmtDT(selected.ultimo_contatto)}</strong></> : null}
+                    {selected.data_richiamo ? <><br />🔄 Richiamo previsto: <strong>{selected.data_richiamo}</strong></> : null}
+                    {selected.non_interessato_fino_a ? <><br />📅 Ricontattabile dal: <strong>{selected.non_interessato_fino_a}</strong></> : null}
+                  </div>
+
+                  {selected.codice_cliente_sap && (
+                    <div style={{ background: '#0078D40d', border: '1px solid #0078D433', borderRadius: 'var(--r)', padding: '10px 14px', marginBottom: 14 }}>
+                      <div className="fs-11 text-muted" style={{ fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>📦 Portafoglio — Cod. SAP {selected.codice_cliente_sap}</div>
+                      {selected.valore_cliente > 0 && <div style={{ fontSize: 13, marginBottom: 4 }}>Valore cliente: <strong style={{ color: '#1B7A3E' }}>€{Number(selected.valore_cliente).toLocaleString('it-IT')}</strong></div>}
+                      {selected.prossima_scadenza && <div style={{ fontSize: 13, marginBottom: 4 }}>Prossima scadenza: <strong>{new Date(selected.prossima_scadenza + 'T12:00').toLocaleDateString('it-IT')}</strong></div>}
+                      {selected.stato_amministrativo && <div style={{ fontSize: 13, marginBottom: 4, color: '#A32D2D', fontWeight: 600 }}>⚠ {selected.stato_amministrativo}</div>}
+                      {(selected.prodotti_attivi || []).length > 0 ? (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                          {selected.prodotti_attivi.map((p, i) => (
+                            <span key={i} style={{ background: 'white', border: '1px solid #0078D455', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }}>{p.nome}{p.importo > 0 ? ` — €${Number(p.importo).toLocaleString('it-IT')}` : ''}</span>
+                          ))}
+                        </div>
+                      ) : <div className="fs-12 text-muted" style={{ marginTop: 4 }}>Nessun prodotto attivo al momento</div>}
+                    </div>
+                  )}
+
+                  {(selected.note_storia || []).length > 0 && (
+                    <>
+                      <div className="card-title" style={{ marginBottom: 8 }}>Storico</div>
+                      {[...selected.note_storia].reverse().map(h => {
+                        const e = ESITI_CHIAMATA.find(x => x.name === h.esito);
+                        return (
+                          <div key={h.id} style={{ borderLeft: `3px solid ${e?.color || '#0078D4'}`, padding: '4px 10px', marginBottom: 8 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: e?.color || 'inherit' }}>{e?.icon || '📝'} {h.esito || 'Nota'} <span className="text-muted" style={{ fontWeight: 400 }}>— {fmtDT(h.date)}</span></div>
+                            {h.testo && <div style={{ fontSize: 13 }}>{h.testo}</div>}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
+                    <button className="btn" onClick={() => esportaLead([selected], (selected.azienda || selected.nome || 'lead').replace(/[^a-z0-9]+/gi, '_'))}>⬇ Esporta storico</button>
+                    <button className="btn" style={{ color: '#A32D2D', borderColor: '#A32D2D55' }} onClick={() => eliminaLead(selected.id)}>🗑 Elimina lead</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="card-title" style={{ marginTop: 14, marginBottom: 8 }}>Anagrafica</div>
+                  <div className="form-row">
+                    <div className="form-group"><label className="form-label">Azienda</label><input className="form-control" value={editForm.azienda} onChange={e => ef('azienda', e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">Referente</label><input className="form-control" value={editForm.nome} onChange={e => ef('nome', e.target.value)} /></div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group"><label className="form-label">Telefono</label><input className="form-control" value={editForm.telefono} onChange={e => ef('telefono', e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">Email</label><input className="form-control" value={editForm.email} onChange={e => ef('email', e.target.value)} /></div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group"><label className="form-label">Categoria</label>
+                      <select className="form-control" value={editForm.categoria} onChange={e => ef('categoria', e.target.value)}>
+                        <option value="">— nessuna —</option>
+                        {CATEGORIE.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group"><label className="form-label">Città</label><input className="form-control" value={editForm.citta} onChange={e => ef('citta', e.target.value)} /></div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group"><label className="form-label">Provincia</label><input className="form-control" value={editForm.provincia} onChange={e => ef('provincia', e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">Valore cliente (€)</label><input className="form-control" type="number" value={editForm.valore_cliente} onChange={e => ef('valore_cliente', e.target.value)} /></div>
+                  </div>
+
+                  <div className="card-title" style={{ marginTop: 14, marginBottom: 8 }}>Prodotti attivi</div>
+                  {editForm.prodotti_attivi.length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 8 }}>Nessun prodotto</div>}
+                  {editForm.prodotti_attivi.map((p, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                      <input className="form-control" style={{ flex: 2 }} placeholder="Nome prodotto" value={p.nome} onChange={e => efProdotto(i, 'nome', e.target.value)} />
+                      <input className="form-control" style={{ flex: 1 }} type="number" placeholder="€" value={p.importo} onChange={e => efProdotto(i, 'importo', Number(e.target.value) || 0)} />
+                      <button className="btn btn-sm btn-danger" onClick={() => efRimuoviProdotto(i)}>×</button>
+                    </div>
+                  ))}
+                  <button className="btn btn-sm" onClick={efAggiungiProdotto} style={{ marginBottom: 14 }}>+ Aggiungi prodotto</button>
+
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                    <button className="btn" onClick={() => setEditMode(false)}>Annulla</button>
+                    <button className="btn btn-primary" onClick={salvaModificheLead}>Salva modifiche</button>
+                  </div>
                 </>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
-                <button className="btn" onClick={() => esportaLead([selected], (selected.azienda || selected.nome || 'lead').replace(/[^a-z0-9]+/gi, '_'))}>⬇ Esporta storico</button>
-                <button className="btn" style={{ color: '#A32D2D', borderColor: '#A32D2D55' }} onClick={() => eliminaLead(selected.id)}>🗑 Elimina lead</button>
-              </div>
             </div>
           </div>
         )}
