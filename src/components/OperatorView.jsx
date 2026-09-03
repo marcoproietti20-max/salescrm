@@ -452,7 +452,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     return (
     <div className={'opv-row' + (hot ? ' hot' : '')} onClick={() => apriLead(l, mostraStato ? 'scheda' : 'esito', coda)}>
       <div className="who">
-        <div className="az">{l.azienda || l.nome || '—'}</div>
+        <div className="az">{l.codice_cliente_sap && <span title="Cliente già acquisito">📦 </span>}{l.azienda || l.nome || '—'}</div>
         <div className="det">
           {l.nome && l.azienda ? l.nome : ''}{l.citta ? (l.nome && l.azienda ? ' · ' : '') + l.citta : ''}
           {hot && l.data_richiamo ? ` · richiamo ${new Date(l.data_richiamo + 'T12:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}` : ''}
@@ -914,6 +914,25 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                   {selected.data_richiamo && <><dt>Richiamo</dt><dd>🔄 {new Date(selected.data_richiamo + 'T12:00').toLocaleDateString('it-IT')}</dd></>}
                   {selected.non_interessato_fino_a && <><dt>Ricontattabile dal</dt><dd>📅 {new Date(selected.non_interessato_fino_a + 'T12:00').toLocaleDateString('it-IT')}</dd></>}
                 </dl>
+
+                {selected.codice_cliente_sap && (
+                  <div style={{ background: BLU + '0d', border: `1px solid ${BLU}33`, borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: BLU, marginBottom: 6 }}>📦 Cliente già acquisito</div>
+                    {selected.valore_cliente > 0 && <div style={{ fontSize: 13.5, marginBottom: 4 }}>Valore cliente: <strong style={{ color: '#1B7A3E' }}>€{Number(selected.valore_cliente).toLocaleString('it-IT')}</strong></div>}
+                    {selected.prossima_scadenza && <div style={{ fontSize: 13.5, marginBottom: 4 }}>Prossima scadenza: <strong>{new Date(selected.prossima_scadenza + 'T12:00').toLocaleDateString('it-IT')}</strong></div>}
+                    {selected.stato_amministrativo && <div style={{ fontSize: 13, marginBottom: 4, color: '#A32D2D', fontWeight: 700 }}>⚠ {selected.stato_amministrativo}</div>}
+                    {(selected.prodotti_attivi || []).length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                        {selected.prodotti_attivi.map((p, i) => (
+                          <span key={i} style={{ background: 'white', border: `1px solid ${BLU}55`, borderRadius: 20, padding: '2px 10px', fontSize: 11.5, fontWeight: 700, color: '#33475B' }}>
+                            {p.nome}{p.importo > 0 ? ` — €${Number(p.importo).toLocaleString('it-IT')}` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    ) : <div className="fs-12" style={{ color: '#8A97A6', marginTop: 4 }}>Nessun prodotto attivo al momento</div>}
+                  </div>
+                )}
+
                 <div className="opv-card-title">Storico chiamate e note</div>
                 {(selected.note_storia || []).length === 0 ? (
                   <div className="opv-empty">Nessuna chiamata registrata finora.</div>
@@ -999,4 +1018,6 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
       {toast && <div className="opv-toast" style={{ background: toast.type === 'err' ? '#A32D2D' : '#1B7A3E' }}>{toast.msg}</div>}
     </div>
   );
+}
+
 }
