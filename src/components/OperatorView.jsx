@@ -1019,5 +1019,3 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     </div>
   );
 }
-
-}
