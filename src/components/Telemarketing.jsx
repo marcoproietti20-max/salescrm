@@ -28,6 +28,115 @@ const STATO_COLORS = { 'Da chiamare': '#0078D4', ...Object.fromEntries(ESITI_CHI
 // Voci "di servizio" nello storico (import, riattivazione, storico ordini) NON sono chiamate vere: vanno sempre escluse dai conteggi
 const ESITI_VALIDI = new Set(ESITI_CHIAMATA.map(e => e.name));
 
+// ── Lettura file "intelligente" ──────────────────────────────
+// Riconosce automaticamente se il file è un vero CSV/Excel oppure una tabella HTML
+// mascherata da .xls (tipico export Salesforce/SAP) e lo legge nel modo corretto.
+async function parseFileSmart(file) {
+  const text = await file.text();
+  const head = text.trim().slice(0, 1000).toLowerCase();
+  if (head.includes('<html') || head.includes('<table')) {
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    const table = doc.querySelector('table');
+    if (!table) return [];
+    const trs = [...table.querySelectorAll('tr')];
+    if (!trs.length) return [];
+    const headers = [...trs[0].querySelectorAll('th,td')].map(td => (td.textContent || '').trim());
+    return trs.slice(1).map(tr => {
+      const cells = [...tr.querySelectorAll('td,th')].map(td => (td.textContent || '').trim());
+      const obj = {};
+      headers.forEach((h, i) => { if (h) obj[h] = cells[i] ?? ''; });
+      return obj;
+    });
+  }
+  if (file.name.endsWith('.csv')) {
+    const Papa = await import('papaparse');
+    let r = Papa.default.parse(text, { header: true, skipEmptyLines: true, delimiter: ',' });
+    let rows = r.data;
+    if (rows.length === 0 || Object.keys(rows[0]).length <= 1) {
+      r = Papa.default.parse(text, { header: true, skipEmptyLines: true, delimiter: ';' });
+      rows = r.data;
+    }
+    return rows;
+  }
+  const XLSX = await import('xlsx');
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+}
+
+// ── Portafoglio: colonne attese dagli export Salesforce/SAP ──
+const COL_OP = {
+  ragioneSociale: 'Ragione Sociale', codiceSap: 'Codice Cliente SAP', telefono: 'Telefono', email: 'Posta Elettronica',
+  citta: 'Località', provincia: 'Provincia', valoreCliente: 'Valore Cliente', bloccatoSole: 'Bloccato Sole',
+  statoBlocco: 'Stato Blocco Amministrativo', prodotto: 'Descrizione Prodotto', importo: 'Totale Imponibile', scadenza: 'Data Scadenza Ordine',
+};
+const COL_FORM = {
+  codiceSap: 'Cod.Cliente SAP', ragioneSociale: 'Account: Ragione Sociale', citta: 'Account: Località',
+  provincia: 'Account: Provincia', valoreCliente: 'Account: Valore Cliente', telefono: 'Account: Telefono', email: 'Account: Posta Elettronica',
+};
+
+function parseDataIt(s) {
+  if (!s) return null;
+  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+const numPulito = v => Number(String(v ?? '0').replace(/[^\d.-]/g, '')) || 0;
+
+// Raggruppa le righe (una per prodotto) dell'Operativo in un oggetto per cliente
+function aggregaOperativo(rows) {
+  const gruppi = {};
+  for (const r of rows) {
+    const cod = String(r[COL_OP.codiceSap] || '').trim();
+    if (!cod) continue;
+    if (!gruppi[cod]) {
+      gruppi[cod] = {
+        codice_cliente_sap: cod,
+        azienda: String(r[COL_OP.ragioneSociale] || '').trim(),
+        telefono: String(r[COL_OP.telefono] || '').trim(),
+        email: String(r[COL_OP.email] || '').trim(),
+        citta: String(r[COL_OP.citta] || '').trim(),
+        provincia: String(r[COL_OP.provincia] || '').trim(),
+        valore_cliente: numPulito(r[COL_OP.valoreCliente]),
+        stato_amministrativo: null,
+        prodotti: [],
+        scadenze: [],
+      };
+    }
+    const g = gruppi[cod];
+    const bloccato = String(r[COL_OP.bloccatoSole] || '').trim().toUpperCase() === 'SI';
+    const blocco = String(r[COL_OP.statoBlocco] || '').trim();
+    const eBlocco = blocco && blocco !== 'AA00-Esazione Corrente';
+    if (bloccato || eBlocco) {
+      const parts = [];
+      if (bloccato) parts.push('Bloccato Sole');
+      if (eBlocco) parts.push(blocco);
+      g.stato_amministrativo = parts.join(' · ');
+    }
+    const prod = String(r[COL_OP.prodotto] || '').trim();
+    if (prod) g.prodotti.push({ nome: prod, importo: numPulito(r[COL_OP.importo]) });
+    const sc = parseDataIt(r[COL_OP.scadenza]);
+    if (sc) g.scadenze.push(sc);
+  }
+  return Object.values(gruppi).map(g => ({
+    ...g,
+    prodotti_attivi: g.prodotti,
+    prossima_scadenza: g.scadenze.length ? g.scadenze.sort()[0] : null,
+  }));
+}
+
+// Il Formale è già un cliente per riga: nessuna aggregazione, solo normalizzazione
+function normalizzaFormale(rows) {
+  return rows.map(r => ({
+    codice_cliente_sap: String(r[COL_FORM.codiceSap] || '').trim(),
+    azienda: String(r[COL_FORM.ragioneSociale] || '').trim(),
+    telefono: String(r[COL_FORM.telefono] || '').trim(),
+    email: String(r[COL_FORM.email] || '').trim(),
+    citta: String(r[COL_FORM.citta] || '').trim(),
+    provincia: String(r[COL_FORM.provincia] || '').trim(),
+    valore_cliente: numPulito(r[COL_FORM.valoreCliente]),
+  })).filter(c => c.codice_cliente_sap);
+}
+
 export default function Telemarketing({ contacts, showToast }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +150,11 @@ export default function Telemarketing({ contacts, showToast }) {
   const [importProgress, setImportProgress] = useState(null);
   const [report, setReport] = useState(null);
   const [batches, setBatches] = useState([]);
+  const [pfProgress, setPfProgress] = useState(null);
+  const [pfReportOp, setPfReportOp] = useState(null);
+  const [pfReportForm, setPfReportForm] = useState(null);
+  const fileOpRef = useRef();
+  const fileFormRef = useRef();
   const fileRef = useRef();
   // Vista lead
   const [fStato, setFStato] = useState('');
@@ -70,6 +184,169 @@ export default function Telemarketing({ contacts, showToast }) {
   useEffect(() => {
     dbLoadImportBatches().then(b => setBatches(b || []));
   }, []);
+
+  // ── Portafoglio: Aggiorna da Operativo (upsert su codice_cliente_sap) ──
+  const aggiornaPortafoglioOperativo = async (e) => {
+    const file = e.target.files[0]; if (!file) return; e.target.value = '';
+    setPfProgress({ fase: 'elaborazione', done: 0, total: 1 });
+    setPfReportOp(null);
+    try {
+      const rows = await parseFileSmart(file);
+      if (!rows.length) { showToast('File vuoto o non riconosciuto', '', 'info'); setPfProgress(null); return; }
+      const clienti = aggregaOperativo(rows);
+      if (!clienti.length) { showToast('Nessuna riga con Codice Cliente SAP trovata', '', 'info'); setPfProgress(null); return; }
+
+      const byCod = {};
+      leads.forEach(l => { if (l.codice_cliente_sap) byCod[l.codice_cliente_sap] = l; });
+
+      const daAggiornare = [], daInserire = [];
+      const oggiIso = new Date().toISOString();
+      let bloccati = 0;
+      for (const c of clienti) {
+        if (c.stato_amministrativo) bloccati++;
+        const ex = byCod[c.codice_cliente_sap];
+        if (ex) {
+          daAggiornare.push({
+            id: ex.id, fields: {
+              azienda: c.azienda || ex.azienda, telefono: c.telefono || ex.telefono, email: c.email || ex.email,
+              citta: c.citta || ex.citta, provincia: c.provincia || ex.provincia,
+              valore_cliente: c.valore_cliente, prodotti_attivi: c.prodotti_attivi,
+              prossima_scadenza: c.prossima_scadenza, stato_amministrativo: c.stato_amministrativo,
+              portafoglio_uscito: false,
+            }
+          });
+        } else {
+          daInserire.push({
+            nome: null, azienda: c.azienda || null, telefono: c.telefono || null, email: c.email || null,
+            citta: c.citta || null, provincia: c.provincia || null, categoria: null,
+            stato: 'Da chiamare', lista: 'Portafoglio', fonte: 'Portafoglio', tentativi: 0,
+            codice_cliente_sap: c.codice_cliente_sap, valore_cliente: c.valore_cliente,
+            prodotti_attivi: c.prodotti_attivi, prossima_scadenza: c.prossima_scadenza,
+            stato_amministrativo: c.stato_amministrativo, portafoglio_uscito: false,
+            note_storia: [{ id: 'imp-' + c.codice_cliente_sap, date: oggiIso, esito: 'Import', testo: 'Importato dal Portafoglio Operativo.' }],
+          });
+        }
+      }
+
+      const totale = daAggiornare.length + daInserire.length;
+      let fatti = 0;
+      const BATCH = 200;
+      for (let i = 0; i < daAggiornare.length; i += BATCH) {
+        const chunk = daAggiornare.slice(i, i + BATCH);
+        await Promise.all(chunk.map(u => dbUpdateLead(u.id, u.fields)));
+        fatti += chunk.length;
+        setPfProgress({ fase: 'scrittura', done: fatti, total: totale });
+      }
+      if (daInserire.length) {
+        for (let i = 0; i < daInserire.length; i += 500) {
+          const chunk = daInserire.slice(i, i + 500);
+          const ids = await dbInsertLeads(chunk);
+          if (ids === null) { showToast('Errore durante l\'inserimento nuovi clienti', '', 'info'); break; }
+          fatti += chunk.length;
+          setPfProgress({ fase: 'scrittura', done: fatti, total: totale });
+        }
+      }
+
+      await load();
+      setPfReportOp({ totale: clienti.length, aggiornati: daAggiornare.length, nuovi: daInserire.length, bloccati });
+      showToast('Portafoglio aggiornato', `${daAggiornare.length} aggiornati, ${daInserire.length} nuovi`);
+    } catch (err) {
+      console.error('Errore aggiornamento portafoglio:', err);
+      showToast('Errore imprevisto', err?.message || 'Controlla la console (F12)', 'info');
+    }
+    setPfProgress(null);
+  };
+
+  // ── Portafoglio: Riassegna da Formale (annuale — decide le vere uscite) ──
+  const riassegnaPortafoglioFormale = async (e) => {
+    const file = e.target.files[0]; if (!file) return; e.target.value = '';
+    setPfProgress({ fase: 'elaborazione', done: 0, total: 1 });
+    setPfReportForm(null);
+    try {
+      const rows = await parseFileSmart(file);
+      if (!rows.length) { showToast('File vuoto o non riconosciuto', '', 'info'); setPfProgress(null); return; }
+      const clienti = normalizzaFormale(rows);
+      if (!clienti.length) { showToast('Nessuna riga con Cod.Cliente SAP trovata', '', 'info'); setPfProgress(null); return; }
+      const codiciNuovi = new Set(clienti.map(c => c.codice_cliente_sap));
+
+      const byCod = {};
+      leads.forEach(l => { if (l.codice_cliente_sap) byCod[l.codice_cliente_sap] = l; });
+
+      const daAggiornare = [], daInserire = [];
+      const oggiIso = new Date().toISOString();
+      for (const c of clienti) {
+        const ex = byCod[c.codice_cliente_sap];
+        if (ex) {
+          daAggiornare.push({ id: ex.id, fields: { azienda: c.azienda || ex.azienda, telefono: c.telefono || ex.telefono, email: c.email || ex.email, citta: c.citta || ex.citta, provincia: c.provincia || ex.provincia, valore_cliente: c.valore_cliente, portafoglio_uscito: false } });
+        } else {
+          daInserire.push({
+            nome: null, azienda: c.azienda || null, telefono: c.telefono || null, email: c.email || null,
+            citta: c.citta || null, provincia: c.provincia || null, categoria: null,
+            stato: 'Da chiamare', lista: 'Portafoglio', fonte: 'Portafoglio', tentativi: 0,
+            codice_cliente_sap: c.codice_cliente_sap, valore_cliente: c.valore_cliente,
+            prodotti_attivi: [], prossima_scadenza: null, stato_amministrativo: null, portafoglio_uscito: false,
+            note_storia: [{ id: 'imp-' + c.codice_cliente_sap, date: oggiIso, esito: 'Import', testo: 'Importato dal Portafoglio Formale (riassegnazione annuale).' }],
+          });
+        }
+      }
+
+      // Chi era in portafoglio e non compare più nel nuovo Formale
+      const usciti = leads.filter(l => l.codice_cliente_sap && !codiciNuovi.has(l.codice_cliente_sap) && !l.portafoglio_uscito);
+      const daCancellare = usciti.filter(l => (l.tentativi || 0) === 0);
+      const daSegnare = usciti.filter(l => (l.tentativi || 0) > 0);
+
+      const conferma = window.prompt(
+        `Riassegnazione annuale:\n` +
+        `• ${daAggiornare.length} clienti confermati (aggiornati)\n` +
+        `• ${daInserire.length} clienti nuovi\n` +
+        `• ${daCancellare.length} usciti mai lavorati → verranno cancellati\n` +
+        `• ${daSegnare.length} usciti con storico → verranno segnati "Uscito" (restano consultabili)\n\n` +
+        `Scrivi CONFERMA per procedere:`
+      );
+      if (conferma !== 'CONFERMA') { showToast('Riassegnazione annullata', '', 'info'); setPfProgress(null); return; }
+
+      const totale = daAggiornare.length + daInserire.length + daCancellare.length + daSegnare.length;
+      let fatti = 0;
+      const BATCH = 200;
+      for (let i = 0; i < daAggiornare.length; i += BATCH) {
+        const chunk = daAggiornare.slice(i, i + BATCH);
+        await Promise.all(chunk.map(u => dbUpdateLead(u.id, u.fields)));
+        fatti += chunk.length; setPfProgress({ fase: 'scrittura', done: fatti, total: totale });
+      }
+      if (daInserire.length) {
+        for (let i = 0; i < daInserire.length; i += 500) {
+          const chunk = daInserire.slice(i, i + 500);
+          const ids = await dbInsertLeads(chunk);
+          if (ids === null) { showToast('Errore durante l\'inserimento nuovi clienti', '', 'info'); break; }
+          fatti += chunk.length; setPfProgress({ fase: 'scrittura', done: fatti, total: totale });
+        }
+      }
+      for (let i = 0; i < daSegnare.length; i += BATCH) {
+        const chunk = daSegnare.slice(i, i + BATCH);
+        await Promise.all(chunk.map(l => dbUpdateLead(l.id, {
+          portafoglio_uscito: true,
+          note_storia: [...(l.note_storia || []), { id: 'uscito-' + l.id, date: oggiIso, esito: 'Import', testo: 'Cliente non più presente nel Portafoglio Formale aggiornato — segnato come uscito.' }],
+        })));
+        fatti += chunk.length; setPfProgress({ fase: 'scrittura', done: fatti, total: totale });
+      }
+      if (daCancellare.length) {
+        const idsCanc = daCancellare.map(l => l.id);
+        for (let i = 0; i < idsCanc.length; i += BATCH) {
+          const chunk = idsCanc.slice(i, i + BATCH);
+          await dbDeleteLeads(chunk);
+          fatti += chunk.length; setPfProgress({ fase: 'scrittura', done: fatti, total: totale });
+        }
+      }
+
+      await load();
+      setPfReportForm({ totale: clienti.length, aggiornati: daAggiornare.length, nuovi: daInserire.length, cancellati: daCancellare.length, segnatiUsciti: daSegnare.length });
+      showToast('Riassegnazione completata', `${daInserire.length} nuovi, ${daCancellare.length + daSegnare.length} usciti gestiti`);
+    } catch (err) {
+      console.error('Errore riassegnazione portafoglio:', err);
+      showToast('Errore imprevisto', err?.message || 'Controlla la console (F12)', 'info');
+    }
+    setPfProgress(null);
+  };
 
   useEffect(() => {
     supabase.rpc('get_appuntamenti_stats').then(({ data, error }) => {
@@ -687,6 +964,50 @@ export default function Telemarketing({ contacts, showToast }) {
             </div>
           </div>
         )}
+
+        {/* ── PORTAFOGLIO CLIENTI ── */}
+        <div className="card">
+          <div className="card-title">📦 Portafoglio clienti</div>
+          <p className="text-muted fs-12" style={{ marginBottom: 14, lineHeight: 1.6 }}>
+            Per chiamate su clienti già acquisiti (es. presentare una novità). Riconosce da solo i clienti già presenti tramite il Codice Cliente SAP: <strong>non tocca mai</strong> stato, tentativi o storico di chi è già stato lavorato.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14 }}>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r)', padding: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>🔄 Aggiorna da Operativo</div>
+              <div className="fs-11 text-muted" style={{ marginBottom: 10 }}>Uso frequente. Aggiorna prodotti, valore, scadenze. Chi risulta senza prodotti attivi resta comunque lavorabile — non viene mai considerato "uscito" da qui.</div>
+              <button className="btn" onClick={() => fileOpRef.current?.click()} disabled={!!pfProgress}>📁 Carica file Operativo</button>
+              <input ref={fileOpRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={aggiornaPortafoglioOperativo} />
+              {pfReportOp && (
+                <div style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.7 }}>
+                  <strong>{pfReportOp.totale}</strong> clienti nel file — ✅ {pfReportOp.aggiornati} aggiornati · 🆕 {pfReportOp.nuovi} nuovi
+                  {pfReportOp.bloccati > 0 && <><br />⚠ {pfReportOp.bloccati} con blocco/precontenzioso segnalato</>}
+                </div>
+              )}
+            </div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r)', padding: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>📋 Riassegna da Formale <span className="text-muted" style={{ fontWeight: 400 }}>(una volta l'anno)</span></div>
+              <div className="fs-11 text-muted" style={{ marginBottom: 10 }}>Solo alla riformulazione annuale. Chi esce dal nuovo Formale viene cancellato (se mai lavorato) o segnato "Uscito" (se ha storico) — richiede conferma esplicita.</div>
+              <button className="btn" style={{ color: '#A32D2D', borderColor: '#A32D2D55' }} onClick={() => fileFormRef.current?.click()} disabled={!!pfProgress}>📁 Carica file Formale</button>
+              <input ref={fileFormRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={riassegnaPortafoglioFormale} />
+              {pfReportForm && (
+                <div style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.7 }}>
+                  <strong>{pfReportForm.totale}</strong> clienti nel nuovo Formale — ✅ {pfReportForm.aggiornati} confermati · 🆕 {pfReportForm.nuovi} nuovi<br />
+                  🗑 {pfReportForm.cancellati} cancellati (mai lavorati) · 📤 {pfReportForm.segnatiUsciti} segnati usciti (con storico)
+                </div>
+              )}
+            </div>
+          </div>
+          {pfProgress && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ background: 'var(--bg3)', borderRadius: 8, height: 10, overflow: 'hidden' }}>
+                <div style={{ width: pfProgress.total > 1 ? `${Math.round(pfProgress.done / pfProgress.total * 100)}%` : '30%', background: 'var(--accent)', height: '100%', transition: 'width .2s' }} />
+              </div>
+              <div className="fs-11 text-muted" style={{ marginTop: 4 }}>
+                {pfProgress.fase === 'elaborazione' ? '🔎 Lettura ed elaborazione file...' : `💾 Scrittura: ${pfProgress.done} / ${pfProgress.total}`} — non chiudere questa pagina
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── STRUMENTI DI GESTIONE LISTA ── */}
         <div className="card">

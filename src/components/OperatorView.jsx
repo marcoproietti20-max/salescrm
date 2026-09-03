@@ -241,11 +241,13 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
 
   // "richiamo_fissato_da" distingue un richiamo vero (fissato al telefono da te, data precisa)
   // da un richiamo di massa recuperato dall'importazione (data non significativa, solo un arretrato da smaltire)
-  const richiamiOggi = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo && l.data_richiamo <= today && matchFiltri(l)), ordinaRichiami);
-  const richiamiArretratoImport = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da === 'import' && matchFiltri(l)), ordinaCoda);
-  const riconatti = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today && matchFiltri(l));
-  const daChiamare = applicaOrdine(leads.filter(l => (l.stato === 'Da chiamare' || l.stato === 'Non risponde') && matchFiltri(l)), ordinaCoda);
-  const richiamiFuturi = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && (!l.data_richiamo || l.data_richiamo > today) && matchFiltri(l)), ordinaRichiami);
+  // I lead "usciti dal portafoglio" (riassegnazione annuale) non entrano mai nelle code attive:
+  // restano visibili solo in Archivio.
+  const richiamiOggi = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo && l.data_richiamo <= today && !l.portafoglio_uscito && matchFiltri(l)), ordinaRichiami);
+  const richiamiArretratoImport = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da === 'import' && !l.portafoglio_uscito && matchFiltri(l)), ordinaCoda);
+  const riconatti = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today && !l.portafoglio_uscito && matchFiltri(l));
+  const daChiamare = applicaOrdine(leads.filter(l => (l.stato === 'Da chiamare' || l.stato === 'Non risponde') && !l.portafoglio_uscito && matchFiltri(l)), ordinaCoda);
+  const richiamiFuturi = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && (!l.data_richiamo || l.data_richiamo > today) && !l.portafoglio_uscito && matchFiltri(l)), ordinaRichiami);
   // Il badge rosso in sidebar segnala solo le PROMESSE da rispettare oggi (richiami veri, fissati da te).
   // Le riattivazioni "Non interessato" sono opportunità, non scadenze: restano visibili in pagina ma non generano allarme.
   const nRichiamiBadge = leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo && l.data_richiamo <= today).length;
@@ -561,6 +563,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
 
   const titoli = { home: 'Dashboard', coda: 'Coda chiamate', richiami: 'Richiami', archivio: 'Archivio lead' };
   const daFare = [...richiamiOggi, ...riconatti, ...daChiamare].slice(0, 5);
+  const ultimiChiamati = [...leads].filter(l => l.ultimo_contatto).sort((a, b) => (b.ultimo_contatto || '').localeCompare(a.ultimo_contatto || '')).slice(0, 8);
   const archivioLeads = leads.filter(l => matchFiltri(l) && (!fStato || l.stato === fStato));
 
   if (loading) return (
@@ -658,6 +661,29 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                 <button className="opv-btn" style={{ width: '100%', marginTop: 4 }} onClick={() => setPageOp('coda')}>Vedi tutta la coda →</button>
               )}
             </div>
+
+            {ultimiChiamati.length > 0 && (
+              <div className="opv-card">
+                <div className="opv-card-title">🕓 Ultimi contattati</div>
+                <p className="fs-11" style={{ color: '#8A97A6', marginTop: -6, marginBottom: 10 }}>Hai chiuso una scheda per sbaglio? Ritrovala qui.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {ultimiChiamati.map(l => {
+                    const si = statoInfo(l.stato);
+                    return (
+                      <div key={l.id} onClick={() => apriLead(l, 'scheda', ultimiChiamati)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, cursor: 'pointer', border: '1px solid #E2E9F1' }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = BLU} onMouseLeave={e => e.currentTarget.style.borderColor = '#E2E9F1'}>
+                        <span style={{ fontSize: 15 }}>{si.icon}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.azienda || l.nome || '—'}</div>
+                          <div style={{ fontSize: 11.5, color: '#8A97A6' }}>{si.icon ? '' : ''}{l.stato} · {fmtDT(l.ultimo_contatto)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {haAttivita && (
               <div className="opv-card">
@@ -822,7 +848,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                             <td>{l.categoria || '—'}</td>
                             <td style={{ whiteSpace: 'nowrap' }}>{l.telefono || '—'}</td>
                             <td>{l.lista || '—'}</td>
-                            <td><span className="opv-statochip" style={{ background: si.color + '18', color: si.color }}>{si.icon} {l.stato}</span></td>
+                            <td><span className="opv-statochip" style={{ background: si.color + '18', color: si.color }}>{si.icon} {l.stato}</span>{l.portafoglio_uscito && <span className="opv-statochip" style={{ background: '#88888818', color: '#666', marginLeft: 4 }} title="Non più nel Portafoglio Formale">📤 Uscito</span>}</td>
                             <td style={{ textAlign: 'right' }}>{l.tentativi || 0}</td>
                             <td style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontStyle: un ? 'italic' : 'normal', color: un ? '#5A6B7E' : '#B0BCC9' }}>{un || '—'}</td>
                             <td style={{ whiteSpace: 'nowrap' }}>{l.ultimo_contatto ? fmtDT(l.ultimo_contatto) : '—'}</td>

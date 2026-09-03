@@ -12,6 +12,7 @@ import ArchivioKO from './components/ArchivioKO';
 import Calendly from './components/Calendly';
 import Settings from './components/Settings';
 import Telemarketing from './components/Telemarketing';
+import Portafoglio from './components/Portafoglio';
 import OperatorView from './components/OperatorView';
 import Modal from './components/Modal';
 import Toast from './components/Toast';
@@ -352,7 +353,7 @@ export default function App() {
 
   const logout = async () => { await supabase.auth.signOut(); setSession(null); setProfile(null); setContacts([]); };
 
-  const pages = { dashboard: Dashboard, contacts: Contacts, pipeline: Pipeline, appointments: Appointments, followups: FollowUps, chiuso: ChiusoPerMese, archivio: ArchivioKO, calendly: Calendly, telemarketing: Telemarketing, settings: Settings };
+  const pages = { dashboard: Dashboard, contacts: Contacts, pipeline: Pipeline, appointments: Appointments, followups: FollowUps, chiuso: ChiusoPerMese, archivio: ArchivioKO, calendly: Calendly, telemarketing: Telemarketing, portafoglio: Portafoglio, settings: Settings };
   const Page = pages[page] || Dashboard;
 
   if (authLoading) return (
