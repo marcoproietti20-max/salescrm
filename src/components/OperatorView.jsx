@@ -22,6 +22,7 @@ const NAV_OP = [
   { id: 'home',     label: 'Dashboard',     icon: 'M2 2h5v5H2zm7 0h5v5H9zm-7 7h5v5H2zm7 0h5v5H9z' },
   { id: 'coda',     label: 'Coda chiamate', icon: 'M2.5 2l3-1 1.8 3.6-2 1.6a10.5 10.5 0 004.5 4.5l1.6-2L15 10.5l-1 3C8 14.5 1.5 8 2.5 2z' },
   { id: 'richiami', label: 'Richiami',      icon: 'M8 1v7l4 2M15 8A7 7 0 111 8a7 7 0 0114 0z', badge: true },
+  { id: 'calendario', label: 'Appuntamenti', icon: 'M2 6h12v7a1 1 0 01-1 1H3a1 1 0 01-1-1V6zm0 0V4a1 1 0 011-1h8a1 1 0 011 1v2M6 9h4' },
   { id: 'archivio', label: 'Archivio lead', icon: 'M1 5h14l-2-3H3zm0 0v10a1 1 0 001 1h12a1 1 0 001-1V5M6 9h4' },
 ];
 
@@ -174,6 +175,11 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
   const [apptStats, setApptStats] = useState(null); // null = non ancora caricato, [] = errore/vuoto
+  const [appuntamentiList, setAppuntamentiList] = useState(null);
+  const [listaModale, setListaModale] = useState(null); // { titolo, items: [{contatto, extra}] } oppure null
+  const [calendarioView, setCalendarioView] = useState('cal');
+  const [visCalendario, setVisCalendario] = useState(50);
+  const [weekOffsetAppt, setWeekOffsetAppt] = useState(0);
   const [ordinaCoda, setOrdinaCoda] = useState('tentativi_asc');
   const [ordinaRichiami, setOrdinaRichiami] = useState('data_richiamo_asc');
   const [codaCorrente, setCodaCorrente] = useState(null); // snapshot degli id per "Prossimo →"
@@ -204,6 +210,13 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     supabase.rpc('get_appuntamenti_stats', { ...(fonteOverride ? { p_fonte: fonteOverride } : {}), p_da: '2026-09-01' }).then(({ data, error }) => {
       if (error) { console.error('get_appuntamenti_stats:', error); setApptStats([]); }
       else setApptStats(data || []);
+    });
+  }, []);
+
+  useEffect(() => {
+    supabase.rpc('get_appuntamenti_lista', { ...(fonteOverride ? { p_fonte: fonteOverride } : {}), p_da: '2026-09-01' }).then(({ data, error }) => {
+      if (error) { console.error('get_appuntamenti_lista:', error); setAppuntamentiList([]); }
+      else setAppuntamentiList(data || []);
     });
   }, []);
 
@@ -324,11 +337,12 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   // ── Grafico settimana (pagina home) ────────────────────────
   const giorni = []; { const d = new Date(); while (giorni.length < 5) { if (d.getDay() !== 0 && d.getDay() !== 6) giorni.unshift(d.toISOString().slice(0, 10)); d.setDate(d.getDate() - 1); } }
   const chiamateGiorni = giorni.map(g => leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === g).length, 0));
+  const apptGiorni = giorni.map(g => leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === g && h.esito === 'Appuntamento fissato').length, 0));
   const haAttivita = chiamateGiorni.some(v => v > 0);
 
   useEffect(() => {
     if (pageOp !== 'home' || !haAttivita || !chartRef.current) { chartC.current?.destroy(); chartC.current = null; return; }
-    const appt = giorni.map(g => leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === g && h.esito === 'Appuntamento fissato').length, 0));
+    const appt = apptGiorni;
     const labels = giorni.map(g => new Date(g + 'T12:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric' }));
     chartC.current?.destroy();
     chartC.current = new Chart(chartRef.current, { type: 'bar', data: { labels, datasets: [
@@ -382,6 +396,19 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     else { setCodaCorrente(null); setCodaIndice(0); }
   };
   const apriEsito = (esito) => { setEsitoOpen(esito); setNota(''); setDataRichiamo(''); setRichiamoOra(''); setRicontatto('6m'); };
+
+  // Un appuntamento arriva dai Contatti (tabella diversa), ma quasi sempre nasce da un suo lead —
+  // lo ritroviamo per telefono/email e apriamo la scheda che già conosce, con la possibilità di richiamare.
+  const dig9 = s => (s || '').replace(/\D/g, '').slice(-9);
+  const trovaLeadDaContatto = (c) => leads.find(l =>
+    (dig9(c.telefono) && dig9(c.telefono) === dig9(l.telefono)) ||
+    (c.email && l.email && c.email.toLowerCase() === l.email.toLowerCase())
+  ) || null;
+  const apriContattoAppuntamento = (c) => {
+    const lead = trovaLeadDaContatto(c);
+    if (lead) { apriLead(lead, 'scheda'); setListaModale(null); }
+    else showToast('Non trovo un lead collegato a questo contatto tra i tuoi', c.azienda || c.nome || '', 'info');
+  };
 
   const NOTE_RAPIDE = ['Non disponibile al momento', 'Richiamare dopo pranzo', 'Numero non più attivo', 'Chiedere del titolare', 'Segreteria, non ha voluto passare la chiamata'];
 
@@ -483,6 +510,35 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     </div>
   );};
 
+  // ── Elenco cliccabile di appuntamenti (riusato in più punti) ──
+  const ListaAppuntamentiModal = () => {
+    if (!listaModale) return null;
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,30,40,.45)', zIndex: 55, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setListaModale(null)}>
+        <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', padding: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>{listaModale.titolo} <span style={{ color: BLU }}>({listaModale.items.length})</span></div>
+            <button className="btn btn-sm" onClick={() => setListaModale(null)} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
+          </div>
+          {listaModale.items.length === 0 ? <div className="opv-empty">Nessun appuntamento</div> : listaModale.items.map((c, i) => {
+            const bc = { Svolto: '#1B7A3E', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D', Programmato: BLU }[c.appt_stato] || BLU;
+            return (
+              <div key={c.appt_id || i} onClick={() => c._leadDirect ? (apriLead(c._leadDirect, 'scheda'), setListaModale(null)) : apriContattoAppuntamento(c)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 9, cursor: 'pointer', border: '1px solid #E2E9F1', marginBottom: 6 }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = BLU} onMouseLeave={e => e.currentTarget.style.borderColor = '#E2E9F1'}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>{c.azienda || c.nome || '—'}</div>
+                  <div style={{ fontSize: 11.5, color: '#8A97A6' }}>{fmtDT(c.appt_date)}{c.appt_esito ? ` — ${c.appt_esito}` : ''}</div>
+                </div>
+                <span style={{ background: bc + '18', color: bc, borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{c.appt_stato}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const Sezione = ({ titolo, items, hot, vuoto, mostraStato, visCount, setVisCount, extra }) => {
     const mostrati = visCount ? items.slice(0, visCount) : items;
     return (
@@ -573,7 +629,52 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     </div>
   );
 
-  const titoli = { home: 'Dashboard', coda: 'Coda chiamate', richiami: 'Richiami', archivio: 'Archivio lead' };
+  // ── Agenda settimanale appuntamenti ─────────────────────────
+  const lunediAppt = (() => { const d = new Date(); d.setDate(d.getDate() + weekOffsetAppt * 7); const g = (d.getDay() + 6) % 7; d.setDate(d.getDate() - g); return d; })();
+  const giorniSettAppt = Array.from({ length: 5 }, (_, i) => { const d = new Date(lunediAppt); d.setDate(lunediAppt.getDate() + i); return d.toISOString().slice(0, 10); });
+  const appuntamentiGiorno = g => (appuntamentiList || []).filter(c => (c.appt_date || '').slice(0, 10) === g);
+  const labelSettAppt = `${lunediAppt.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} – ${new Date(giorniSettAppt[4] + 'T12:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+
+  const AgendaAppuntamenti = () => (
+    <div className="opv-card">
+      <div className="opv-card-title">
+        📅 Agenda appuntamenti
+        <div className="opv-weeknav">
+          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5 }} onClick={() => setWeekOffsetAppt(w => w - 1)}>← Prec.</button>
+          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5, ...(weekOffsetAppt === 0 ? { borderColor: '#0078D4', color: '#0078D4' } : {}) }} onClick={() => setWeekOffsetAppt(0)}>Oggi</button>
+          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5 }} onClick={() => setWeekOffsetAppt(w => w + 1)}>Succ. →</button>
+          <span className="lbl">{labelSettAppt}</span>
+        </div>
+      </div>
+      <div className="opv-week">
+        {giorniSettAppt.map(g => {
+          const items = appuntamentiGiorno(g);
+          const d = new Date(g + 'T12:00');
+          return (
+            <div key={g} className={'opv-day' + (g === today ? ' today' : '')}>
+              <div className="opv-day-h">
+                <span>{d.toLocaleDateString('it-IT', { weekday: 'short' })}</span>
+                <span className="num">{d.getDate()}</span>
+              </div>
+              {items.length === 0
+                ? <div style={{ fontSize: 11.5, color: '#B0BCC9', textAlign: 'center', paddingTop: 8 }}>—</div>
+                : items.map(c => {
+                  const bc = { Svolto: '#1B7A3E', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D', Programmato: BLU }[c.appt_stato] || BLU;
+                  return (
+                    <div key={c.appt_id} className="opv-mini" style={{ borderLeftColor: bc }} onClick={() => apriContattoAppuntamento(c)}>
+                      <div className="n">{c.azienda || c.nome || '—'}</div>
+                      <div className="t">{new Date(c.appt_date).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })} · {c.appt_stato}</div>
+                    </div>
+                  );
+                })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const titoli = { home: 'Dashboard', coda: 'Coda chiamate', richiami: 'Richiami', archivio: 'Archivio lead', calendario: 'Calendario appuntamenti' };
   const daFare = [...richiamiOggi, ...riconatti, ...daChiamare].slice(0, 5);
   const ultimiChiamati = [...leads].filter(l => l.ultimo_contatto).sort((a, b) => (b.ultimo_contatto || '').localeCompare(a.ultimo_contatto || '')).slice(0, 8);
   const archivioLeads = leads.filter(l => matchFiltri(l) && (!fStato || l.stato === fStato));
@@ -701,6 +802,23 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
               <div className="opv-card">
                 <div className="opv-card-title">La tua settimana</div>
                 <div style={{ height: 170, position: 'relative' }}><canvas ref={chartRef} /></div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 10, borderTop: '1px solid #EDF1F5', paddingTop: 8 }}>
+                  {giorni.map((g, i) => {
+                    if (!chiamateGiorni[i] && !apptGiorni[i]) return null;
+                    const lab = new Date(g + 'T12:00').toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short' });
+                    const chiamateDelGiorno = () => leads.filter(l => (l.note_storia || []).some(h => (h.date || '').slice(0, 10) === g)).map(l => ({ appt_id: l.id, azienda: l.azienda, nome: l.nome, appt_date: (l.note_storia.find(h => (h.date || '').slice(0, 10) === g) || {}).date, appt_stato: l.stato, appt_esito: '', _leadDirect: l }));
+                    const apptDelGiorno = () => leads.filter(l => (l.note_storia || []).some(h => (h.date || '').slice(0, 10) === g && h.esito === 'Appuntamento fissato')).map(l => ({ appt_id: l.id, azienda: l.azienda, nome: l.nome, appt_date: (l.note_storia.find(h => (h.date || '').slice(0, 10) === g && h.esito === 'Appuntamento fissato') || {}).date, appt_stato: l.stato, appt_esito: '', _leadDirect: l }));
+                    return (
+                      <div key={g} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '4px 6px' }}>
+                        <span style={{ color: '#6B7A8C', fontWeight: 600, textTransform: 'capitalize' }}>{lab}</span>
+                        <span>
+                          {chiamateGiorni[i] > 0 && <span onClick={() => setListaModale({ titolo: `Chiamate — ${lab}`, items: chiamateDelGiorno() })} style={{ color: '#89C4F4', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline', marginRight: 12 }}>{chiamateGiorni[i]} chiamate →</span>}
+                          {apptGiorni[i] > 0 && <span onClick={() => setListaModale({ titolo: `Appuntamenti fissati — ${lab}`, items: apptDelGiorno() })} style={{ color: '#0050A0', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline' }}>{apptGiorni[i]} appuntamenti →</span>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -753,12 +871,26 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                       <span style={{ fontSize: 13, color: '#6B7A8C' }}>si sono effettivamente svolti (su {qualitaAppt.totVerificati} verificati)</span>
                     </div>
                     <div style={{ height: 160, position: 'relative', marginTop: 10 }}><canvas ref={qualChartRef} /></div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 12 }}>
+                      {Object.entries(qualitaAppt.agg).sort((a, b) => b[1] - a[1]).map(([stato, n]) => {
+                        const bc = { Svolto: '#1B7A3E', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D' }[stato] || BLU;
+                        return (
+                          <div key={stato} onClick={() => setListaModale({ titolo: stato, items: (appuntamentiList || []).filter(c => c.appt_stato === stato) })}
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5 }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#F5F8FB'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                            <span style={{ color: bc, fontWeight: 700 }}>{stato}</span>
+                            <span style={{ color: '#33475B', fontWeight: 700 }}>{n} →</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </>
                 ) : (
                   <div className="opv-empty">Nessun appuntamento ancora verificato da Marco.</div>
                 )}
                 {qualitaAppt.nonVerificati > 0 && (
-                  <div style={{ fontSize: 11.5, color: '#8A97A6', marginTop: 10 }}>
+                  <div onClick={() => setListaModale({ titolo: 'In attesa di verifica', items: (appuntamentiList || []).filter(c => c.appt_stato === 'Programmato') })}
+                    style={{ fontSize: 11.5, color: '#8A97A6', marginTop: 10, cursor: 'pointer', textDecoration: 'underline' }}>
                     ⏳ {qualitaAppt.nonVerificati} appuntament{qualitaAppt.nonVerificati === 1 ? 'o' : 'i'} in attesa di verifica da parte di Marco — non {qualitaAppt.nonVerificati === 1 ? 'è incluso' : 'sono inclusi'} nella percentuale.
                   </div>
                 )}
@@ -836,6 +968,41 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
         )}
 
         {/* ── ARCHIVIO ── */}
+        {pageOp === 'calendario' && (
+          <>
+            <div className="opv-toggle">
+              <button className={'opv-togglebtn' + (calendarioView === 'lista' ? ' on' : '')} onClick={() => setCalendarioView('lista')}>Lista</button>
+              <button className={'opv-togglebtn' + (calendarioView === 'cal' ? ' on' : '')} onClick={() => setCalendarioView('cal')}>Calendario</button>
+            </div>
+            {appuntamentiList === null ? (
+              <div className="opv-card"><div className="opv-empty">Caricamento appuntamenti...</div></div>
+            ) : calendarioView === 'cal' ? (
+              <AgendaAppuntamenti />
+            ) : (
+              <div className="opv-card">
+                <div className="opv-card-title">📅 Tutti gli appuntamenti <span style={{ color: BLU }}>({appuntamentiList.length})</span></div>
+                {appuntamentiList.length === 0 ? <div className="opv-empty">Nessun appuntamento dal 1° settembre 2026</div> : appuntamentiList.slice(0, visCalendario).map(c => {
+                  const bc = { Svolto: '#1B7A3E', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D', Programmato: BLU }[c.appt_stato] || BLU;
+                  return (
+                    <div key={c.appt_id} onClick={() => apriContattoAppuntamento(c)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 9, cursor: 'pointer', border: '1px solid #E2E9F1', marginBottom: 6 }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = BLU} onMouseLeave={e => e.currentTarget.style.borderColor = '#E2E9F1'}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{c.azienda || c.nome || '—'}</div>
+                        <div style={{ fontSize: 11.5, color: '#8A97A6' }}>{fmtDT(c.appt_date)}{c.appt_esito ? ` — ${c.appt_esito}` : ''}</div>
+                      </div>
+                      <span style={{ background: bc + '18', color: bc, borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{c.appt_stato}</span>
+                    </div>
+                  );
+                })}
+                {appuntamentiList.length > visCalendario && (
+                  <button className="opv-btn" style={{ width: '100%', marginTop: 6 }} onClick={() => setVisCalendario(v => v + 50)}>Mostra altri 50 (di {appuntamentiList.length - visCalendario} rimanenti)</button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
         {pageOp === 'archivio' && (
           <>
             <Filtri conStato />
@@ -1049,6 +1216,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
         </div>
       )}
 
+      <ListaAppuntamentiModal />
       {toast && <div className="opv-toast" style={{ background: toast.type === 'err' ? '#A32D2D' : '#1B7A3E' }}>{toast.msg}</div>}
     </div>
   );
