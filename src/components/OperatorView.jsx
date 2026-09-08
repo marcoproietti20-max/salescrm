@@ -758,6 +758,43 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                 🗂 Hai anche {richiamiArretratoImport.length.toLocaleString('it-IT')} lead in arretrato dall'importazione, senza scadenza — lavorali con calma quando vuoi →
               </div>
             )}
+
+            {qualitaAppt && qualitaAppt.totComplessivo > 0 && (
+              <div className="opv-card">
+                <div className="opv-card-title">✨ Qualità dei tuoi appuntamenti</div>
+                {qualitaAppt.totVerificati > 0 ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 30, fontWeight: 800, color: '#1B7A3E' }}>{qualitaAppt.pctSvolti}%</span>
+                      <span style={{ fontSize: 13, color: '#6B7A8C' }}>si sono effettivamente svolti (su {qualitaAppt.totVerificati} verificati)</span>
+                    </div>
+                    <div style={{ height: 160, position: 'relative', marginTop: 10 }}><canvas ref={qualChartRef} /></div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 12 }}>
+                      {Object.entries(qualitaAppt.agg).sort((a, b) => b[1] - a[1]).map(([stato, n]) => {
+                        const bc = { Svolto: '#1B7A3E', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D' }[stato] || BLU;
+                        return (
+                          <div key={stato} onClick={() => setListaModale({ titolo: stato, items: (appuntamentiList || []).filter(c => c.appt_stato === stato) })}
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5 }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#F5F8FB'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                            <span style={{ color: bc, fontWeight: 700 }}>{stato}</span>
+                            <span style={{ color: '#33475B', fontWeight: 700 }}>{n} →</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="opv-empty">Nessun appuntamento ancora verificato da Marco.</div>
+                )}
+                {qualitaAppt.nonVerificati > 0 && (
+                  <div onClick={() => setListaModale({ titolo: 'In attesa di verifica', items: (appuntamentiList || []).filter(c => c.appt_stato === 'Programmato') })}
+                    style={{ fontSize: 11.5, color: '#8A97A6', marginTop: 10, cursor: 'pointer', textDecoration: 'underline' }}>
+                    ⏳ {qualitaAppt.nonVerificati} appuntament{qualitaAppt.nonVerificati === 1 ? 'o' : 'i'} in attesa di verifica da parte di Marco — non {qualitaAppt.nonVerificati === 1 ? 'è incluso' : 'sono inclusi'} nella percentuale.
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="opv-metrics">
               <div className="opv-metric"><div className="lbl">Chiamate oggi</div><div className="val" style={{ color: BLU }}>{esitiOggi}</div><div className="sub">esiti registrati</div></div>
               <div className="opv-metric"><div className="lbl">Appuntamenti</div><div className="val" style={{ color: '#1B7A3E' }}>{apptOggi}</div><div className="sub">fissati oggi 🎯</div></div>
@@ -861,41 +898,6 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
               </div>
             )}
 
-            {qualitaAppt && qualitaAppt.totComplessivo > 0 && (
-              <div className="opv-card">
-                <div className="opv-card-title">✨ Qualità dei tuoi appuntamenti</div>
-                {qualitaAppt.totVerificati > 0 ? (
-                  <>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 30, fontWeight: 800, color: '#1B7A3E' }}>{qualitaAppt.pctSvolti}%</span>
-                      <span style={{ fontSize: 13, color: '#6B7A8C' }}>si sono effettivamente svolti (su {qualitaAppt.totVerificati} verificati)</span>
-                    </div>
-                    <div style={{ height: 160, position: 'relative', marginTop: 10 }}><canvas ref={qualChartRef} /></div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 12 }}>
-                      {Object.entries(qualitaAppt.agg).sort((a, b) => b[1] - a[1]).map(([stato, n]) => {
-                        const bc = { Svolto: '#1B7A3E', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D' }[stato] || BLU;
-                        return (
-                          <div key={stato} onClick={() => setListaModale({ titolo: stato, items: (appuntamentiList || []).filter(c => c.appt_stato === stato) })}
-                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5 }}
-                            onMouseEnter={e => e.currentTarget.style.background = '#F5F8FB'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                            <span style={{ color: bc, fontWeight: 700 }}>{stato}</span>
-                            <span style={{ color: '#33475B', fontWeight: 700 }}>{n} →</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : (
-                  <div className="opv-empty">Nessun appuntamento ancora verificato da Marco.</div>
-                )}
-                {qualitaAppt.nonVerificati > 0 && (
-                  <div onClick={() => setListaModale({ titolo: 'In attesa di verifica', items: (appuntamentiList || []).filter(c => c.appt_stato === 'Programmato') })}
-                    style={{ fontSize: 11.5, color: '#8A97A6', marginTop: 10, cursor: 'pointer', textDecoration: 'underline' }}>
-                    ⏳ {qualitaAppt.nonVerificati} appuntament{qualitaAppt.nonVerificati === 1 ? 'o' : 'i'} in attesa di verifica da parte di Marco — non {qualitaAppt.nonVerificati === 1 ? 'è incluso' : 'sono inclusi'} nella percentuale.
-                  </div>
-                )}
-              </div>
-            )}
           </>
         )}
 
