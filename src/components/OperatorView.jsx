@@ -198,7 +198,9 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   }, []);
 
   useEffect(() => {
-    supabase.rpc('get_appuntamenti_stats', fonteOverride ? { p_fonte: fonteOverride } : {}).then(({ data, error }) => {
+    // p_da esplicito e ampio: "Qualità appuntamenti" deve guardare indietro (appuntamenti già avvenuti e già esitati),
+    // non in avanti come farebbe il default della funzione (pensato per un uso diverso, "prossimi appuntamenti").
+    supabase.rpc('get_appuntamenti_stats', { ...(fonteOverride ? { p_fonte: fonteOverride } : {}), p_da: '2000-01-01' }).then(({ data, error }) => {
       if (error) { console.error('get_appuntamenti_stats:', error); setApptStats([]); }
       else setApptStats(data || []);
     });
