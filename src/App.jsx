@@ -179,7 +179,8 @@ export default function App() {
           id: uid(), type: 'appt', 
           date: parseDate(dataRaw) || dataRaw, 
           stato: 'Programmato', // Always Programmato — stato will be updated manually after the appt
-          esito: '' // Empty — will be filled manually after the appt
+          esito: '', // Empty — will be filled manually after the appt
+          origine: 'bookings',
         });
         if (fu) newHist.push({ id: uid(), type: 'note', date: todayStr, text: noteRaw || 'Follow-up da importazione', followup: fu });
 
@@ -266,7 +267,7 @@ export default function App() {
         return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
       };
       const dataAppt = toLocalDT(r.data_appuntamento);
-      const newAppt = dataAppt ? { id: uid(), type: 'appt', date: dataAppt, stato: 'Programmato', esito: '' } : null;
+      const newAppt = dataAppt ? { id: uid(), type: 'appt', date: dataAppt, stato: 'Programmato', esito: '', origine: 'bookings' } : null;
 
       if (existingIdx >= 0) {
         const ex = current[existingIdx];
