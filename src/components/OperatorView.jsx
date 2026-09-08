@@ -112,6 +112,8 @@ const CSS = `
   .opv-banner { background: #E07B1A; color: white; border-radius: 12px; padding: 12px 18px; font-weight: 700; font-size: 13.5px; cursor: pointer; margin-top: 16px; box-shadow: 0 2px 10px rgba(224,123,26,.3); }
   .opv-banner:hover { background: #C96A12; }
   .opv-chip { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 9px; border-radius: 14px; margin-right: 5px; }
+  .opv-chipbtn { background: white; border: 1.5px solid #D8E1EA; color: #33475B; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: all .15s; }
+  .opv-chipbtn:hover { border-color: #0078D4; color: #0078D4; background: #0078D40d; }
   .opv-toggle { display: flex; gap: 6px; justify-content: flex-end; margin-top: 14px; }
   .opv-togglebtn { padding: 7px 18px; border-radius: 20px; font-weight: 700; font-size: 13px; cursor: pointer; border: 1.5px solid #D4DEE9; background: white; color: #33475B; font-family: inherit; }
   .opv-togglebtn.on { background: ${BLU}; color: white; border-color: ${BLU}; }
@@ -167,6 +169,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const [esitoOpen, setEsitoOpen] = useState(null);
   const [nota, setNota] = useState('');
   const [dataRichiamo, setDataRichiamo] = useState('');
+  const [richiamoOra, setRichiamoOra] = useState('');
   const [ricontatto, setRicontatto] = useState('6m');
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -223,7 +226,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     return true;
   };
 
-  const byRichiamo = (a, b) => (a.data_richiamo || '').localeCompare(b.data_richiamo || '');
+  const byRichiamo = (a, b) => (a.data_richiamo || '').localeCompare(b.data_richiamo || '') || (a.richiamo_ora || '99:99').localeCompare(b.richiamo_ora || '99:99');
 
   // Ordinamento configurabile: chi ha meno tentativi, chi aspetta da più tempo, alfabetico, o l'ordine di caricamento
   const applicaOrdine = (arr, criterio) => {
@@ -375,7 +378,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     if (coda) { setCodaCorrente(coda.map(x => x.id)); setCodaIndice(coda.findIndex(x => x.id === l.id)); }
     else { setCodaCorrente(null); setCodaIndice(0); }
   };
-  const apriEsito = (esito) => { setEsitoOpen(esito); setNota(''); setDataRichiamo(''); setRicontatto('6m'); };
+  const apriEsito = (esito) => { setEsitoOpen(esito); setNota(''); setDataRichiamo(''); setRichiamoOra(''); setRicontatto('6m'); };
 
   const NOTE_RAPIDE = ['Non disponibile al momento', 'Richiamare dopo pranzo', 'Numero non più attivo', 'Chiedere del titolare', 'Segreteria, non ha voluto passare la chiamata'];
 
@@ -387,13 +390,14 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     const nowIso = new Date().toISOString();
     const entry = { id: Date.now().toString(36), date: nowIso, esito: e.name, testo: nota.trim() };
     // Salvo lo stato precedente per l'eventuale "Annulla ultima registrazione"
-    const prima = { stato: selected.stato, tentativi: selected.tentativi, ultimo_contatto: selected.ultimo_contatto, note_storia: selected.note_storia, data_richiamo: selected.data_richiamo, non_interessato_fino_a: selected.non_interessato_fino_a, richiamo_fissato_da: selected.richiamo_fissato_da };
+    const prima = { stato: selected.stato, tentativi: selected.tentativi, ultimo_contatto: selected.ultimo_contatto, note_storia: selected.note_storia, data_richiamo: selected.data_richiamo, richiamo_ora: selected.richiamo_ora, non_interessato_fino_a: selected.non_interessato_fino_a, richiamo_fissato_da: selected.richiamo_fissato_da };
     const fields = {
       stato: e.name,
       tentativi: (selected.tentativi || 0) + 1,
       ultimo_contatto: nowIso,
       note_storia: [...(selected.note_storia || []), entry],
       data_richiamo: e.tipo === 'richiamo' ? dataRichiamo : null,
+      richiamo_ora: e.tipo === 'richiamo' ? (richiamoOra || null) : null,
       non_interessato_fino_a: null,
       richiamo_fissato_da: e.tipo === 'richiamo' ? 'operatore' : null,
     };
@@ -449,10 +453,15 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
 
   const Riga = ({ l, hot, mostraStato, coda }) => {
     const ultimaNota = (l.note_storia || []).filter(h => h.testo).slice(-1)[0]?.testo;
+    const oraScaduta = l.richiamo_ora && l.data_richiamo === today && l.richiamo_ora < new Date().toTimeString().slice(0, 5);
     return (
     <div className={'opv-row' + (hot ? ' hot' : '')} onClick={() => apriLead(l, mostraStato ? 'scheda' : 'esito', coda)}>
       <div className="who">
-        <div className="az">{l.codice_cliente_sap && <span title="Cliente già acquisito">📦 </span>}{l.azienda || l.nome || '—'}</div>
+        <div className="az">
+          {l.codice_cliente_sap && <span title="Cliente già acquisito">📦 </span>}
+          {l.richiamo_ora && <span style={{ color: oraScaduta ? '#A32D2D' : '#0078D4', fontWeight: 800 }} title={oraScaduta ? 'Orario già passato' : 'Richiamo a orario preciso'}>🕐 {l.richiamo_ora} </span>}
+          {l.azienda || l.nome || '—'}
+        </div>
         <div className="det">
           {l.nome && l.azienda ? l.nome : ''}{l.citta ? (l.nome && l.azienda ? ' · ' : '') + l.citta : ''}
           {hot && l.data_richiamo ? ` · richiamo ${new Date(l.data_richiamo + 'T12:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })}` : ''}
@@ -911,7 +920,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                   <dt>Stato</dt><dd>{statoInfo(selected.stato).icon} {selected.stato}</dd>
                   <dt>Tentativi</dt><dd>{selected.tentativi || 0}</dd>
                   {selected.ultimo_contatto && <><dt>Ultimo contatto</dt><dd>{fmtDT(selected.ultimo_contatto)}</dd></>}
-                  {selected.data_richiamo && <><dt>Richiamo</dt><dd>🔄 {new Date(selected.data_richiamo + 'T12:00').toLocaleDateString('it-IT')}</dd></>}
+                  {selected.data_richiamo && <><dt>Richiamo</dt><dd>🔄 {new Date(selected.data_richiamo + 'T12:00').toLocaleDateString('it-IT')}{selected.richiamo_ora ? ` alle ${selected.richiamo_ora}` : ''}</dd></>}
                   {selected.non_interessato_fino_a && <><dt>Ricontattabile dal</dt><dd>📅 {new Date(selected.non_interessato_fino_a + 'T12:00').toLocaleDateString('it-IT')}</dd></>}
                 </dl>
 
@@ -969,7 +978,29 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                 {esitoOpen.tipo === 'richiamo' && (
                   <div style={{ marginBottom: 12 }}>
                     <label className="opv-form-label">Quando richiamare? *</label>
-                    <input type="date" className="opv-input" style={{ width: '100%' }} min={today} value={dataRichiamo} onChange={e => setDataRichiamo(e.target.value)} />
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                      {[['30min', '⏱ Tra 30 min', 30], ['1h', '⏱ Tra 1 ora', 60], ['2h', '⏱ Tra 2 ore', 120]].map(([k, lab, minuti]) => (
+                        <button key={k} type="button" className="opv-chipbtn" onClick={() => {
+                          const d = new Date(Date.now() + minuti * 60000);
+                          setDataRichiamo(d.toISOString().slice(0, 10));
+                          setRichiamoOra(d.toTimeString().slice(0, 5));
+                        }}>{lab}</button>
+                      ))}
+                      <button type="button" className="opv-chipbtn" onClick={() => {
+                        const d = new Date(); d.setHours(15, 0, 0, 0);
+                        if (d < new Date()) d.setDate(d.getDate() + 1);
+                        setDataRichiamo(d.toISOString().slice(0, 10)); setRichiamoOra('15:00');
+                      }}>🌇 Oggi pomeriggio</button>
+                      <button type="button" className="opv-chipbtn" onClick={() => {
+                        const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
+                        setDataRichiamo(d.toISOString().slice(0, 10)); setRichiamoOra('09:00');
+                      }}>🌅 Domani mattina</button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input type="date" className="opv-input" style={{ flex: 2 }} min={today} value={dataRichiamo} onChange={e => setDataRichiamo(e.target.value)} />
+                      <input type="time" className="opv-input" style={{ flex: 1 }} value={richiamoOra} onChange={e => setRichiamoOra(e.target.value)} placeholder="Orario (facoltativo)" />
+                    </div>
+                    {richiamoOra && <div className="fs-11" style={{ color: '#8A97A6', marginTop: 4 }}>Orario facoltativo — lascialo vuoto se va bene in un momento qualsiasi di quel giorno.</div>}
                   </div>
                 )}
 
