@@ -357,7 +357,10 @@ function ApptForm({ contactId, appt, stages, contacts, onSave, onDelete, onClose
     id: a.id || uid(),
     date: a.date || (prefDate ? prefDate + 'T09:00' : ''),
     stato: a.stato || 'Programmato',
-    esito: a.esito || ''
+    esito: a.esito || '',
+    // Se sto modificando un appuntamento esistente, ne mantengo la provenienza originale (bookings o manuale).
+    // Se lo sto creando ora da qui, sono io (Marco) a fissarlo: 'manuale'.
+    origine: a.id ? a.origine : 'manuale',
   });
   const [fase, setFase] = useState('');
   const [searchQ, setSearchQ] = useState('');
