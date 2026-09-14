@@ -35,9 +35,11 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const barRef=useRef(), doughRef=useRef(), pieRef=useRef(), apptBarRef=useRef();
   const barC=useRef(), doughC=useRef(), pieC=useRef(), apptBarC=useRef();
 
-  const wonStage = stages.filter(s=>!s.isKo).slice(-1)[0];
   const koStages = stages.filter(s=>s.isKo);
-  const chiusiOK = contacts.filter(c=>wonStage&&c.fase===wonStage.name);
+  // Il fatturato (chiusiOK) dipende SOLO dalla presenza di contratti, mai dalla fase attuale:
+  // un contratto chiuso oggi resta "chiuso" anche se il contatto si sposta ad "In valutazione"
+  // per una trattativa su un altro prodotto.
+  const chiusiOK = contacts.filter(c=>getContratti(c).length>0);
   const chiusiKO = contacts.filter(c=>koStages.some(s=>s.name===c.fase));
   const openHot = contacts.filter(c=>c.fase==='In valutazione');
   const curMonth = today.slice(0,7); const curYear = today.slice(0,4);
@@ -45,8 +47,17 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const fatAnno = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFatturato(c),0);
   const totPrev = openHot.reduce((s,c)=>s+getPreventivato(c),0);
   const urgentFU = contacts.reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='note'&&h.followup&&h.followup<=today).length,0);
-  const koAndOkNames = [...stages.filter(s=>s.isKo).map(s=>s.name), wonStage?.name].filter(Boolean);
-  const daRifissare = contacts.filter(c=>!koAndOkNames.includes(c.fase)).reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='appt'&&h.stato==='Programmato'&&h.date&&h.date.slice(0,10)<today).length,0);
+  const koAndOkNames = [...stages.filter(s=>s.isKo).map(s=>s.name), 'Chiuso OK'];
+  const programmatiScaduti = contacts.filter(c=>!koAndOkNames.includes(c.fase)).reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='appt'&&h.stato==='Programmato'&&h.date&&h.date.slice(0,10)<today).length,0);
+  // Contatti la cui trattativa è rimasta sospesa: l'ultimo appuntamento è "Non effettuato" o "Non si è presentato",
+  // ma nessuno ha ancora deciso se rifissarlo o chiudere la trattativa come persa.
+  const sospesi = contacts.filter(c=>{
+    if (koAndOkNames.includes(c.fase)) return false;
+    const appts=(c.history||[]).filter(h=>h.type==='appt'&&h.date).sort((a,b)=>b.date.localeCompare(a.date));
+    const ultimo=appts[0];
+    return !!ultimo && (ultimo.stato==='Non effettuato'||ultimo.stato==='Non si è presentato');
+  }).length;
+  const daRifissare = programmatiScaduti + sospesi;
 
   // Group by contract's own dataInizio (same source of truth as "Chiuso per mese")
   const monthlyNuovo = Array(12).fill(0); const monthlyRinnovo = Array(12).fill(0);

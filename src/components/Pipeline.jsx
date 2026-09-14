@@ -2,6 +2,14 @@ import React, { useState } from 'react';
 import { fmt, getPreventivato, getLastAppt, getNextFu } from '../constants';
 import { FonteBadge, PropostaBadge } from './Badges';
 
+// L'ultimo appuntamento registrato per questo contatto è "Non effettuato" o "Non si è presentato"?
+// Se sì, la trattativa è rimasta sospesa: nessuno ha ancora deciso se rifissare o considerarla persa.
+function appuntamentoSospeso(c) {
+  const appts = (c.history || []).filter(h => h.type === 'appt' && h.date).sort((a, b) => b.date.localeCompare(a.date));
+  const ultimo = appts[0];
+  return !!ultimo && (ultimo.stato === 'Non effettuato' || ultimo.stato === 'Non si è presentato');
+}
+
 export default function Pipeline({ contacts, stages, setModal, setContacts, showToast, deleteContact, deleteContacts }) {
   const activeStages = stages.filter(s => !s.isKo && s.name !== 'Chiuso OK');
   const [sortK, setSortK] = useState('nome');
@@ -78,8 +86,9 @@ export default function Pipeline({ contacts, stages, setModal, setContacts, show
                 {sc.length === 0 && <div className="fs-12 text-muted" style={{ textAlign: 'center', padding: '16px 0' }}>Nessun contatto</div>}
                 {sc.map(c => {
                   const la = getLastAppt(c); const fu = getNextFu(c); const imp = getPreventivato(c); const isSel = selIds.has(c.id);
+                  const sospeso = appuntamentoSospeso(c);
                   return (
-                    <div key={c.id} className="deal-card" style={{ border: isSel ? '2px solid var(--accent)' : '1px solid var(--border)', position: 'relative' }}>
+                    <div key={c.id} className="deal-card" style={{ border: isSel ? '2px solid var(--accent)' : sospeso ? '1.5px solid #E07B1A' : '1px solid var(--border)', position: 'relative' }}>
                       <div style={{ position: 'absolute', top: 8, right: 8 }}>
                         <input type="checkbox" checked={isSel} onChange={() => toggleSel(c.id)} />
                       </div>
@@ -87,6 +96,11 @@ export default function Pipeline({ contacts, stages, setModal, setContacts, show
                         <div style={{ fontWeight: 700, marginBottom: 2, paddingRight: 20 }}>{c.nome}</div>
                         <div className="text-muted fs-12" style={{ marginBottom: 4 }}>{c.azienda || '—'}</div>
                         {c.categoria && <div className="fs-11 text-muted" style={{ marginBottom: 4 }}>{c.categoria}</div>}
+                        {sospeso && (
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#E07B1A', background: '#E07B1A18', borderRadius: 6, padding: '3px 7px', marginBottom: 6, display: 'inline-block' }}>
+                            ⚠ Richiede una decisione
+                          </div>
+                        )}
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
                           {c.fonte && <FonteBadge name={c.fonte} />}
                           {c.proposta && <PropostaBadge name={c.proposta} />}

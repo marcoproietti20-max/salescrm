@@ -42,9 +42,13 @@ function getDurataMedia(c) {
 
 export default function ChiusoPerMese({ contacts, stages }) {
   const curYear = new Date().getFullYear().toString();
-  const wonStage = stages.filter(s => !s.isKo).slice(-1)[0];
-  const closed = contacts.filter(c => wonStage && c.fase === wonStage.name && getDataChiusura(c));
-  const allYears = [...new Set(closed.map(c => getDataChiusura(c).slice(0,4)))].sort().reverse();
+  // Il fatturato dipende SOLO dalla presenza di contratti, mai dalla fase attuale del contatto:
+  // un contratto chiuso oggi resta "chiuso" anche se il contatto si sposta ad "In valutazione"
+  // per una trattativa su un altro prodotto.
+  const closed = contacts.filter(c => getContratti(c).length > 0);
+  const allYears = [...new Set(
+    contacts.flatMap(c => getContratti(c).map(ct => (ct.dataInizio || getDataChiusura(c)).slice(0,4)).filter(Boolean))
+  )].sort().reverse();
   if (!allYears.includes(curYear)) allYears.unshift(curYear);
 
   const [year, setYear] = useState(curYear);
@@ -59,7 +63,7 @@ export default function ChiusoPerMese({ contacts, stages }) {
   )].sort();
   const chartRef = useRef(); const chartInst = useRef();
 
-  const yearClosed = closed.filter(c => getDataChiusura(c).startsWith(year));
+  const yearClosed = closed.filter(c => getContratti(c).some(ct => (ct.dataInizio || getDataChiusura(c)).startsWith(year)));
 
   const monthly = Array.from({length:12}, (_,i) => ({
     month: i, label: MESI[i],
@@ -240,7 +244,7 @@ export default function ChiusoPerMese({ contacts, stages }) {
                         <tr key={`${c.id}-${ct.id||ci}`}>
                           <td className="fw-600">{ci===0?c.nome:<span className="text-muted fs-12">↳</span>}</td>
                           <td className="text-muted fs-12">{ci===0?c.azienda||'—':''}</td>
-                          <td className="text-muted fs-12">{ci===0?fmt(getDataChiusura(c),{day:'2-digit',month:'long',year:'numeric'}):''}</td>
+                          <td className="text-muted fs-12">{ci===0?fmt(ct.dataInizio||getDataChiusura(c),{day:'2-digit',month:'long',year:'numeric'}):''}</td>
                           <td className="text-muted fs-12">{uniqueProd.join(', ')||'—'}</td>
                           <td className="text-muted fs-12">{durataLabel}</td>
                           <td style={{fontWeight:600,color:'#0050A0'}}>{isNuovo?fmtEur(importoCt):'—'}</td>
