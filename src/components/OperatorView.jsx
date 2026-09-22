@@ -515,7 +515,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
       </div>
       {hot && <span className="opv-tag" style={{ background: '#E07B1A20', color: '#B35F0E' }}>{l.stato === 'Richiamare' ? '🔄 Richiamo' : '📅 Ricontatto'}</span>}
       {mostraStato && <span className="opv-statochip" style={{ background: statoInfo(l.stato).color + '18', color: statoInfo(l.stato).color }}>{statoInfo(l.stato).icon} {l.stato}</span>}
-      {l.telefono && <a className="opv-call" href={'tel:' + l.telefono.replace(/\s/g, '')} onClick={e => e.stopPropagation()}>📞 {l.telefono}{(l.telefono2 || l.telefono3) && <span style={{ opacity: .75, fontWeight: 400 }}> +{[l.telefono2, l.telefono3].filter(Boolean).length}</span>}</a>}
+      {(l.cellulare || l.telefono) && <a className="opv-call" href={'tel:' + (l.cellulare || l.telefono).replace(/\s/g, '')} onClick={e => e.stopPropagation()}>📞 {l.cellulare || l.telefono}{[l.cellulare && l.telefono, l.telefono2, l.telefono3].filter(Boolean).length > 0 && <span style={{ opacity: .75, fontWeight: 400 }}> +{[l.cellulare && l.telefono, l.telefono2, l.telefono3].filter(Boolean).length}</span>}</a>}
       <button className="opv-open" onClick={e => { e.stopPropagation(); apriLead(l, 'esito', coda); }}>Registra esito</button>
     </div>
   );};
@@ -1072,9 +1072,10 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
               <button className="opv-btn" onClick={() => { setSelected(null); setEsitoOpen(null); }}>✕</button>
             </div>
 
-            <a className="opv-bigcall" href={'tel:' + (selected.telefono || '').replace(/\s/g, '')}>📞 {selected.telefono || 'Nessun numero'}</a>
-            {(selected.telefono2 || selected.telefono3) && (
+            <a className="opv-bigcall" href={'tel:' + (selected.cellulare || selected.telefono || '').replace(/\s/g, '')}>📞 {selected.cellulare || selected.telefono || 'Nessun numero'}</a>
+            {(selected.cellulare ? selected.telefono : (selected.telefono2 || selected.telefono3)) && (
               <div className="opv-callrow">
+                {selected.cellulare && selected.telefono && <a className="opv-bigcall small" href={'tel:' + selected.telefono.replace(/\s/g, '')}>☎ {selected.telefono}</a>}
                 {selected.telefono2 && <a className="opv-bigcall small" href={'tel:' + selected.telefono2.replace(/\s/g, '')}>☎ {selected.telefono2}</a>}
                 {selected.telefono3 && <a className="opv-bigcall small" href={'tel:' + selected.telefono3.replace(/\s/g, '')}>☎ {selected.telefono3}</a>}
               </div>
