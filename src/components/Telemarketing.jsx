@@ -73,6 +73,9 @@ const COL_FORM = {
   codiceSap: 'Cod.Cliente SAP', ragioneSociale: 'Account: Ragione Sociale', citta: 'Account: Località',
   provincia: 'Account: Provincia', valoreCliente: 'Account: Valore Cliente', telefono: 'Account: Telefono', email: 'Account: Posta Elettronica',
 };
+const COL_ENRICH = {
+  codiceSap: 'Codice Cliente SAP', referente: 'Referente', cellulare: 'Cellulare', nota: 'Nota per Rosanna',
+};
 
 function parseDataIt(s) {
   if (!s) return null;
@@ -177,6 +180,9 @@ export default function Telemarketing({ contacts, showToast }) {
   const [pfReportForm, setPfReportForm] = useState(null);
   const fileOpRef = useRef();
   const fileFormRef = useRef();
+  const fileEnrichRef = useRef();
+  const [pfReportEnrich, setPfReportEnrich] = useState(null);
+  const [campagnaNome, setCampagnaNome] = useState('');
   const fileRef = useRef();
   // Vista lead
   const [fStato, setFStato] = useState('');
@@ -368,6 +374,67 @@ export default function Telemarketing({ contacts, showToast }) {
       showToast('Riassegnazione completata', `${daInserire.length} nuovi, ${daCancellare.length + daSegnare.length} usciti gestiti`);
     } catch (err) {
       console.error('Errore riassegnazione portafoglio:', err);
+      showToast('Errore imprevisto', err?.message || 'Controlla la console (F12)', 'info');
+    }
+    setPfProgress(null);
+  };
+
+  // ── Portafoglio: Aggiorna Referente/Cellulare/Nota (con nome campagna facoltativo) ──
+  const aggiornaAnagraficaPortafoglio = async (e) => {
+    const file = e.target.files[0]; if (!file) return; e.target.value = '';
+    setPfProgress({ fase: 'elaborazione', done: 0, total: 1 });
+    setPfReportEnrich(null);
+    try {
+      const rows = await parseFileSmart(file);
+      if (!rows.length) { showToast('File vuoto o non riconosciuto', '', 'info'); setPfProgress(null); return; }
+
+      const byCod = {};
+      leads.forEach(l => { if (l.codice_cliente_sap) byCod[l.codice_cliente_sap] = l; });
+
+      const daAggiornare = [];
+      const nonTrovati = [];
+      const oggiIso = new Date().toISOString();
+      const campagna = campagnaNome.trim();
+
+      for (const r of rows) {
+        const cod = String(r[COL_ENRICH.codiceSap] || '').trim();
+        if (!cod) continue;
+        const ex = byCod[cod];
+        if (!ex) { nonTrovati.push(cod); continue; }
+
+        const referente = String(r[COL_ENRICH.referente] || '').trim();
+        const cellulare = String(r[COL_ENRICH.cellulare] || '').trim();
+        const nota = String(r[COL_ENRICH.nota] || '').trim();
+        if (!referente && !cellulare && !nota && !campagna) continue; // riga vuota, niente da fare
+
+        const fields = {};
+        if (referente) fields.nome = referente;
+        if (cellulare) fields.cellulare = cellulare;
+        if (nota) fields.note_istruzioni = [...(ex.note_istruzioni || []), { id: 'instr-' + cod + '-' + Date.now(), date: oggiIso, testo: nota }];
+        if (campagna) fields.lista = campagna;
+        if (Object.keys(fields).length === 0) continue;
+
+        daAggiornare.push({ id: ex.id, fields });
+      }
+
+      if (!daAggiornare.length && !nonTrovati.length) {
+        showToast('Nessuna riga con dati da aggiornare', '', 'info'); setPfProgress(null); return;
+      }
+
+      let fatti = 0;
+      const BATCH = 200;
+      for (let i = 0; i < daAggiornare.length; i += BATCH) {
+        const chunk = daAggiornare.slice(i, i + BATCH);
+        await Promise.all(chunk.map(u => dbUpdateLead(u.id, u.fields)));
+        fatti += chunk.length;
+        setPfProgress({ fase: 'scrittura', done: fatti, total: daAggiornare.length });
+      }
+
+      await load();
+      setPfReportEnrich({ aggiornati: daAggiornare.length, nonTrovati: nonTrovati.length, elencoNonTrovati: nonTrovati.slice(0, 15) });
+      showToast('Anagrafica aggiornata', `${daAggiornare.length} clienti aggiornati${nonTrovati.length ? `, ${nonTrovati.length} codici non trovati` : ''}`);
+    } catch (err) {
+      console.error('Errore aggiornamento anagrafica portafoglio:', err);
       showToast('Errore imprevisto', err?.message || 'Controlla la console (F12)', 'info');
     }
     setPfProgress(null);
@@ -723,8 +790,10 @@ export default function Telemarketing({ contacts, showToast }) {
   const apriModifica = () => {
     setEditForm({
       azienda: selected.azienda || '', nome: selected.nome || '', telefono: selected.telefono || '',
+      cellulare: selected.cellulare || '',
       email: selected.email || '', categoria: selected.categoria || '', citta: selected.citta || '', provincia: selected.provincia || '',
       valore_cliente: selected.valore_cliente || '', prodotti_attivi: selected.prodotti_attivi || [],
+      nota_libera: selected.nota_libera || '',
     });
     setEditMode(true);
   };
@@ -736,10 +805,11 @@ export default function Telemarketing({ contacts, showToast }) {
   const salvaModificheLead = async () => {
     const fields = {
       azienda: editForm.azienda.trim() || null, nome: editForm.nome.trim() || null,
-      telefono: editForm.telefono.trim() || null, email: editForm.email.trim() || null,
+      telefono: editForm.telefono.trim() || null, cellulare: editForm.cellulare.trim() || null, email: editForm.email.trim() || null,
       categoria: editForm.categoria || null, citta: editForm.citta.trim() || null, provincia: editForm.provincia.trim() || null,
       valore_cliente: editForm.valore_cliente === '' ? null : Number(editForm.valore_cliente) || 0,
       prodotti_attivi: editForm.prodotti_attivi.filter(p => p.nome.trim()),
+      nota_libera: editForm.nota_libera.trim() || null,
     };
     const ok = await dbUpdateLead(selected.id, fields);
     if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
@@ -1051,6 +1121,23 @@ export default function Telemarketing({ contacts, showToast }) {
                 </div>
               )}
             </div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r)', padding: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>👤 Referente, cellulare e note</div>
+              <div className="fs-11 text-muted" style={{ marginBottom: 10 }}>Aggiorna solo i campi che trovi compilati riga per riga. La nota si aggiunge a un piccolo storico, non sostituisce le precedenti. Codici SAP non trovati vengono solo segnalati, nessuna nuova anagrafica creata.</div>
+              <input className="form-control" style={{ marginBottom: 8, fontSize: 12 }} placeholder="Nome campagna (facoltativo, es. Upselling Novembre 2026)" value={campagnaNome} onChange={e => setCampagnaNome(e.target.value)} />
+              <button className="btn" onClick={() => fileEnrichRef.current?.click()} disabled={!!pfProgress}>📁 Carica file Referente/Cellulare/Nota</button>
+              <input ref={fileEnrichRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={aggiornaAnagraficaPortafoglio} />
+              {pfReportEnrich && (
+                <div style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.7 }}>
+                  ✅ {pfReportEnrich.aggiornati} clienti aggiornati
+                  {pfReportEnrich.nonTrovati > 0 && (
+                    <div style={{ color: '#A32D2D', marginTop: 4 }}>
+                      ⚠ {pfReportEnrich.nonTrovati} codici SAP non trovati: {pfReportEnrich.elencoNonTrovati.join(', ')}{pfReportEnrich.nonTrovati > 15 ? '...' : ''}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           {pfProgress && (
             <div style={{ marginTop: 14 }}>
@@ -1168,6 +1255,7 @@ export default function Telemarketing({ contacts, showToast }) {
                   {selected.codice_cliente_sap && (
                     <div style={{ background: '#0078D40d', border: '1px solid #0078D433', borderRadius: 'var(--r)', padding: '10px 14px', marginBottom: 14 }}>
                       <div className="fs-11 text-muted" style={{ fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>📦 Portafoglio — Cod. SAP {selected.codice_cliente_sap}</div>
+                      {selected.cellulare && <div style={{ fontSize: 13, marginBottom: 4 }}>📱 Cellulare: <strong>{selected.cellulare}</strong></div>}
                       {selected.valore_cliente > 0 && <div style={{ fontSize: 13, marginBottom: 4 }}>Valore cliente: <strong style={{ color: '#1B7A3E' }}>€{Number(selected.valore_cliente).toLocaleString('it-IT')}</strong></div>}
                       {selected.prossima_scadenza && <div style={{ fontSize: 13, marginBottom: 4 }}>Prossima scadenza: <strong>{new Date(selected.prossima_scadenza + 'T12:00').toLocaleDateString('it-IT')}</strong></div>}
                       {selected.stato_amministrativo && <div style={{ fontSize: 13, marginBottom: 4, color: '#A32D2D', fontWeight: 600 }}>⚠ {selected.stato_amministrativo}</div>}
@@ -1178,6 +1266,23 @@ export default function Telemarketing({ contacts, showToast }) {
                           ))}
                         </div>
                       ) : <div className="fs-12 text-muted" style={{ marginTop: 4 }}>Nessun prodotto attivo al momento</div>}
+
+                      {(selected.note_istruzioni || []).length > 0 && (
+                        <div style={{ marginTop: 10, borderTop: '1px solid #0078D433', paddingTop: 8 }}>
+                          <div className="fs-11 text-muted" style={{ fontWeight: 700, marginBottom: 4 }}>Istruzioni per Rosanna (storico)</div>
+                          {[...selected.note_istruzioni].reverse().map(n => (
+                            <div key={n.id} style={{ fontSize: 12.5, marginBottom: 4 }}>
+                              <span className="text-muted">{fmtDT(n.date)}:</span> {n.testo}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {selected.nota_libera && (
+                        <div style={{ marginTop: 10, borderTop: '1px solid #0078D433', paddingTop: 8 }}>
+                          <div className="fs-11 text-muted" style={{ fontWeight: 700, marginBottom: 4 }}>📝 Nota libera (di Rosanna o tua)</div>
+                          <div style={{ fontSize: 12.5, whiteSpace: 'pre-wrap' }}>{selected.nota_libera}</div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1209,20 +1314,28 @@ export default function Telemarketing({ contacts, showToast }) {
                   </div>
                   <div className="form-row">
                     <div className="form-group"><label className="form-label">Telefono</label><input className="form-control" value={editForm.telefono} onChange={e => ef('telefono', e.target.value)} /></div>
-                    <div className="form-group"><label className="form-label">Email</label><input className="form-control" value={editForm.email} onChange={e => ef('email', e.target.value)} /></div>
+                    <div className="form-group"><label className="form-label">Cellulare</label><input className="form-control" value={editForm.cellulare} onChange={e => ef('cellulare', e.target.value)} /></div>
                   </div>
                   <div className="form-row">
+                    <div className="form-group"><label className="form-label">Email</label><input className="form-control" value={editForm.email} onChange={e => ef('email', e.target.value)} /></div>
                     <div className="form-group"><label className="form-label">Categoria</label>
                       <select className="form-control" value={editForm.categoria} onChange={e => ef('categoria', e.target.value)}>
                         <option value="">— nessuna —</option>
                         {CATEGORIE.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
-                    <div className="form-group"><label className="form-label">Città</label><input className="form-control" value={editForm.citta} onChange={e => ef('citta', e.target.value)} /></div>
                   </div>
                   <div className="form-row">
+                    <div className="form-group"><label className="form-label">Città</label><input className="form-control" value={editForm.citta} onChange={e => ef('citta', e.target.value)} /></div>
                     <div className="form-group"><label className="form-label">Provincia</label><input className="form-control" value={editForm.provincia} onChange={e => ef('provincia', e.target.value)} /></div>
+                  </div>
+                  <div className="form-row">
                     <div className="form-group"><label className="form-label">Valore cliente (€)</label><input className="form-control" type="number" value={editForm.valore_cliente} onChange={e => ef('valore_cliente', e.target.value)} /></div>
+                    <div className="form-group" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">📝 Nota libera</label>
+                    <textarea className="form-control" style={{ minHeight: 60 }} value={editForm.nota_libera} onChange={e => ef('nota_libera', e.target.value)} placeholder="Osservazioni sempre modificabili, tue o di Rosanna." />
                   </div>
 
                   <div className="card-title" style={{ marginTop: 14, marginBottom: 8 }}>Prodotti attivi</div>

@@ -1,11 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { CATEGORIE } from '../constants';
+import { CATEGORIE, fmtDT } from '../constants';
 import { dbLoadLeads, dbUpdateLead, dbInsertLeads, dbDeleteLeads } from '../supabase';
 
 const CAMPO_VUOTO = {
-  azienda: '', nome: '', telefono: '', email: '', categoria: '', citta: '', provincia: '',
-  codice_cliente_sap: '', stato_amministrativo: '', prossima_scadenza: '', prodotti_attivi: [],
+  azienda: '', nome: '', telefono: '', cellulare: '', email: '', categoria: '', citta: '', provincia: '',
+  codice_cliente_sap: '', stato_amministrativo: '', prossima_scadenza: '', prodotti_attivi: [], nota_libera: '',
 };
+
+const OPZIONI_ORDINE = [
+  { v: 'scadenza', l: 'Prossima scadenza' },
+  { v: 'valore_desc', l: 'Valore cliente (dal più alto)' },
+  { v: 'azienda', l: 'Azienda (A-Z)' },
+];
 
 export default function Portafoglio({ showToast }) {
   const [leads, setLeads] = useState([]);
@@ -13,7 +19,9 @@ export default function Portafoglio({ showToast }) {
   const [q, setQ] = useState('');
   const [fProdotto, setFProdotto] = useState('');
   const [fScadenza, setFScadenza] = useState('');
+  const [fLista, setFLista] = useState('');
   const [mostraUsciti, setMostraUsciti] = useState(false);
+  const [ordine, setOrdine] = useState('scadenza');
   const [selected, setSelected] = useState(null); // lead in modifica, oppure {isNew:true} per la creazione
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -32,32 +40,45 @@ export default function Portafoglio({ showToast }) {
     return [...set].sort((a, b) => a.localeCompare(b, 'it'));
   }, [leads]);
 
+  const listeUniche = useMemo(() => {
+    const set = new Set();
+    leads.forEach(l => l.lista && set.add(l.lista));
+    return [...set].sort((a, b) => a.localeCompare(b, 'it'));
+  }, [leads]);
+
   const filtered = useMemo(() => {
-    return leads.filter(l => {
+    let arr = leads.filter(l => {
       if (!mostraUsciti && l.portafoglio_uscito) return false;
-      if (q && !((l.azienda || '') + (l.telefono || '') + (l.email || '')).toLowerCase().includes(q.toLowerCase())) return false;
+      if (q && !((l.azienda || '') + (l.nome || '') + (l.telefono || '') + (l.cellulare || '') + (l.email || '')).toLowerCase().includes(q.toLowerCase())) return false;
       if (fProdotto && !(l.prodotti_attivi || []).some(p => p.nome === fProdotto)) return false;
+      if (fLista && l.lista !== fLista) return false;
       if (fScadenza) {
         if (!l.prossima_scadenza) return false;
         const giorni = (new Date(l.prossima_scadenza) - new Date(today)) / (1000 * 60 * 60 * 24);
         if (giorni < 0 || giorni > Number(fScadenza)) return false;
       }
       return true;
-    }).sort((a, b) => (a.prossima_scadenza || '9999-99-99').localeCompare(b.prossima_scadenza || '9999-99-99'));
-  }, [leads, q, fProdotto, fScadenza, mostraUsciti, today]);
+    });
+    if (ordine === 'valore_desc') arr = arr.sort((a, b) => (Number(b.valore_cliente) || 0) - (Number(a.valore_cliente) || 0));
+    else if (ordine === 'azienda') arr = arr.sort((a, b) => (a.azienda || '').localeCompare(b.azienda || '', 'it'));
+    else arr = arr.sort((a, b) => (a.prossima_scadenza || '9999-99-99').localeCompare(b.prossima_scadenza || '9999-99-99'));
+    return arr;
+  }, [leads, q, fProdotto, fScadenza, fLista, mostraUsciti, ordine, today]);
 
   const totValore = filtered.reduce((s, l) => s + (Number(l.valore_cliente) || 0), 0);
   const inScadenza60 = leads.filter(l => !l.portafoglio_uscito && l.prossima_scadenza && (new Date(l.prossima_scadenza) - new Date(today)) / 86400000 <= 60 && (new Date(l.prossima_scadenza) - new Date(today)) / 86400000 >= 0).length;
   const bloccati = leads.filter(l => !l.portafoglio_uscito && l.stato_amministrativo).length;
+  const riattivabili = leads.filter(l => !l.portafoglio_uscito && (l.prodotti_attivi || []).length === 0).length;
 
   // ── Apertura scheda: modifica esistente o nuova ────────────
   const apriModifica = (l) => {
     setSelected(l);
     setForm({
-      azienda: l.azienda || '', nome: l.nome || '', telefono: l.telefono || '', email: l.email || '',
+      azienda: l.azienda || '', nome: l.nome || '', telefono: l.telefono || '', cellulare: l.cellulare || '', email: l.email || '',
       categoria: l.categoria || '', citta: l.citta || '', provincia: l.provincia || '',
       codice_cliente_sap: l.codice_cliente_sap || '', stato_amministrativo: l.stato_amministrativo || '',
       prossima_scadenza: l.prossima_scadenza || '', prodotti_attivi: l.prodotti_attivi || [],
+      nota_libera: l.nota_libera || '',
     });
   };
   const apriNuovo = () => { setSelected({ isNew: true }); setForm({ ...CAMPO_VUOTO }); };
@@ -74,13 +95,14 @@ export default function Portafoglio({ showToast }) {
     setSaving(true);
     const fields = {
       azienda: form.azienda.trim() || null, nome: form.nome.trim() || null,
-      telefono: form.telefono.trim() || null, email: form.email.trim() || null,
+      telefono: form.telefono.trim() || null, cellulare: form.cellulare.trim() || null, email: form.email.trim() || null,
       categoria: form.categoria || null, citta: form.citta.trim() || null, provincia: form.provincia.trim() || null,
       codice_cliente_sap: form.codice_cliente_sap.trim() || null,
       stato_amministrativo: form.stato_amministrativo.trim() || null,
       prossima_scadenza: form.prossima_scadenza || null,
       prodotti_attivi: form.prodotti_attivi.filter(p => p.nome.trim()),
       valore_cliente: valoreForm,
+      nota_libera: form.nota_libera.trim() || null,
     };
     if (selected.isNew) {
       const nuovo = {
@@ -129,22 +151,32 @@ export default function Portafoglio({ showToast }) {
           <div className="metric-card"><div className="metric-label">Clienti</div><div className="metric-value">{filtered.length}</div></div>
           <div className="metric-card"><div className="metric-label">Valore complessivo</div><div className="metric-value" style={{ color: '#1B7A3E' }}>€{totValore.toLocaleString('it-IT')}</div></div>
           <div className="metric-card"><div className="metric-label">In scadenza (60gg)</div><div className="metric-value" style={{ color: '#E07B1A' }}>{inScadenza60}</div></div>
+          <div className="metric-card"><div className="metric-label">Candidati riattivazione</div><div className="metric-value" style={{ color: '#7B68EE' }}>{riattivabili}</div></div>
           <div className="metric-card"><div className="metric-label">Bloccati / precontenzioso</div><div className="metric-value" style={{ color: bloccati > 0 ? '#A32D2D' : 'inherit' }}>{bloccati}</div></div>
         </div>
 
         <div className="search-bar">
-          <input className="form-control" style={{ flex: 1, maxWidth: 260 }} placeholder="Cerca azienda, telefono, email..." value={q} onChange={e => setQ(e.target.value)} />
+          <input className="form-control" style={{ flex: 1, maxWidth: 240 }} placeholder="Cerca azienda, referente, telefono, email..." value={q} onChange={e => setQ(e.target.value)} />
           {prodottiUnici.length > 0 && (
-            <select className="form-control" style={{ width: 220 }} value={fProdotto} onChange={e => setFProdotto(e.target.value)}>
+            <select className="form-control" style={{ width: 200 }} value={fProdotto} onChange={e => setFProdotto(e.target.value)}>
               <option value="">Tutti i prodotti</option>
               {prodottiUnici.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           )}
-          <select className="form-control" style={{ width: 190 }} value={fScadenza} onChange={e => setFScadenza(e.target.value)}>
+          <select className="form-control" style={{ width: 180 }} value={fScadenza} onChange={e => setFScadenza(e.target.value)}>
             <option value="">Qualsiasi scadenza</option>
             <option value="30">In scadenza entro 30gg</option>
             <option value="60">In scadenza entro 60gg</option>
             <option value="90">In scadenza entro 90gg</option>
+          </select>
+          {listeUniche.length > 1 && (
+            <select className="form-control" style={{ width: 190 }} value={fLista} onChange={e => setFLista(e.target.value)}>
+              <option value="">Tutte le campagne</option>
+              {listeUniche.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          )}
+          <select className="form-control" style={{ width: 200 }} value={ordine} onChange={e => setOrdine(e.target.value)}>
+            {OPZIONI_ORDINE.map(o => <option key={o.v} value={o.v}>Ordina: {o.l}</option>)}
           </select>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={mostraUsciti} onChange={e => setMostraUsciti(e.target.checked)} /> Mostra usciti
@@ -155,29 +187,36 @@ export default function Portafoglio({ showToast }) {
           <table className="crm-table">
             <thead>
               <tr>
-                <th>Azienda</th><th>Telefono</th><th>Email</th><th>Prodotti attivi</th>
-                <th>Valore</th><th>Prossima scadenza</th><th>Stato amm.vo</th><th>Stato chiamata</th>
+                <th>Azienda / Referente</th><th>Telefono / Cellulare</th><th>Prodotti attivi</th>
+                <th>Valore</th><th>Prossima scadenza</th><th>Stato amm.vo</th><th>Ultima attività</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? <tr><td colSpan={8} className="empty">Nessun cliente con questi filtri</td></tr> : filtered.map(l => {
+              {filtered.length === 0 ? <tr><td colSpan={7} className="empty">Nessun cliente con questi filtri</td></tr> : filtered.map(l => {
                 const giorni = l.prossima_scadenza ? (new Date(l.prossima_scadenza) - new Date(today)) / 86400000 : null;
                 const scadenzaVicina = giorni !== null && giorni <= 60 && giorni >= 0;
+                const ultimaAttivita = (l.note_storia || []).slice(-1)[0];
+                const senzaProdotti = (l.prodotti_attivi || []).length === 0;
                 return (
                   <tr key={l.id} onClick={() => apriModifica(l)} style={{ cursor: 'pointer', ...(l.portafoglio_uscito ? { opacity: .55 } : {}) }}>
                     <td>
                       <span className="fw-600">{l.azienda || '—'}</span>
+                      {l.nome && <div className="fs-11 text-muted">{l.nome}</div>}
                       {l.portafoglio_uscito && <div className="fs-11" style={{ color: '#A32D2D', fontWeight: 600 }}>📤 Uscito dal portafoglio</div>}
                     </td>
-                    <td className="fs-12">{l.telefono || '—'}</td>
-                    <td className="fs-12" style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.email || '—'}</td>
+                    <td className="fs-12">
+                      {l.telefono || '—'}
+                      {l.cellulare && <div className="fs-11" style={{ color: '#0078D4' }}>📱 {l.cellulare}</div>}
+                    </td>
                     <td>
-                      {(l.prodotti_attivi || []).length === 0 ? <span className="text-muted fs-12">Nessuno</span> : (
+                      {senzaProdotti ? (
+                        <span style={{ background: '#7B68EE18', color: '#7B68EE', borderRadius: 10, padding: '2px 8px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>🔄 Candidato riattivazione</span>
+                      ) : (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, maxWidth: 260 }}>
                           {l.prodotti_attivi.slice(0, 4).map((p, i) => (
                             <span key={i} title={p.importo ? `€${Number(p.importo).toLocaleString('it-IT')}` : ''} style={{ background: 'var(--accent-lt)', color: 'var(--accent-dk)', borderRadius: 10, padding: '1px 7px', fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap' }}>{p.nome}</span>
                           ))}
-                          {l.prodotti_attivi.length > 4 && <span className="fs-11 text-muted" style={{ fontWeight: 700 }}>+{l.prodotti_attivi.length - 4} — apri per vederli tutti</span>}
+                          {l.prodotti_attivi.length > 4 && <span className="fs-11 text-muted" style={{ fontWeight: 700 }}>+{l.prodotti_attivi.length - 4}</span>}
                         </div>
                       )}
                     </td>
@@ -190,7 +229,14 @@ export default function Portafoglio({ showToast }) {
                         ? <span style={{ background: '#A32D2D18', color: '#A32D2D', borderRadius: 10, padding: '2px 8px', fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>⚠ {l.stato_amministrativo}</span>
                         : <span className="text-muted fs-12">—</span>}
                     </td>
-                    <td className="fs-12">{l.stato}</td>
+                    <td className="fs-11" style={{ maxWidth: 200 }}>
+                      {ultimaAttivita ? (
+                        <>
+                          <div className="text-muted">{fmtDT(ultimaAttivita.date)}</div>
+                          <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ultimaAttivita.esito}{ultimaAttivita.testo ? `: ${ultimaAttivita.testo}` : ''}</div>
+                        </>
+                      ) : <span className="text-muted">Mai lavorato</span>}
+                    </td>
                   </tr>
                 );
               })}
@@ -202,7 +248,7 @@ export default function Portafoglio({ showToast }) {
       {/* ── SCHEDA / MODIFICA / NUOVO CLIENTE ── */}
       {selected && form && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,30,40,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={chiudi}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 580, maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 620, maxHeight: '90vh', overflowY: 'auto', padding: 22 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
               <div style={{ fontSize: 18, fontWeight: 700 }}>{selected.isNew ? '+ Nuovo cliente' : (form.azienda || 'Modifica cliente')}</div>
               <button className="btn btn-sm" onClick={chiudi}>✕</button>
@@ -215,27 +261,26 @@ export default function Portafoglio({ showToast }) {
             </div>
             <div className="form-row">
               <div className="form-group"><label className="form-label">Telefono</label><input className="form-control" value={form.telefono} onChange={e => f('telefono', e.target.value)} /></div>
-              <div className="form-group"><label className="form-label">Email</label><input className="form-control" value={form.email} onChange={e => f('email', e.target.value)} /></div>
+              <div className="form-group"><label className="form-label">Cellulare</label><input className="form-control" value={form.cellulare} onChange={e => f('cellulare', e.target.value)} /></div>
             </div>
             <div className="form-row">
+              <div className="form-group"><label className="form-label">Email</label><input className="form-control" value={form.email} onChange={e => f('email', e.target.value)} /></div>
               <div className="form-group"><label className="form-label">Categoria</label>
                 <select className="form-control" value={form.categoria} onChange={e => f('categoria', e.target.value)}>
                   <option value="">— nessuna —</option>
                   {CATEGORIE.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
+            </div>
+            <div className="form-row">
               <div className="form-group"><label className="form-label">Città</label><input className="form-control" value={form.citta} onChange={e => f('citta', e.target.value)} /></div>
-            </div>
-            <div className="form-row">
               <div className="form-group"><label className="form-label">Provincia</label><input className="form-control" value={form.provincia} onChange={e => f('provincia', e.target.value)} /></div>
-              <div className="form-group"><label className="form-label">Codice Cliente SAP</label><input className="form-control" value={form.codice_cliente_sap} onChange={e => f('codice_cliente_sap', e.target.value)} /></div>
             </div>
-            <div className="fs-11 text-muted" style={{ marginTop: -8, marginBottom: 12 }}>Se valorizzato, i prossimi import da Salesforce riconosceranno questo cliente e lo aggiorneranno invece di duplicarlo.</div>
-
             <div className="form-row">
+              <div className="form-group"><label className="form-label">Codice Cliente SAP</label><input className="form-control" value={form.codice_cliente_sap} onChange={e => f('codice_cliente_sap', e.target.value)} /></div>
               <div className="form-group"><label className="form-label">Prossima scadenza</label><input className="form-control" type="date" value={form.prossima_scadenza} onChange={e => f('prossima_scadenza', e.target.value)} /></div>
-              <div className="form-group"><label className="form-label">Stato amministrativo</label><input className="form-control" placeholder="Es. Bloccato Sole, Precontenzioso..." value={form.stato_amministrativo} onChange={e => f('stato_amministrativo', e.target.value)} /></div>
             </div>
+            <div className="form-group"><label className="form-label">Stato amministrativo</label><input className="form-control" placeholder="Es. Bloccato Sole, Precontenzioso..." value={form.stato_amministrativo} onChange={e => f('stato_amministrativo', e.target.value)} /></div>
 
             <div className="card-title" style={{ marginTop: 14, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
               Prodotti attivi
@@ -250,6 +295,42 @@ export default function Portafoglio({ showToast }) {
               </div>
             ))}
             <button className="btn btn-sm" onClick={fAggiungiProd} style={{ marginBottom: 14 }}>+ Aggiungi prodotto</button>
+
+            {!selected.isNew && (selected.note_istruzioni || []).length > 0 && (
+              <>
+                <div className="card-title" style={{ marginTop: 14, marginBottom: 8 }}>Istruzioni date a Rosanna (storico)</div>
+                <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r)', padding: '10px 12px', marginBottom: 14 }}>
+                  {[...selected.note_istruzioni].reverse().map(n => (
+                    <div key={n.id} style={{ fontSize: 12.5, marginBottom: 6 }}>
+                      <span className="text-muted">{fmtDT(n.date)}:</span> {n.testo}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {!selected.isNew && (
+              <>
+                <div className="card-title" style={{ marginTop: 14, marginBottom: 8 }}>Attività svolta {(selected.note_storia || []).length > 0 && `(${selected.note_storia.length})`}</div>
+                {(selected.note_storia || []).length === 0 ? (
+                  <div className="fs-12 text-muted" style={{ marginBottom: 14 }}>Nessuna attività registrata finora.</div>
+                ) : (
+                  <div style={{ maxHeight: 220, overflowY: 'auto', marginBottom: 14 }}>
+                    {[...selected.note_storia].reverse().map(h => (
+                      <div key={h.id} style={{ borderLeft: '3px solid var(--accent)', padding: '4px 10px', marginBottom: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>{h.esito || 'Nota'} <span className="text-muted" style={{ fontWeight: 400 }}>— {fmtDT(h.date)}</span></div>
+                        {h.testo && <div style={{ fontSize: 13 }}>{h.testo}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">📝 Nota libera <span className="text-muted" style={{ fontWeight: 400 }}>(modificabile anche da Rosanna)</span></label>
+              <textarea className="form-control" style={{ minHeight: 70 }} value={form.nota_libera} onChange={e => f('nota_libera', e.target.value)} placeholder="Osservazioni sempre aggiornabili su questo cliente." />
+            </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
               {!selected.isNew ? <button className="btn" style={{ color: '#A32D2D', borderColor: '#A32D2D55' }} onClick={elimina}>🗑 Elimina</button> : <span />}

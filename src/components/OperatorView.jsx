@@ -171,6 +171,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const [nota, setNota] = useState('');
   const [dataRichiamo, setDataRichiamo] = useState('');
   const [richiamoOra, setRichiamoOra] = useState('');
+  const [notaLiberaDraft, setNotaLiberaDraft] = useState('');
   const [ricontatto, setRicontatto] = useState('6m');
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -392,10 +393,19 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   // apriLead: se richiamato da una riga di una coda (coda=array), memorizza la coda per il pulsante "Prossimo →"
   const apriLead = (l, t = 'esito', coda = null) => {
     setSelected(l); setEsitoOpen(null); setTab(t);
+    setNotaLiberaDraft(l.nota_libera || '');
     if (coda) { setCodaCorrente(coda.map(x => x.id)); setCodaIndice(coda.findIndex(x => x.id === l.id)); }
     else { setCodaCorrente(null); setCodaIndice(0); }
   };
   const apriEsito = (esito) => { setEsitoOpen(esito); setNota(''); setDataRichiamo(''); setRichiamoOra(''); setRicontatto('6m'); };
+  const salvaNotaLibera = async () => {
+    const val = notaLiberaDraft.trim() || null;
+    const ok = await dbUpdateLead(selected.id, { nota_libera: val });
+    if (!ok) { showToast('Errore nel salvataggio della nota', '', 'err'); return; }
+    setLeads(prev => prev.map(l => l.id === selected.id ? { ...l, nota_libera: val } : l));
+    setSelected(prev => ({ ...prev, nota_libera: val }));
+    showToast('Nota salvata', '');
+  };
 
   // Un appuntamento arriva dai Contatti (tabella diversa), ma quasi sempre nasce da un suo lead —
   // lo ritroviamo per telefono/email e apriamo la scheda che già conosce, con la possibilità di richiamare.
@@ -1099,6 +1109,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                 {selected.codice_cliente_sap && (
                   <div style={{ background: BLU + '0d', border: `1px solid ${BLU}33`, borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
                     <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', color: BLU, marginBottom: 6 }}>📦 Cliente già acquisito</div>
+                    {selected.cellulare && <div style={{ fontSize: 13.5, marginBottom: 4 }}>📱 Cellulare: <strong>{selected.cellulare}</strong></div>}
                     {selected.valore_cliente > 0 && <div style={{ fontSize: 13.5, marginBottom: 4 }}>Valore cliente: <strong style={{ color: '#1B7A3E' }}>€{Number(selected.valore_cliente).toLocaleString('it-IT')}</strong></div>}
                     {selected.prossima_scadenza && <div style={{ fontSize: 13.5, marginBottom: 4 }}>Prossima scadenza: <strong>{new Date(selected.prossima_scadenza + 'T12:00').toLocaleDateString('it-IT')}</strong></div>}
                     {selected.stato_amministrativo && <div style={{ fontSize: 13, marginBottom: 4, color: '#A32D2D', fontWeight: 700 }}>⚠ {selected.stato_amministrativo}</div>}
@@ -1111,6 +1122,23 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                         ))}
                       </div>
                     ) : <div className="fs-12" style={{ color: '#8A97A6', marginTop: 4 }}>Nessun prodotto attivo al momento</div>}
+
+                    {(selected.note_istruzioni || []).length > 0 && (
+                      <div style={{ marginTop: 10, borderTop: `1px solid ${BLU}33`, paddingTop: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: BLU, marginBottom: 4 }}>💬 Cosa dirle — istruzioni di Marco</div>
+                        {[...selected.note_istruzioni].reverse().slice(0, 3).map(n => (
+                          <div key={n.id} style={{ fontSize: 13, marginBottom: 4, fontWeight: 600 }}>{n.testo}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 10, borderTop: `1px solid ${BLU}33`, paddingTop: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: BLU, marginBottom: 4 }}>📝 Nota libera (puoi scriverci tu, Marco la vede)</div>
+                      <textarea className="opv-input" style={{ width: '100%', minHeight: 50, resize: 'vertical' }} value={notaLiberaDraft} onChange={e => setNotaLiberaDraft(e.target.value)} placeholder="Scrivi qui un'osservazione su questo cliente..." />
+                      {notaLiberaDraft !== (selected.nota_libera || '') && (
+                        <button className="opv-btn primary" style={{ marginTop: 6, padding: '6px 14px', fontSize: 12 }} onClick={salvaNotaLibera}>💾 Salva nota</button>
+                      )}
+                    </div>
                   </div>
                 )}
 
