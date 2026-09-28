@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FONTI, CATEGORIE, ESITI, PROPOSTE, STATI_APPT, PRODOTTI, uid, fmt, fmtDT, getContratti, getPreventivato } from '../constants';
 import { StageBadge, FonteBadge, EsitoBadge, PropostaBadge, StatoBadge } from './Badges';
 import CallButton, { PhoneLink } from './CallButton';
+import EmailButton from './EmailButton';
 
 export default function Modal({ modal, setModal, contacts, stages, customFields,
   saveContact, deleteContact, updateContact, showToast }) {
@@ -636,7 +637,7 @@ function SchedaModal({ contact: initialContact, contacts, stages, setModal, upda
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <StageBadge name={c.fase} stages={stages} />
             {c.telefono && <CallButton numero={c.telefono} />}
-            {c.email && <a className="btn btn-sm" href={'mailto:' + c.email} style={{ textDecoration: 'none' }}>📧 Email</a>}
+            {c.email && <EmailButton contatto={c} />}
             <button className="btn btn-sm" onClick={() => { onClose(); setTimeout(() => setModal({ type: 'merge', data: c }), 100); }}>🔗 Riconcilia</button>
             <button className="btn btn-sm btn-primary" onClick={() => { onClose(); setTimeout(() => setModal({ type: 'contact', data: c }), 100); }}>Modifica</button>
             <button className="modal-close" onClick={onClose}>×</button>

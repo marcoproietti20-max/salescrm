@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { fmt, fmtDT, uid, FONTI, CATEGORIE, ESITI, PROPOSTE, getPreventivato, getContratti, getFatturato, getLastAppt, getNextFu } from '../constants';
 import { StageBadge, FonteBadge, EsitoBadge, PropostaBadge, StatoBadge } from './Badges';
 import CallButton, { PhoneLink } from './CallButton';
+import EmailButton from './EmailButton';
 
 export default function Contacts({ contacts, stages, customFields, setModal, updateContact,
   deleteContact, deleteContacts, setContacts, showToast, today, pageFilter, setPageFilter, navigateTo }) {
@@ -251,7 +252,7 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
                 <FonteBadge name={openContact.fonte} />
                 <EsitoBadge name={openContact.esito} />
                 {openContact.telefono && <CallButton numero={openContact.telefono} />}
-                {openContact.email && <a className="btn btn-sm" href={'mailto:' + openContact.email} style={{ textDecoration: 'none' }}>📧 Email</a>}
+                {openContact.email && <EmailButton contatto={openContact} />}
                 <button className="btn btn-sm" onClick={() => setModal({ type: 'merge', data: openContact })}>🔗 Riconcilia</button>
                 <button className="btn btn-sm btn-primary" onClick={() => setModal({ type: 'contact', data: openContact })}>Modifica</button>
               </div>
