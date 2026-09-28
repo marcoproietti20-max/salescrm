@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { fmt, fmtDT, uid, FONTI, CATEGORIE, ESITI, PROPOSTE, getPreventivato, getContratti, getFatturato, getLastAppt, getNextFu } from '../constants';
 import { StageBadge, FonteBadge, EsitoBadge, PropostaBadge, StatoBadge } from './Badges';
+import CallButton, { PhoneLink } from './CallButton';
 
 export default function Contacts({ contacts, stages, customFields, setModal, updateContact,
   deleteContact, deleteContacts, setContacts, showToast, today, pageFilter, setPageFilter, navigateTo }) {
@@ -203,7 +204,7 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
                           </div>
                         )}
                       </td>
-                      <td className="fs-12">{c.telefono || '—'}</td>
+                      <td className="fs-12">{c.telefono ? <PhoneLink numero={c.telefono} /> : '—'}</td>
                       <td className="fs-12" style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.email || '—'}</td>
                       <td><StageBadge name={c.fase} stages={stages} /></td>
                       <td className="fs-12 text-muted">{c.categoria || '—'}</td>
@@ -249,20 +250,15 @@ export default function Contacts({ contacts, stages, customFields, setModal, upd
                 <StageBadge name={openContact.fase} stages={stages} />
                 <FonteBadge name={openContact.fonte} />
                 <EsitoBadge name={openContact.esito} />
-                {openContact.email && (
-                  <button className="btn btn-sm" onClick={() => {
-                    const sub = encodeURIComponent('Seguito alla nostra conversazione — Il Sole 24 Ore Professionale');
-                    const body = encodeURIComponent(`Gentile ${openContact.nome},\n\nLa contatto in seguito al nostro precedente appuntamento.\n\nResto a disposizione per qualsiasi informazione.\n\nCordiali saluti,\nMarco Proietti\nIl Sole 24 Ore Professionale`);
-                    window.open(`mailto:${openContact.email}?subject=${sub}&body=${body}`, '_blank');
-                  }}>📧 Email</button>
-                )}
+                {openContact.telefono && <CallButton numero={openContact.telefono} />}
+                {openContact.email && <a className="btn btn-sm" href={'mailto:' + openContact.email} style={{ textDecoration: 'none' }}>📧 Email</a>}
                 <button className="btn btn-sm" onClick={() => setModal({ type: 'merge', data: openContact })}>🔗 Riconcilia</button>
                 <button className="btn btn-sm btn-primary" onClick={() => setModal({ type: 'contact', data: openContact })}>Modifica</button>
               </div>
             </div>
 
             <div className="info-grid">
-              <div className="info-item"><label>Telefono</label><span>{openContact.telefono || '—'}</span></div>
+              <div className="info-item"><label>Telefono</label><span>{openContact.telefono ? <PhoneLink numero={openContact.telefono} /> : '—'}</span></div>
               <div className="info-item"><label>Email</label><span>{openContact.email || '—'}</span></div>
               <div className="info-item"><label>Categoria</label><span>{openContact.categoria || '—'}</span></div>
               <div className="info-item"><label>Proposta</label><PropostaBadge name={openContact.proposta} /></div>

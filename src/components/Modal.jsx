@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FONTI, CATEGORIE, ESITI, PROPOSTE, STATI_APPT, PRODOTTI, uid, fmt, fmtDT, getContratti, getPreventivato } from '../constants';
 import { StageBadge, FonteBadge, EsitoBadge, PropostaBadge, StatoBadge } from './Badges';
+import CallButton, { PhoneLink } from './CallButton';
 
 export default function Modal({ modal, setModal, contacts, stages, customFields,
   saveContact, deleteContact, updateContact, showToast }) {
@@ -634,13 +635,8 @@ function SchedaModal({ contact: initialContact, contacts, stages, setModal, upda
           </div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <StageBadge name={c.fase} stages={stages} />
-            {c.email && (
-              <button className="btn btn-sm" onClick={() => {
-                const sub = encodeURIComponent('Feedback Preventivo — Il Sole 24 Ore Professionale');
-                const body = encodeURIComponent(`Gentile ${c.nome},\n\nspero che la proposta che le ho inviato nei giorni scorsi sia di suo gradimento.\n\nLe scrivo per sapere se ha avuto modo di valutarla e se posso esserle utile per qualsiasi chiarimento.\n\nLe ricordo che le condizioni che le ho riservato sono legate a una disponibilità limitata, pertanto sarei lieto di ricevere un suo riscontro nei prossimi giorni.\n\nDomani proverò a contattarla telefonicamente per un breve confronto.\n\nA presto,\nMarco Proietti\nIl Sole 24 Ore Professionale`);
-                window.open(`mailto:${c.email}?subject=${sub}&body=${body}`, '_blank');
-              }}>📧 Email</button>
-            )}
+            {c.telefono && <CallButton numero={c.telefono} />}
+            {c.email && <a className="btn btn-sm" href={'mailto:' + c.email} style={{ textDecoration: 'none' }}>📧 Email</a>}
             <button className="btn btn-sm" onClick={() => { onClose(); setTimeout(() => setModal({ type: 'merge', data: c }), 100); }}>🔗 Riconcilia</button>
             <button className="btn btn-sm btn-primary" onClick={() => { onClose(); setTimeout(() => setModal({ type: 'contact', data: c }), 100); }}>Modifica</button>
             <button className="modal-close" onClick={onClose}>×</button>
@@ -648,7 +644,7 @@ function SchedaModal({ contact: initialContact, contacts, stages, setModal, upda
         </div>
         <div className="modal-body" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
           <div className="info-grid" style={{ marginBottom: 16 }}>
-            <div className="info-item"><label>Telefono</label><span>{c.telefono || '—'}</span></div>
+            <div className="info-item"><label>Telefono</label><span>{c.telefono ? <PhoneLink numero={c.telefono} /> : '—'}</span></div>
             <div className="info-item"><label>Email</label><span>{c.email || '—'}</span></div>
             <div className="info-item"><label>Categoria</label><span>{c.categoria || '—'}</span></div>
             <div className="info-item"><label>Fonte</label><FonteBadge name={c.fonte} /></div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { fmt, getPreventivato, getLastAppt, getNextFu } from '../constants';
 import { FonteBadge, PropostaBadge } from './Badges';
+import CallButton from './CallButton';
 
 // L'ultimo appuntamento registrato per questo contatto è "Non effettuato" o "Non si è presentato"?
 // Se sì, la trattativa è rimasta sospesa: nessuno ha ancora deciso se rifissare o considerarla persa.
@@ -113,6 +114,7 @@ export default function Pipeline({ contacts, stages, setModal, setContacts, show
                       </div>
                       {/* Single delete button */}
                       <div style={{ display: 'flex', gap: 6, marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                        <CallButton numero={c.telefono} />
                         <button className="btn btn-sm" style={{ flex: 1, fontSize: 11 }}
                           onClick={() => setModal({ type: 'contact', data: c })}>Modifica</button>
                         <button className="btn btn-sm btn-danger" style={{ fontSize: 11 }}
