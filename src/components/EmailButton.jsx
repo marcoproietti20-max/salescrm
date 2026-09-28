@@ -4,6 +4,10 @@ import { lsGet, lsSet, uid, DEFAULT_BRAND } from '../constants';
 
 const LS_KEY = 'crm_email_templates';
 
+// Carattere usato quando il testo formattato viene incollato nell'email (i modelli con grassetto).
+// Aptos è il predefinito di Outlook; Calibri e Arial servono solo come riserva.
+const FONT_EMAIL = 'Aptos, Calibri, Arial, sans-serif';
+
 // Modelli iniziali. Nel testo si possono usare:
 //   {nome}    nome del contatto (con il titolo, es. "Avv. Mario Rossi")
 //   {azienda} azienda del contatto
@@ -89,7 +93,7 @@ export function versioneHtml(testo) {
   h = h.replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>');
   h = h.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
   h = h.replace(/\r?\n/g, '<br>');
-  return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt;">' + h + '</div>';
+  return '<div style="font-family:' + FONT_EMAIL + ';font-size:11pt;">' + h + '</div>';
 }
 
 // Avvolge (o toglie) il grassetto attorno alla selezione. Restituisce il nuovo testo e la nuova selezione.
