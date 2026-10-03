@@ -67,7 +67,7 @@ export default function Pipeline({ contacts, stages, setModal, setContacts, show
             <button className="btn btn-sm btn-ghost" style={{ marginLeft: 'auto' }} onClick={() => setSelIds(new Set())}>× Deseleziona</button>
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gap: 12, marginBottom: 6 }}>
+        <div className="kanban-grid" style={{ gridTemplateColumns: `repeat(${cols},1fr)`, marginBottom: 6 }}>
           {activeStages.map(s => {
             const cnt = contacts.filter(c => c.fase === s.name).length;
             const val = contacts.filter(c => c.fase === s.name).reduce((sum, c) => sum + getPreventivato(c), 0);
@@ -78,7 +78,7 @@ export default function Pipeline({ contacts, stages, setModal, setContacts, show
             );
           })}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gap: 12, alignItems: 'start' }}>
+        <div className="kanban-grid" style={{ gridTemplateColumns: `repeat(${cols},1fr)`, alignItems: 'start' }}>
           {activeStages.map(s => {
             const sc = sortC(contacts.filter(c => c.fase === s.name));
             return (

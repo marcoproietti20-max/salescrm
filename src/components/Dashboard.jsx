@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Chart, ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
-import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti } from '../constants';
+import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, haAppuntamentoSvolto } from '../constants';
 import { FonteBadge } from './Badges';
 Chart.register(ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend);
 const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
@@ -23,13 +23,6 @@ const FONTE_COLORS = {
   'Portafoglio':           '#2E7D32',
 };
 
-function getFattNuovo(c) {
-  return getContratti(c).filter(ct=>ct.tipo!=='Rinnovo').reduce((s,ct)=>s+(ct.prodotti||[]).reduce((ps,p)=>ps+(Number(p.importo)||0),0)||(Number(ct.totale)||0),0);
-}
-function getFattRinnovo(c) {
-  return getContratti(c).filter(ct=>ct.tipo==='Rinnovo').reduce((s,ct)=>s+(ct.prodotti||[]).reduce((ps,p)=>ps+(Number(p.importo)||0),0)||(Number(ct.totale)||0),0);
-}
-
 export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const [filterApptMonth, setFilterApptMonth] = React.useState('');
   const barRef=useRef(), doughRef=useRef(), pieRef=useRef(), apptBarRef=useRef();
@@ -41,6 +34,12 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   // per una trattativa su un altro prodotto.
   const chiusiOK = contacts.filter(c=>getContratti(c).length>0);
   const chiusiKO = contacts.filter(c=>koStages.some(s=>s.name===c.fase));
+  // Tasso di chiusura "vero": solo tra chi ha davvero avuto un appuntamento svolto.
+  // Chi non si è mai presentato non ha mai avuto una conversazione commerciale,
+  // quindi non conta né a favore né contro il tasso.
+  const svoltiList = contacts.filter(c=>haAppuntamentoSvolto(c));
+  const svoltiOK = svoltiList.filter(c=>getContratti(c).length>0);
+  const tassoChiusura = svoltiList.length>0 ? Math.round((svoltiOK.length/svoltiList.length)*100) : null;
   const openHot = contacts.filter(c=>c.fase==='In valutazione');
   const curMonth = today.slice(0,7); const curYear = today.slice(0,4);
   const fatMese = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFatturato(c),0);
@@ -174,6 +173,7 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
         <div className="metric-grid">
           <Metric label="Chiuso OK" value={chiusiOK.length} sub={fmtEur(chiusiOK.reduce((s,c)=>s+getFatturato(c),0))+' fatturati'} color="#1B7A3E" onClick={()=>navigateTo('chiuso')}/>
           <Metric label="Chiuso KO" value={chiusiKO.length} sub="trattative perse" onClick={()=>navigateTo('archivio')}/>
+          <Metric label="Tasso di chiusura" value={tassoChiusura!==null?tassoChiusura+'%':'—'} sub="su appuntamenti davvero svolti" color="#0050A0"/>
           <Metric label="Follow-up urgenti" value={urgentFU} alert={urgentFU>0} sub="oggi o scaduti" onClick={()=>navigateTo('followups')}/>
           <Metric label="Contatti totali" value={contacts.length} sub="in rubrica" onClick={()=>navigateTo('contacts')}/>
         </div>

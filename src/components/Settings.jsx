@@ -1,24 +1,12 @@
 import React, { useState } from 'react';
-import { uid, DEFAULT_STAGES } from '../constants';
+import { uid } from '../constants';
 
 export default function Settings({ brand, setBrand, stages, setStages, customFields, setCustomFields,
-  gsCfg, setGsCfg, contacts, setContacts, showToast }) {
+  contacts, setContacts, showToast }) {
 
   const [newStage, setNewStage] = useState({ name: '', color: '#378ADD' });
   const [newField, setNewField] = useState({ name: '', type: 'text', options: '' });
-  const [gsTest, setGsTest] = useState('');
   const sb = (k, v) => setBrand(b => ({ ...b, [k]: v }));
-
-  const testGS = async () => {
-    setGsTest('Connessione in corso...');
-    try {
-      const r = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${gsCfg.sheetId}?key=${gsCfg.apiKey}&fields=sheets.properties`);
-      const data = await r.json();
-      if (data.error) { setGsTest('Errore: ' + data.error.message); return; }
-      const tabs = data.sheets?.map(s => s.properties.title).join(', ');
-      setGsTest('✅ OK — Tab: ' + tabs);
-    } catch (e) { setGsTest('Errore: ' + e.message); }
-  };
 
   const exportCSV = () => {
     const rows = [['Nome','Azienda','Telefono','Email','Fase','Fonte','Categoria','Esito','Proposta','Importo Proposta','Data Chiusura']];
@@ -51,7 +39,7 @@ export default function Settings({ brand, setBrand, stages, setStages, customFie
           </div>
           <div className="form-row">
             <div className="form-group" style={{ margin: 0 }}><label className="form-label">Colore principale</label><input className="form-control" type="color" value={brand.color||'#c8102e'} onChange={e=>sb('color',e.target.value)}/></div>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Link Calendly</label><input className="form-control" value={brand.callink||''} onChange={e=>sb('callink',e.target.value)}/></div>
+            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Link Bookings</label><input className="form-control" value={brand.callink||''} onChange={e=>sb('callink',e.target.value)}/></div>
           </div>
         </Section>
 
@@ -91,16 +79,6 @@ export default function Settings({ brand, setBrand, stages, setStages, customFie
             {newField.type === 'select' && <input className="form-control" style={{ flex: 1, minWidth: 150 }} placeholder="Opzioni sep. da virgola" value={newField.options} onChange={e => setNewField(n => ({ ...n, options: e.target.value }))} />}
             <button className="btn btn-primary btn-sm" onClick={() => { if (!newField.name.trim()) return; const f = { id: uid(), name: newField.name, type: newField.type }; if (newField.type === 'select') f.options = newField.options.split(',').map(s => s.trim()).filter(Boolean); setCustomFields(p => [...p, f]); setNewField({ name: '', type: 'text', options: '' }); }}>+ Aggiungi</button>
           </div>
-        </Section>
-
-        <Section title="Google Sheet" desc="Credenziali per la sincronizzazione da Calendly/Zapier.">
-          <div className="form-row" style={{ marginBottom: 12 }}>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">Sheet ID</label><input className="form-control" value={gsCfg.sheetId||''} onChange={e=>setGsCfg(c=>({...c,sheetId:e.target.value}))}/></div>
-            <div className="form-group" style={{ margin: 0 }}><label className="form-label">API Key</label><input className="form-control" type="password" value={gsCfg.apiKey||''} onChange={e=>setGsCfg(c=>({...c,apiKey:e.target.value}))}/></div>
-          </div>
-          <div className="form-group"><label className="form-label">Nome foglio (tab)</label><input className="form-control" value={gsCfg.tabName||''} onChange={e=>setGsCfg(c=>({...c,tabName:e.target.value}))}/></div>
-          <button className="btn btn-sm btn-primary" onClick={testGS}>Test connessione</button>
-          {gsTest && <div style={{ marginTop: 8, fontSize: 12, color: gsTest.startsWith('✅') ? '#3B6D11' : '#A32D2D' }}>{gsTest}</div>}
         </Section>
 
         <Section title="Dati">

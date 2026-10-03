@@ -49,11 +49,6 @@ export const DEFAULT_BRAND = {
   color: '#c8102e',
   callink: 'https://bookings.cloud.microsoft/book/MarcoProiettiIlSole24Ore@ilsole24ore.onmicrosoft.com/?ismsaljsauthenabled',
 };
-export const DEFAULT_GS = {
-  sheetId: '1nC3fC_REUsd-XmoAKYXrsAqvxTlN8jcq4dvUrl32E3A',
-  apiKey: 'AIzaSyBK57pFTI_sIIvy4haf0OZcDHws27kFPfM',
-  tabName: 'Appuntamenti e trattative',
-};
 export function lsGet(key, fb) { try { const v=localStorage.getItem(key); return v?JSON.parse(v):fb; } catch { return fb; } }
 export function lsSet(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 export function uid() { return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -83,6 +78,25 @@ export function getFatturato(c) {
   return list.reduce((s,ct)=>{ if(ct.prodotti?.length) return s+ct.prodotti.reduce((ps,p)=>ps+(Number(p.importo)||0),0); return s+(Number(ct.totale)||0); },0);
 }
 export function getPreventivato(c) { return Number(c.importoProposta)||0; }
+// Fatturato diviso tra nuovo e rinnovo — condiviso tra Dashboard e Chiuso per mese
+export function getFattNuovo(c) {
+  return getContratti(c).filter(ct=>ct.tipo!=='Rinnovo').reduce((s,ct)=>s+(ct.prodotti||[]).reduce((ps,p)=>ps+(Number(p.importo)||0),0)||(Number(ct.totale)||0),0);
+}
+export function getFattRinnovo(c) {
+  return getContratti(c).filter(ct=>ct.tipo==='Rinnovo').reduce((s,ct)=>s+(ct.prodotti||[]).reduce((ps,p)=>ps+(Number(p.importo)||0),0)||(Number(ct.totale)||0),0);
+}
+// Il contatto ha avuto almeno un appuntamento davvero svolto (non necessariamente l'ultimo).
+// Usata per calcolare il tasso di chiusura "vero": chi non si è mai presentato non ha mai
+// avuto una vera conversazione commerciale, quindi non deve contare né a favore né contro.
+export function haAppuntamentoSvolto(c) {
+  return (c.history||[]).some(h=>h.type==='appt'&&h.stato==='Svolto');
+}
+// I 5 giorni (lun-ven) della settimana corrente + offset — condiviso tra le viste calendario
+export function getWeekDays(offset) {
+  const now=new Date(); const day=now.getDay();
+  const mon=new Date(now); mon.setDate(now.getDate()-(day===0?6:day-1)+offset*7);
+  return Array.from({length:5},(_,i)=>{ const d=new Date(mon); d.setDate(mon.getDate()+i); return d.toISOString().slice(0,10); });
+}
 export function getDataChiusura(c) { return c.dataChiusura||getContratti(c)[0]?.dataInizio||''; }
 export function getLastAppt(c) {
   const a=(c.history||[]).filter(h=>h.type==='appt'&&h.date).sort((a,b)=>b.date.localeCompare(a.date));

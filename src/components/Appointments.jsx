@@ -1,17 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { fmt, fmtDT, STATI_APPT } from '../constants';
+import { fmt, fmtDT, STATI_APPT, getWeekDays } from '../constants';
 import { StageBadge, StatoBadge } from './Badges';
-
-function getWeekDays(offset) {
-  const now = new Date();
-  const day = now.getDay();
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + offset * 7);
-  return Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(mon); d.setDate(mon.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
-}
+import CallButton from './CallButton';
+import EmailButton from './EmailButton';
 
 export default function Appointments({ contacts, stages, setModal, pageFilter, setPageFilter }) {
   const [filter, setFilter] = useState('tutti');
@@ -21,7 +12,6 @@ export default function Appointments({ contacts, stages, setModal, pageFilter, s
   const koNames = stages.filter(s => s.isKo).map(s => s.name);
   const wonStage = stages.filter(s => !s.isKo).slice(-1)[0];
 
-  // Apply filter from dashboard click
   React.useEffect(() => {
     if (!pageFilter) return;
     if (pageFilter.filter === 'da_aggiornare') {
@@ -84,7 +74,7 @@ export default function Appointments({ contacts, stages, setModal, pageFilter, s
               <button className="btn btn-sm" onClick={() => setWeekOffset(w => w + 1)}>Succ. →</button>
               <span className="fs-12 text-muted fw-600">{weekLabel}</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+            <div className="week-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
               {weekDays.map((d, i) => {
                 const isToday = d === today;
                 const dayEvs = events.filter(e => e.date === d);
@@ -152,7 +142,9 @@ export default function Appointments({ contacts, stages, setModal, pageFilter, s
                               <div style={{ fontWeight: 700, marginBottom: 2 }}>{ev.c.nome}</div>
                               <div className="text-muted fs-12">{ev.c.azienda}</div>
                             </div>
-                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                            <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+                              <CallButton numero={ev.c.telefono} />
+                              {ev.c.email && <EmailButton contatto={ev.c} />}
                               <StageBadge name={ev.c.fase} stages={stages} />
                               {ev.stato && <StatoBadge name={ev.stato} />}
                               <button className="btn btn-sm" style={{ fontSize: 11, padding: '2px 7px' }}

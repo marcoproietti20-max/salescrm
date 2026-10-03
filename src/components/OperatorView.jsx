@@ -151,6 +151,7 @@ const CSS = `
     .opv-grid2 { grid-template-columns: 1fr; }
     .opv-week { grid-template-columns: 1fr; }
     .opv-day { min-height: auto; }
+    .opv-preview-banner { font-size: 11.5px; padding: 7px 10px; margin: 52px 0 -4px; line-height: 1.4; }
   }
 `;
 

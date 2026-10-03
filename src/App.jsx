@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { lsGet, lsSet, uid, parseDate, DEFAULT_STAGES, DEFAULT_BRAND, DEFAULT_GS, parseCSVRow } from './constants';
+import { lsGet, lsSet, uid, parseDate, DEFAULT_STAGES, DEFAULT_BRAND, parseCSVRow } from './constants';
 import { dbLoadContacts, dbSave, dbSaveMany, dbDelete, dbDeleteMany, dbUpdateHistory, dbLoadBookingsInbox, dbMarkBookingsProcessed, dbLoadProfile, dbLoadLeads, dbUpdateLead, normPhone, supabase } from './supabase';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -31,7 +31,6 @@ export default function App() {
   const [stages, setStages] = useState(() => lsGet('crm_stages', DEFAULT_STAGES));
   const [customFields, setCustomFields] = useState(() => lsGet('crm_fields', []));
   const [brand, setBrand] = useState(() => lsGet('crm_brand', DEFAULT_BRAND));
-  const [gsCfg, setGsCfg] = useState(() => lsGet('crm_gs', DEFAULT_GS));
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -58,7 +57,6 @@ export default function App() {
   useEffect(() => { lsSet('crm_stages', stages); }, [stages]);
   useEffect(() => { lsSet('crm_fields', customFields); }, [customFields]);
   useEffect(() => { lsSet('crm_brand', brand); }, [brand]);
-  useEffect(() => { lsSet('crm_gs', gsCfg); }, [gsCfg]);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--accent', brand.color || '#c8102e');
@@ -113,109 +111,6 @@ export default function App() {
     setContacts(prev => { result = updater(prev); return result; });
     if (result) await dbSaveMany(result);
   }, []);
-
-  // ── GOOGLE SHEET SYNC ───────────────────────────────────────
-  const syncFromGoogleSheet = useCallback(async () => {
-    const { sheetId, apiKey, tabName } = gsCfg;
-    if (!sheetId || !apiKey) return { error: 'Credenziali mancanti' };
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(tabName || 'Sheet1')}?key=${apiKey}`;
-    try {
-      const r = await fetch(url);
-      const data = await r.json();
-      if (data.error) return { error: data.error.message };
-      const rows = data.values || [];
-      if (rows.length < 2) return { imported: 0, skipped: 0, updated: 0 };
-
-      const header = rows[0].map(h => h.toLowerCase().trim());
-      const ce = name => header.indexOf(name.toLowerCase().trim());
-      const cp = names => { for (const n of names) { const i = header.findIndex(h => h.includes(n)); if (i >= 0) return i; } return -1; };
-      const g = (row, i) => i >= 0 ? (row[i] || '').trim() : '';
-
-      const iNome    = ce('nome') >= 0 ? ce('nome') : cp(['nome']);
-      const iCat     = ce('categoria') >= 0 ? ce('categoria') : cp(['categoria']);
-      const iEmail   = ce('email') >= 0 ? ce('email') : cp(['email']);
-      const iTel     = ce('telefono') >= 0 ? ce('telefono') : cp(['telefono', 'tel']);
-      const iAz      = ce('azienda') >= 0 ? ce('azienda') : cp(['azienda', 'studio']);
-      const iFonte   = ce('fonte') >= 0 ? ce('fonte') : cp(['fonte']);
-      const iData    = ce('data appuntamento') >= 0 ? ce('data appuntamento') : cp(['data app']);
-      const iStato   = ce('stato appuntamento') >= 0 ? ce('stato appuntamento') : cp(['stato app']);
-      const iProp    = ce('proposta inviata') >= 0 ? ce('proposta inviata') : cp(['proposta inviata', 'proposta']);
-      const iEsito   = ce('esito') >= 0 ? ce('esito') : cp(['esito']);
-      const iFu      = ce('follow up') >= 0 ? ce('follow up') : cp(['follow up', 'follow-up']);
-      const iNote    = ce('note app.to') >= 0 ? ce('note app.to') : cp(['note app', 'note']);
-
-      const faseMap = { 'chiuso ok': 'Chiuso OK', 'ok': 'Chiuso OK', 'chiuso ko': 'Chiuso KO', 'ko': 'Chiuso KO', 'in valutazione': 'In valutazione', 'proposta': 'Proposta', 'appuntamento': 'Appuntamento', 'lead': 'Lead' };
-      const statoMap = { 'svolto': 'Svolto', 'non si è presentato': 'Non si è presentato', 'non effettuato': 'Non effettuato', 'da rifissare': 'Da rifissare', 'programmato': 'Programmato' };
-
-      let imported = 0, skipped = 0, updated = 0;
-      const todayStr = new Date().toISOString().slice(0, 10);
-      const toInsert = [], toUpdateHist = [];
-
-      // Work on fresh copy from current state
-      const current = [...contacts];
-
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        const nome = g(row, iNome); if (!nome) { skipped++; continue; }
-        const email = g(row, iEmail);
-        const existingIdx = current.findIndex(c =>
-          (email && c.email && c.email.toLowerCase() === email.toLowerCase()) ||
-          c.nome.toLowerCase() === nome.toLowerCase()
-        );
-
-        const dataRaw = g(row, iData);
-        const noteRaw = g(row, iNote);
-        const fu = parseDate(g(row, iFu));
-        const esitoRaw = g(row, iEsito).toLowerCase();
-        const fase = faseMap[esitoRaw] || stages[1]?.name || 'Appuntamento';
-        const propRaw = g(row, iProp).toLowerCase();
-        const proposta = (propRaw === 'sì' || propRaw === 'si') ? 'Offerta Inviata' : 'Non inviata';
-        const statoRaw = g(row, iStato).toLowerCase();
-        const stato = statoMap[statoRaw] || 'Svolto';
-        const esito = esitoRaw.includes('ok') ? 'Positivo' : esitoRaw.includes('ko') ? 'Negativo' : 'In valutazione';
-
-        const newHist = [];
-        if (dataRaw) newHist.push({ 
-          id: uid(), type: 'appt', 
-          date: parseDate(dataRaw) || dataRaw, 
-          stato: 'Programmato', // Always Programmato — stato will be updated manually after the appt
-          esito: '', // Empty — will be filled manually after the appt
-          origine: 'bookings',
-        });
-        if (fu) newHist.push({ id: uid(), type: 'note', date: todayStr, text: noteRaw || 'Follow-up da importazione', followup: fu });
-
-        if (existingIdx >= 0) {
-          const ex = current[existingIdx];
-          const existingDates = (ex.history || []).filter(h => h.type === 'appt').map(h => (h.date||'').slice(0, 10).trim());
-          const newDate = dataRaw ? (parseDate(dataRaw) || dataRaw).slice(0, 10).trim() : '';
-          if (newDate && !existingDates.some(d => d === newDate)) {
-            // Add new appt to history — never modify existing records
-            const updatedHist = [...(ex.history || []), ...newHist];
-            current[existingIdx] = { ...ex, history: updatedHist };
-            toUpdateHist.push({ id: ex.id, history: updatedHist });
-            updated++;
-          } else { skipped++; }
-          // Never overwrite fase, proposta, esito, contratti of existing contacts
-        } else {
-          const nc = { id: uid(), nome, azienda: g(row, iAz), email, telefono: g(row, iTel), categoria: g(row, iCat), fase, fonte: g(row, iFonte) || 'Calendly', esito, proposta, importoProposta: 0, dataChiusura: '', contratti: [], testoProposta: '', history: newHist, customData: {} };
-          current.push(nc);
-          toInsert.push(nc);
-          imported++;
-        }
-      }
-
-      // Write to Supabase: only history for existing, full for new
-      await Promise.all(toUpdateHist.map(u => dbUpdateHistory(u.id, u.history)));
-      if (toInsert.length) await dbSaveMany(toInsert);
-
-      // Reload fresh from Supabase and update state directly
-      const fresh = await dbLoadContacts();
-      setContacts(fresh);
-
-      if (imported > 0 || updated > 0) showToast('Sincronizzazione completata', `${imported} nuovi, ${updated} aggiornati`);
-      return { imported, skipped, updated };
-    } catch (e) { return { error: e.message }; }
-  }, [gsCfg, stages, contacts, showToast]);
 
   // ── BOOKINGS INBOX SYNC (Supabase) ──────────────────────────
   const syncFromBookingsInbox = useCallback(async () => {
@@ -343,12 +238,12 @@ export default function App() {
   }, [contacts, stages, showToast]);
 
   const sharedProps = {
-    contacts, stages, customFields, brand, gsCfg,
+    contacts, stages, customFields, brand,
     setContacts: batchUpdate,   // use for bulk UI actions (syncs to Supabase)
     setContactsDirect: setContacts, // use after sync reload (already in Supabase)
-    setStages, setCustomFields, setBrand, setGsCfg,
+    setStages, setCustomFields, setBrand,
     saveContact, deleteContact, deleteContacts, updateContact,
-    syncFromGoogleSheet, syncFromBookingsInbox, importFromCSV,
+    syncFromBookingsInbox, importFromCSV,
     setModal, showToast, today, navigateTo, pageFilter, setPageFilter,
   };
 
@@ -394,11 +289,11 @@ export default function App() {
       <main className="main">
         <Page {...sharedProps} />
       </main>
-      {/* Global search — fixed top right */}
-      <div style={{ position:'fixed', top:10, left:'50%', transform:'translateX(-50%)', zIndex:30, maxWidth:320, width:'100%' }}>
+      {/* Global search — ancorata in alto, scende sotto l'hamburger su mobile (vedi App.css) */}
+      <div className="global-search-wrap">
         <GlobalSearch contacts={contacts} stages={stages} setModal={setModal} navigateTo={navigateTo} />
       </div>
-      <button onClick={logout} style={{ position:'fixed', bottom:16, right:16, background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:'var(--r)', padding:'6px 12px', fontSize:12, cursor:'pointer', color:'var(--text2)', zIndex:20 }}>Esci</button>
+      <button onClick={logout} className="logout-btn">Esci</button>
       {modal && <Modal modal={modal} setModal={setModal} {...sharedProps} />}
       {toast && <Toast toast={toast} />}
     </div>

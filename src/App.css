@@ -31,7 +31,6 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .app { display: flex; height: 100vh; overflow: hidden; }
 .main { flex: 1; overflow-y: auto; min-width: 0; display: flex; flex-direction: column; }
 
-/* Sidebar */
 .sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--accent); display: flex; flex-direction: column; }
 .sidebar-logo { padding: 20px 16px 16px; border-bottom: 1px solid rgba(255,255,255,0.15); }
 .brand-row { display: flex; align-items: center; gap: 8px; }
@@ -48,13 +47,11 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .sidebar-footer { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.15); font-size: 12px; color: rgba(255,255,255,0.6); }
 .sidebar-footer strong { display: block; color: white; font-weight: 600; }
 
-/* Topbar */
 .topbar { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 13px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; min-height: 54px; }
 .page-title { font-size: 15px; font-weight: 700; color: var(--text); }
 .topbar-right { display: flex; gap: 8px; align-items: center; }
 .content { padding: 20px 24px; flex: 1; }
 
-/* Buttons */
 .btn { padding: 7px 14px; border-radius: var(--r); font-size: 13px; cursor: pointer; border: 1px solid var(--border2); background: var(--bg2); color: var(--text); font-family: var(--font); font-weight: 500; transition: all .1s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .btn:hover { background: var(--accent-lt); border-color: var(--accent); color: var(--accent); }
 .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
@@ -66,11 +63,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .btn-ghost:hover { background: var(--bg3); border-color: var(--border); color: var(--text); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
-/* Cards */
 .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px; margin-bottom: 16px; }
 .card-title { font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px; }
 
-/* Metrics */
 .metric-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 16px; }
 .metric-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; cursor: pointer; transition: border-color .15s, transform .15s; }
 .metric-card:hover { border-color: var(--accent); transform: translateY(-2px); }
@@ -81,10 +76,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .metric-green { color: var(--green); }
 .metric-alert { color: var(--red); }
 
-/* Charts */
 .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 
-/* Table */
 .table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r-lg); overflow-x: auto; }
 .crm-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 900px; }
 .crm-table thead tr { background: var(--bg3); border-bottom: 1px solid var(--border); }
@@ -95,10 +88,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .crm-table tbody tr:last-child td { border-bottom: none; }
 .crm-table tbody tr:hover td { background: var(--accent-lt); }
 
-/* Badges */
 .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; white-space: nowrap; }
 
-/* Detail panel */
 .detail-panel { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 20px; margin-top: 16px; }
 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 24px; margin-bottom: 18px; }
 .info-item label { font-size: 10px; color: var(--text2); display: block; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
@@ -113,21 +104,18 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .tag-appt { background: var(--accent-lt); color: var(--accent-dk); }
 .tag-note { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
 
-/* Kanban */
 .kanban-col { background: var(--bg3); border-radius: var(--r-lg); padding: 12px; min-height: 200px; }
 .kanban-header { font-size: 11px; font-weight: 700; color: var(--text2); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; letter-spacing: .06em; }
 .kanban-count { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; font-size: 11px; color: var(--text2); }
 .deal-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 11px 13px; margin-bottom: 8px; cursor: pointer; transition: border-color .1s; }
 .deal-card:hover { border-color: var(--accent); }
 
-/* Agenda */
 .agenda-day { margin-bottom: 18px; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--bg2); }
 .agenda-day-header { padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg3); }
 .agenda-event { display: flex; border-bottom: 1px solid var(--border); cursor: pointer; }
 .agenda-event:last-child { border-bottom: none; }
 .agenda-event:hover { background: var(--accent-lt); }
 
-/* Follow-up */
 .fu-item { border-radius: var(--r); padding: 11px 14px; margin-bottom: 9px; display: flex; align-items: flex-start; gap: 10px; }
 .fu-item.scaduto { background: var(--red); border: 1px solid var(--red); color: white; }
 .fu-item.scaduto .text-muted { color: rgba(255,255,255,0.75); }
@@ -141,11 +129,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .fu-item.oggi .fw-600 { color: white; }
 .fu-item.futuro { background: var(--bg2); border: 1px solid var(--border); }
 
-/* Bulk bar */
 .bulk-bar { background: var(--accent-lt); border: 1px solid var(--accent-mid); border-radius: var(--r); padding: 9px 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .bulk-sep { width: 1px; height: 20px; background: var(--accent-mid); flex-shrink: 0; }
 
-/* Forms */
 .form-group { margin-bottom: 14px; }
 .form-label { font-size: 11px; font-weight: 700; color: var(--text2); margin-bottom: 5px; display: block; text-transform: uppercase; letter-spacing: .04em; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -154,7 +140,6 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 textarea.form-control { resize: vertical; min-height: 72px; line-height: 1.5; }
 input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-color: var(--accent); }
 
-/* Modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal-box { background: var(--bg2); border-radius: var(--r-lg); border: 1px solid var(--border2); width: 580px; max-width: 100%; max-height: 92vh; overflow-y: auto; box-shadow: 0 8px 40px rgba(0,120,212,0.15); }
 .modal-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--bg2); z-index: 1; }
@@ -164,23 +149,19 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
 .modal-body { padding: 18px 20px; }
 .modal-footer { padding: 13px 20px 18px; display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid var(--border); flex-wrap: wrap; position: sticky; bottom: 0; background: var(--bg2); }
 
-/* Toast */
 .toast { position: fixed; bottom: 22px; right: 22px; background: var(--text); color: white; border-radius: var(--r-lg); padding: 13px 17px; font-size: 13px; z-index: 200; max-width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); animation: slideIn .2s ease; }
 .toast-title { font-weight: 700; margin-bottom: 3px; color: white; }
 .toast-msg { color: rgba(255,255,255,0.7); font-size: 12px; }
 @keyframes slideIn { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-/* Search */
 .search-bar { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; }
 
-/* Info boxes */
 .info-box { border-radius: var(--r); padding: 10px 14px; margin-bottom: 14px; font-size: 12px; line-height: 1.6; }
 .info-box.blue { background: var(--accent-lt); color: var(--accent-dk); border: 1px solid var(--accent-mid); }
 .info-box.amber { background: var(--amber); color: white; border: 1px solid var(--amber); }
 .info-box.green { background: var(--green-lt); color: #0F5023; border: 1px solid rgba(27,122,62,0.3); }
 .info-box.red { background: var(--red); color: white; border: 1px solid var(--red); }
 
-/* Misc */
 .empty { text-align: center; padding: 36px 20px; color: var(--text2); font-size: 13px; }
 .group-head { font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .07em; margin: 14px 0 8px; }
 .text-muted { color: var(--text2); }
@@ -192,11 +173,19 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
 .fs-11 { font-size: 11px; }
 .divider { border-top: 1px solid var(--border); padding-top: 16px; margin-bottom: 14px; }
 
-/* Hamburger mobile */
 .hamburger { display: none; position: fixed; top: 10px; left: 10px; z-index: 51; background: var(--accent); border: none; border-radius: var(--r); padding: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,120,212,0.3); }
 .hamburger svg { stroke: white; }
 
-/* Responsive */
+/* Ricerca globale (ancorata in alto) e pulsante Esci (ancorato in basso a destra) —
+   su schermi stretti sono le regole qui sotto, non quelle inline nei componenti, a spostarle */
+.global-search-wrap { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 30; max-width: 320px; width: 100%; }
+.logout-btn { position: fixed; bottom: 16px; right: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text2); z-index: 20; }
+
+/* Griglie a colonne fisse (kanban Pipeline, calendario settimanale Appuntamenti/Follow-up) —
+   finora scritte come stile inline nei rispettivi componenti: qui diventano classi, per poter
+   essere corrette sotto i 900px con la stessa tecnica già in uso nella Vista Operatore. */
+.kanban-grid, .week-grid { display: grid; gap: 12px; }
+
 @media(max-width:1100px) {
   .metric-grid { grid-template-columns: repeat(2,1fr); }
   .charts-grid { grid-template-columns: 1fr; }
@@ -206,12 +195,21 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
   .sidebar { position: fixed; left: -240px; width: 220px; height: 100vh; z-index: 50; transition: left .25s; }
   .sidebar.open { left: 0; box-shadow: 4px 0 20px rgba(0,0,0,0.15); }
   .main { width: 100%; }
-  .topbar { padding: 10px 14px 10px 52px; }
-  .content { padding: 12px; }
+  .topbar { padding: 10px 14px 10px 52px; flex-wrap: wrap; gap: 8px; }
+  .topbar-right { flex-wrap: wrap; }
+  .content { padding: 12px; padding-top: 44px; }
   .form-row { grid-template-columns: 1fr; }
   .info-grid { grid-template-columns: 1fr; }
   .modal-box { width: 100%; max-height: 100vh; border-radius: 0; }
   .modal-overlay { padding: 0; align-items: flex-end; }
+  .search-bar { position: static; }
+
+  /* La ricerca globale scende sotto l'hamburger invece di sovrapporsi */
+  .global-search-wrap { position: static; max-width: 100%; transform: none; margin: 0 0 10px 0; }
+  /* Il pulsante Esci torna nel flusso della pagina invece di restare fisso sopra ai contenuti */
+  .logout-btn { position: static; margin: 16px 0 0; width: 100%; text-align: center; }
+
+  .kanban-grid, .week-grid { grid-template-columns: 1fr !important; }
 }
 @media(max-width:600px) {
   .metric-grid { grid-template-columns: 1fr 1fr; gap: 8px; }

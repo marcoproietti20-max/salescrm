@@ -1,17 +1,8 @@
 import React, { useState } from 'react';
-import { fmt, uid } from '../constants';
+import { fmt, uid, getWeekDays } from '../constants';
 import { dbSave } from '../supabase';
-
-function getWeekDays(offset) {
-  const now = new Date();
-  const day = now.getDay();
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + offset * 7);
-  return Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(mon); d.setDate(mon.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
-}
+import CallButton from './CallButton';
+import EmailButton from './EmailButton';
 
 export default function FollowUps({ contacts, setModal, showToast, updateContact, setContacts }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -19,7 +10,6 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
   const [weekOffset, setWeekOffset] = useState(0);
   const [selIds, setSelIds] = useState(new Set());
   const [postponeDays, setPostponeDays] = useState(7);
-  const [generatingEmail, setGeneratingEmail] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
   const all = [];
@@ -42,7 +32,6 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
     if (!selIds.size || !window.confirm(`Eliminare ${selIds.size} follow-up?`)) return;
     setDeleting(true);
 
-    // Group by contact to batch updates
     const byContact = {};
     selIds.forEach(key => {
       const [cid, hid] = key.split('__');
@@ -50,7 +39,6 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
       byContact[cid].push(hid);
     });
 
-    // Update each contact and save to Supabase — wait for ALL to complete
     const updatedContacts = contacts.map(c => {
       if (!byContact[c.id]) return c;
       return {
@@ -61,11 +49,9 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
       };
     });
 
-    // Save all modified contacts to Supabase and wait for completion
     const modified = updatedContacts.filter(c => byContact[c.id]);
     await Promise.all(modified.map(c => dbSave(c)));
 
-    // Update React state only after all saves are done
     setContacts(() => updatedContacts);
     setSelIds(new Set());
     setDeleting(false);
@@ -90,28 +76,6 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
     showToast(`${selIds.size} follow-up posticipati`, `di ${postponeDays} giorni`);
   };
 
-  const openEmail = async (f) => {
-    setGeneratingEmail(f.key);
-    const nome = f.c.nome || ''; const email = f.c.email || '';
-    const nota = f.h.text || ''; const testoProposta = f.c.testoProposta || '';
-    const sub = encodeURIComponent('Feedback Preventivo — Il Sole 24 Ore Professionale');
-    let riassunto = '';
-    if (testoProposta) {
-      try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 200, messages: [{ role: 'user', content: `Riassumi in 2-3 frasi brevi questa proposta per un follow-up email: "${testoProposta}"` }] })
-        });
-        const data = await res.json(); riassunto = data.content?.[0]?.text || '';
-      } catch { riassunto = ''; }
-    }
-    const body = encodeURIComponent(
-      `Gentile ${nome},\n\nspero che la proposta che le ho inviato nei giorni scorsi sia di suo gradimento.\n\nLe scrivo per sapere se ha avuto modo di valutarla e se posso esserle utile per qualsiasi chiarimento.\n\nLe ricordo che le condizioni che le ho riservato sono legate a una disponibilità limitata, pertanto sarei lieto di ricevere un suo riscontro nei prossimi giorni.\n\nDomani proverò a contattarla telefonicamente per un breve confronto.\n\nA presto,\nMarco Proietti\nIl Sole 24 Ore Professionale`
-    );
-    setGeneratingEmail(null);
-    window.open(`mailto:${email}?subject=${sub}&body=${body}`, '_blank');
-  };
-
   const FuCard = ({ f }) => (
     <div className={`fu-item ${f.s}`}>
       <input type="checkbox" checked={selIds.has(f.key)} onChange={() => toggleOne(f.key)} style={{ flexShrink: 0, marginTop: 2 }} />
@@ -124,9 +88,10 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
         <div className="text-muted fs-12">{f.c.azienda} — {(f.h.text || '').slice(0, 80)}</div>
         <div className="fs-11 text-muted" style={{ marginTop: 3 }}>{fmt(f.h.followup, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</div>
       </div>
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
         <button className="btn btn-sm" onClick={() => setModal({ type: 'scheda', data: f.c })} title="Apri scheda">👤</button>
-        <button className="btn btn-sm" disabled={generatingEmail === f.key} onClick={() => openEmail(f)}>{generatingEmail === f.key ? '⏳' : '📧'}</button>
+        <CallButton numero={f.c.telefono} />
+        {f.c.email && <EmailButton contatto={f.c} />}
         <button className="btn btn-sm" onClick={() => setModal({ type: 'followup', data: { contactId: f.c.id, note: f.h } })}>✏️</button>
       </div>
     </div>
@@ -154,7 +119,7 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
               <button className="btn btn-sm" onClick={() => setWeekOffset(w => w + 1)}>Succ. →</button>
               <span className="fs-12 text-muted fw-600">{weekLabel}</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+            <div className="week-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
               {weekDays.map((d, i) => {
                 const isToday = d === today;
                 const dayFUs = all.filter(f => f.h.followup === d);

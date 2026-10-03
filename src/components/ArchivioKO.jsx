@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { fmt, getLastAppt } from '../constants';
+import { fmt, getLastAppt, haAppuntamentoSvolto } from '../constants';
 import { FonteBadge } from './Badges';
+import CallButton from './CallButton';
 
 export default function ArchivioKO({ contacts, stages, setContacts, showToast, setModal }) {
   const [q, setQ] = useState('');
@@ -25,22 +26,27 @@ export default function ArchivioKO({ contacts, stages, setContacts, showToast, s
     <>
       <div className="topbar"><span className="page-title">Archivio KO</span><span className="text-muted fs-12">{ko.length} trattative perse</span></div>
       <div className="content">
-        <div className="info-box red">Trattative perse — non compaiono nella pipeline né in "Chiuso per mese".</div>
+        <div className="info-box red">Trattative perse — non compaiono nella pipeline né in "Chiuso per mese". "📅 Mai presentato" indica un appuntamento mai avvenuto: non conta nel tasso di chiusura in Dashboard, perché non c'è mai stata una vera conversazione commerciale.</div>
         <div className="search-bar"><input className="form-control" style={{maxWidth:300}} placeholder="Cerca..." value={q} onChange={e=>setQ(e.target.value)}/></div>
         <div className="table-wrap">
           <table className="crm-table">
-            <thead><tr><Th k="nome" l="Cliente" w={140}/><Th k="azienda" l="Azienda" w={140}/><Th k="categoria" l="Categoria" w={130}/><Th k="fonte" l="Fonte" w={140}/><Th k="app" l="Ultimo App." w={110}/><th style={{width:200}}>Ultima nota</th><th style={{width:80}}></th></tr></thead>
+            <thead><tr><Th k="nome" l="Cliente" w={140}/><Th k="azienda" l="Azienda" w={140}/><Th k="categoria" l="Categoria" w={130}/><Th k="fonte" l="Fonte" w={140}/><Th k="app" l="Ultimo App." w={110}/><th style={{width:140}}>Esito</th><th style={{width:200}}>Ultima nota</th><th style={{width:110}}></th></tr></thead>
             <tbody>
-              {sorted.length===0?<tr><td colSpan={7} className="empty">Nessuna trattativa persa</td></tr>:
+              {sorted.length===0?<tr><td colSpan={8} className="empty">Nessuna trattativa persa</td></tr>:
                 sorted.map(c=>{
                   const la=getLastAppt(c);
                   const ln=(c.history||[]).filter(h=>h.type==='note'&&h.text).slice(-1)[0];
+                  const haAppt=(c.history||[]).some(h=>h.type==='appt');
+                  const svolto=haAppuntamentoSvolto(c);
+                  const maiPresentato=haAppt&&!svolto;
                   return(<tr key={c.id} style={{cursor:'pointer'}} onClick={()=>setModal({type:'scheda',data:c})}>
                     <td className="fw-600">{c.nome}</td><td className="text-muted">{c.azienda||'—'}</td><td className="fs-12 text-muted">{c.categoria||'—'}</td>
                     <td><FonteBadge name={c.fonte}/></td>
-                    <td className="text-muted fs-12">{la?fmt(la,{day:'2-digit',month:'short',year:'numeric'}):'—'}</td>
+                    <td>{maiPresentato
+                      ? <span className="badge" style={{background:'#FEF3E2',color:'#7A4010',border:'1px solid rgba(224,123,26,0.35)'}}>📅 Mai presentato</span>
+                      : <span className="text-muted fs-12">Rifiutato</span>}</td>
                     <td className="text-muted fs-12" style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ln?.text||'—'}</td>
-                    <td onClick={e=>e.stopPropagation()}><button className="btn btn-sm" onClick={()=>reopen(c.id)}>Riapri</button></td>
+                    <td onClick={e=>e.stopPropagation()} style={{display:'flex',gap:6}}><CallButton numero={c.telefono}/><button className="btn btn-sm" onClick={()=>reopen(c.id)}>Riapri</button></td>
                   </tr>);
                 })
               }

@@ -1,20 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Chart, BarElement, BarController, CategoryScale, LinearScale, Tooltip } from 'chart.js';
-import { fmt, fmtEur, getDataChiusura, getContratti } from '../constants';
+import { fmt, fmtEur, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, getFatturato } from '../constants';
 Chart.register(BarElement, BarController, CategoryScale, LinearScale, Tooltip);
 const MESI = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 
 // ── Helpers ─────────────────────────────────────────────────
-function getFatturatoNuovo(c) {
-  return getContratti(c).filter(ct => ct.tipo !== 'Rinnovo')
-    .reduce((s, ct) => s + (ct.prodotti||[]).reduce((ps,p) => ps+(Number(p.importo)||0), 0) || Number(ct.totale)||0, 0);
-}
-function getFatturatoRinnovo(c) {
-  return getContratti(c).filter(ct => ct.tipo === 'Rinnovo')
-    .reduce((s, ct) => s + (ct.prodotti||[]).reduce((ps,p) => ps+(Number(p.importo)||0), 0) || Number(ct.totale)||0, 0);
-}
-function getFatturatoTotale(c) { return getFatturatoNuovo(c) + getFatturatoRinnovo(c); }
-
 // Valore contrattuale = somma per ogni prodotto: importo * (durataM/12)
 // Rappresenta il valore annualizzato della durata effettiva
 function getValoreContrattuale(c) {
