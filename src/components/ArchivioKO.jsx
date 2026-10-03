@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { fmt, getLastAppt, haAppuntamentoSvolto } from '../constants';
+import { fmt, getLastAppt, haContattoReale } from '../constants';
 import { FonteBadge } from './Badges';
 import CallButton from './CallButton';
 
@@ -26,7 +26,7 @@ export default function ArchivioKO({ contacts, stages, setContacts, showToast, s
     <>
       <div className="topbar"><span className="page-title">Archivio KO</span><span className="text-muted fs-12">{ko.length} trattative perse</span></div>
       <div className="content">
-        <div className="info-box red">Trattative perse — non compaiono nella pipeline né in "Chiuso per mese". "📅 Mai presentato" indica un appuntamento mai avvenuto: non conta nel tasso di chiusura in Dashboard, perché non c'è mai stata una vera conversazione commerciale.</div>
+        <div className="info-box red">Trattative perse — non compaiono nella pipeline né in "Chiuso per mese". "📅 Mai presentato" indica nessun appuntamento Svolto e nessuna offerta inviata: non conta nel tasso di chiusura in Dashboard.</div>
         <div className="search-bar"><input className="form-control" style={{maxWidth:300}} placeholder="Cerca..." value={q} onChange={e=>setQ(e.target.value)}/></div>
         <div className="table-wrap">
           <table className="crm-table">
@@ -37,8 +37,8 @@ export default function ArchivioKO({ contacts, stages, setContacts, showToast, s
                   const la=getLastAppt(c);
                   const ln=(c.history||[]).filter(h=>h.type==='note'&&h.text).slice(-1)[0];
                   const haAppt=(c.history||[]).some(h=>h.type==='appt');
-                  const svolto=haAppuntamentoSvolto(c);
-                  const maiPresentato=haAppt&&!svolto;
+                  const contattoReale=haContattoReale(c);
+                  const maiPresentato=haAppt&&!contattoReale;
                   return(<tr key={c.id} style={{cursor:'pointer'}} onClick={()=>setModal({type:'scheda',data:c})}>
                     <td className="fw-600">{c.nome}</td><td className="text-muted">{c.azienda||'—'}</td><td className="fs-12 text-muted">{c.categoria||'—'}</td>
                     <td><FonteBadge name={c.fonte}/></td>

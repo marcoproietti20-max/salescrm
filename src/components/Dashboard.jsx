@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Chart, ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
-import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, haAppuntamentoSvolto } from '../constants';
+import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, haContattoReale } from '../constants';
 import { FonteBadge } from './Badges';
 Chart.register(ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend);
 const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
@@ -37,7 +37,7 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   // Tasso di chiusura "vero": solo tra chi ha davvero avuto un appuntamento svolto.
   // Chi non si è mai presentato non ha mai avuto una conversazione commerciale,
   // quindi non conta né a favore né contro il tasso.
-  const svoltiList = contacts.filter(c=>haAppuntamentoSvolto(c));
+  const svoltiList = contacts.filter(c=>haContattoReale(c));
   const svoltiOK = svoltiList.filter(c=>getContratti(c).length>0);
   const tassoChiusura = svoltiList.length>0 ? Math.round((svoltiOK.length/svoltiList.length)*100) : null;
   const openHot = contacts.filter(c=>c.fase==='In valutazione');

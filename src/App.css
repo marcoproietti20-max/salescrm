@@ -202,12 +202,11 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
   .info-grid { grid-template-columns: 1fr; }
   .modal-box { width: 100%; max-height: 100vh; border-radius: 0; }
   .modal-overlay { padding: 0; align-items: flex-end; }
-  .search-bar { position: static; }
-
-  /* La ricerca globale scende sotto l'hamburger invece di sovrapporsi */
-  .global-search-wrap { position: static; max-width: 100%; transform: none; margin: 0 0 10px 0; }
-  /* Il pulsante Esci torna nel flusso della pagina invece di restare fisso sopra ai contenuti */
-  .logout-btn { position: static; margin: 16px 0 0; width: 100%; text-align: center; }
+  /* La ricerca globale scende sotto l'hamburger: resta "fixed" (mai "static", che la
+     farebbe entrare nel flex layout di .app insieme a sidebar e contenuto, rompendolo) */
+  .global-search-wrap { top: 56px; left: 8px; right: 8px; transform: none; max-width: none; width: auto; }
+  /* Il pulsante Esci resta "fixed" ma più piccolo e meno invadente su schermo stretto */
+  .logout-btn { padding: 5px 10px; font-size: 11px; }
 
   .kanban-grid, .week-grid { grid-template-columns: 1fr !important; }
 }

@@ -85,11 +85,16 @@ export function getFattNuovo(c) {
 export function getFattRinnovo(c) {
   return getContratti(c).filter(ct=>ct.tipo==='Rinnovo').reduce((s,ct)=>s+(ct.prodotti||[]).reduce((ps,p)=>ps+(Number(p.importo)||0),0)||(Number(ct.totale)||0),0);
 }
-// Il contatto ha avuto almeno un appuntamento davvero svolto (non necessariamente l'ultimo).
-// Usata per calcolare il tasso di chiusura "vero": chi non si è mai presentato non ha mai
+// Un vero contatto commerciale è avvenuto: o un appuntamento è segnato Svolto, o è stata
+// inviata un'offerta. Il secondo segnale è importante perché lo stato dell'appuntamento
+// richiede un aggiornamento manuale separato dalla chiusura della trattativa — facile da
+// dimenticare — mentre l'offerta inviata è una prova diretta che una conversazione c'è stata.
+// Usata per il tasso di chiusura "vero": chi non rientra in nessuno dei due casi non ha mai
 // avuto una vera conversazione commerciale, quindi non deve contare né a favore né contro.
-export function haAppuntamentoSvolto(c) {
-  return (c.history||[]).some(h=>h.type==='appt'&&h.stato==='Svolto');
+export function haContattoReale(c) {
+  const apptSvolto = (c.history||[]).some(h=>h.type==='appt'&&h.stato==='Svolto');
+  const offertaInviata = c.proposta === 'Offerta Inviata';
+  return apptSvolto || offertaInviata;
 }
 // I 5 giorni (lun-ven) della settimana corrente + offset — condiviso tra le viste calendario
 export function getWeekDays(offset) {
