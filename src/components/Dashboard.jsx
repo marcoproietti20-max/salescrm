@@ -92,14 +92,16 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
     return () => { vivo = false; };
   }, [curYear]);
 
-  // Fatturato dell'anno, diviso per linea (dal campo "categoria" di ogni prodotto).
+  // Il budget assegnato dall'azienda riguarda solo il fatturato "nuovo" — i rinnovi non
+  // vi rientrano. Per coerenza, sia il totale sia la divisione per linea escludono i
+  // contratti di rinnovo (stesso filtro già usato da getFattNuovo).
   // Ciò che non ha una categoria tra le 6 linee di budget finisce in "nonAssegnato",
   // così non sparisce silenziosamente dal conteggio — resta visibile, solo non spalmato.
   const fatturatoPerLinea = {};
   LINEE_BUDGET.forEach(l => { fatturatoPerLinea[l] = 0; });
   let fatturatoNonAssegnato = 0;
   chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).forEach(c => {
-    getContratti(c).forEach(ct => {
+    getContratti(c).filter(ct=>ct.tipo!=='Rinnovo').forEach(ct => {
       if (ct.prodotti?.length) {
         ct.prodotti.forEach(p => {
           const imp = Number(p.importo)||0;
@@ -111,9 +113,10 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
       }
     });
   });
+  const fatAnnoNuovo = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFattNuovo(c),0);
 
   const budgetGenerale = budgetRows?.[''] || 0;
-  const pctRealeBudget = budgetGenerale>0 ? (fatAnno/budgetGenerale)*100 : 0;
+  const pctRealeBudget = budgetGenerale>0 ? (fatAnnoNuovo/budgetGenerale)*100 : 0;
   const giornoAnno = Math.ceil((new Date(today+'T12:00') - new Date(curYear+'-01-01T12:00')) / 86400000) + 1;
   const pctAttesaBudget = Math.min(100, (giornoAnno/365)*100);
   const statoB = statoBudget(pctRealeBudget, pctAttesaBudget);
@@ -231,45 +234,53 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
         )}
 
         {budgetRows!==null && budgetGenerale>0 && (
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div className="card-title" style={{ marginBottom: 16 }}>📊 Avanzamento budget {curYear}</div>
-            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18 }}>
-              <BudgetRing pct={pctRealeBudget} color={statoB.color} />
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <div style={{ fontSize: 26, fontWeight: 800, color: '#1E2B3C', lineHeight: 1.2 }}>{fmtEur(fatAnno)} <span style={{ fontSize: 15, fontWeight: 600, color: '#8A95A3' }}>/ {fmtEur(budgetGenerale)}</span></div>
-                <div className="fs-12 text-muted" style={{ marginBottom: 12 }}>fatturato {curYear} sul budget generale assegnato</div>
-                <div style={{ background: statoB.bg, color: statoB.color, borderRadius: 'var(--r)', padding: '10px 14px', fontSize: 14, fontWeight: 700 }}>
-                  {statoB.msg}
+          <div className="charts-grid" style={{ marginBottom: 16, alignItems: 'stretch' }}>
+            <div className="card" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
+              <div className="card-title" style={{ marginBottom: 16 }}>📊 Budget generale {curYear} — solo fatturato Nuovo</div>
+              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+                <BudgetRing pct={pctRealeBudget} color={statoB.color} />
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: '#1E2B3C', lineHeight: 1.2 }}>{fmtEur(fatAnnoNuovo)} <span style={{ fontSize: 14, fontWeight: 600, color: '#8A95A3' }}>/ {fmtEur(budgetGenerale)}</span></div>
+                  <div className="fs-12 text-muted" style={{ marginBottom: 12 }}>fatturato Nuovo {curYear} (i rinnovi non contano sul budget)</div>
+                  <div style={{ background: statoB.bg, color: statoB.color, borderRadius: 'var(--r)', padding: '9px 13px', fontSize: 13.5, fontWeight: 700 }}>
+                    {statoB.msg}
+                  </div>
+                  <div className="fs-11 text-muted" style={{ marginTop: 8 }}>Ritmo atteso a oggi: {Math.round(pctAttesaBudget)}% dell'anno trascorso</div>
                 </div>
-                <div className="fs-11 text-muted" style={{ marginTop: 8 }}>Ritmo atteso a oggi: {Math.round(pctAttesaBudget)}% dell'anno trascorso</div>
               </div>
             </div>
 
-            <div className="section-head" style={{ marginBottom: 10 }}>Per linea di prodotto</div>
-            {LINEE_BUDGET.map(l => {
-              const target = budgetRows[l] || 0;
-              const fatto = fatturatoPerLinea[l] || 0;
-              const pct = target>0 ? Math.min(100, (fatto/target)*100) : 0;
-              const barColor = target===0 ? '#C2DEFA' : pct>=100 ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
-              return (
-                <div key={l} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
-                    <span style={{ fontWeight: 600 }}>{l}</span>
-                    <span className="text-muted">{fmtEur(fatto)}{target>0 && ` / ${fmtEur(target)}`}</span>
+            <div className="card" style={{ marginBottom: 0 }}>
+              <div className="card-title" style={{ marginBottom: 16 }}>Avanzamento per linea di prodotto</div>
+              {LINEE_BUDGET.map(l => {
+                const target = budgetRows[l] || 0;
+                const fatto = fatturatoPerLinea[l] || 0;
+                const pct = target>0 ? (fatto/target)*100 : 0;
+                const pctClamped = Math.min(100, pct);
+                const barColor = target===0 ? '#C2DEFA' : pct>=100 ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
+                return (
+                  <div key={l} style={{ marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12.5, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600 }}>{l}</span>
+                      <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                        <span className="text-muted">{fmtEur(fatto)}{target>0 && ` / ${fmtEur(target)}`}</span>
+                        <span style={{ fontWeight: 800, color: barColor, minWidth: 38, textAlign: 'right' }}>{target>0?Math.round(pct):'—'}{target>0&&'%'}</span>
+                      </span>
+                    </div>
+                    <div style={{ background: 'var(--bg3)', borderRadius: 20, height: 8, overflow: 'hidden' }}>
+                      <div style={{ width: `${target>0?pctClamped:0}%`, height: '100%', background: barColor, borderRadius: 20, transition: 'width .5s ease' }} />
+                    </div>
                   </div>
-                  <div style={{ background: 'var(--bg3)', borderRadius: 20, height: 8, overflow: 'hidden' }}>
-                    <div style={{ width: `${target>0?pct:0}%`, height: '100%', background: barColor, borderRadius: 20, transition: 'width .5s ease' }} />
-                  </div>
-                </div>
-              );
-            })}
-            {fatturatoNonAssegnato>0 && (
-              <div className="fs-11 text-muted" style={{ marginTop: 10 }}>+ {fmtEur(fatturatoNonAssegnato)} da prodotti senza una categoria tra le linee di budget — non compaiono nelle barre sopra, ma restano nel fatturato totale.</div>
-            )}
+                );
+              })}
+              {fatturatoNonAssegnato>0 && (
+                <div className="fs-11 text-muted" style={{ marginTop: 6 }}>+ {fmtEur(fatturatoNonAssegnato)} da prodotti senza categoria tra le linee di budget — non compaiono qui sopra, ma restano nel fatturato Nuovo totale.</div>
+              )}
+            </div>
           </div>
         )}
         {budgetRows!==null && budgetGenerale===0 && (
-          <div className="info-box blue">📊 Imposta il budget {curYear} in Impostazioni per vedere qui l'avanzamento.</div>
+          <div className="info-box blue" style={{ marginBottom: 16 }}>📊 Imposta il budget {curYear} in Impostazioni per vedere qui l'avanzamento.</div>
         )}
 
         <div className="metric-grid">
