@@ -112,6 +112,22 @@ export function normPhone(t) {
   else if(n.startsWith('+')) n=n.slice(1);
   return n;
 }
+export async function dbLoadCanvass() {
+  const {data,error}=await supabase.from('canvass').select('*').order('data_inizio',{ascending:false});
+  if(error){console.error('dbLoadCanvass:',error);return [];}
+  return data||[];
+}
+export async function dbSaveCanvass(row) {
+  const payload={...row,updated_at:new Date().toISOString()};
+  const {data,error}=await supabase.from('canvass').upsert(payload).select();
+  if(error){console.error('dbSaveCanvass:',error);return null;}
+  return data?.[0]||null;
+}
+export async function dbDeleteCanvass(id) {
+  const {error}=await supabase.from('canvass').delete().eq('id',id);
+  if(error){console.error('dbDeleteCanvass:',error);return false;}
+  return true;
+}
 export async function dbLoadBudget(anno) {
   const {data,error}=await supabase.from('budget').select('*').eq('anno',anno);
   if(error){console.error('dbLoadBudget:',error);return [];}

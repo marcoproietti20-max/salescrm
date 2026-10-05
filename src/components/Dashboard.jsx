@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Chart, ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, haContattoReale, LINEE_BUDGET, SIGLE_BUDGET } from '../constants';
 import { FonteBadge } from './Badges';
-import { dbLoadBudget } from '../supabase';
+import { dbLoadBudget, dbLoadCanvass } from '../supabase';
+import { calcolaAvanzamento, statoDisplay } from './Canvass';
 Chart.register(ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend);
 const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
@@ -78,6 +79,17 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const fatMese = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFatturato(c),0);
   const fatAnno = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFatturato(c),0);
   const totPrev = openHot.reduce((s,c)=>s+getPreventivato(c),0);
+
+  // ── Canvass attivi: solo quelli la cui finestra include oggi, mai quelli archiviati o scaduti ──
+  const [canvassAttivi, setCanvassAttivi] = React.useState(null); // null = ancora in caricamento
+  React.useEffect(() => {
+    let vivo = true;
+    dbLoadCanvass().then(rows => {
+      if (!vivo) return;
+      setCanvassAttivi(rows.filter(cv => statoDisplay(cv, today).label === 'Attivo'));
+    });
+    return () => { vivo = false; };
+  }, [today]);
 
   // ── Budget: caricato dal database (tabella "budget"), una riga per linea + una generale ──
   const [budgetRows, setBudgetRows] = React.useState(null); // null = ancora in caricamento
@@ -230,6 +242,33 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
           <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
             {urgentFU>0&&<div style={{flex:1,background:'#C0392B',color:'white',border:'none',borderRadius:'var(--r)',padding:'10px 16px',cursor:'pointer',fontSize:13,fontWeight:600}} onClick={()=>navigateTo('followups')}>🔔 {urgentFU} follow-up urgenti — Vedi →</div>}
             {daRifissare>0&&<div style={{flex:1,background:'#E07B1A',color:'white',border:'none',borderRadius:'var(--r)',padding:'10px 16px',cursor:'pointer',fontSize:13,fontWeight:600}} onClick={()=>navigateTo('appointments',{filter:'da_aggiornare'})}>🔄 {daRifissare} appuntamenti da gestire — Vedi →</div>}
+          </div>
+        )}
+
+        {canvassAttivi!==null && canvassAttivi.length>0 && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title" style={{ marginBottom: 14 }}>🎯 Canvass attivi</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 12 }}>
+              {canvassAttivi.map(cv => {
+                const { pct, raggiunto, premioStimato } = calcolaAvanzamento(cv, contacts);
+                const barColor = raggiunto ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
+                return (
+                  <div key={cv.id} onClick={()=>navigateTo('canvass')} style={{ border: '1px solid var(--border)', borderRadius: 'var(--r)', padding: '11px 13px', cursor: 'pointer' }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cv.nome}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, marginBottom: 4 }}>
+                      <span className="text-muted">Target</span>
+                      <span style={{ fontWeight: 800, color: barColor }}>{Math.round(pct)}%</span>
+                    </div>
+                    <div style={{ background: 'var(--bg3)', borderRadius: 20, height: 6, overflow: 'hidden', marginBottom: 6 }}>
+                      <div style={{ width: `${Math.min(100,pct)}%`, height: '100%', background: barColor, borderRadius: 20 }} />
+                    </div>
+                    {raggiunto
+                      ? <div className="fs-11" style={{ fontWeight: 700, color: '#1B7A3E' }}>🎉 {fmtEur(premioStimato)}</div>
+                      : <div className="fs-11 text-muted">fino a {fmt(cv.data_fine,{day:'2-digit',month:'short'})}</div>}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

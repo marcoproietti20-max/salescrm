@@ -9,7 +9,7 @@ export default function Modal({ modal, setModal, contacts, stages, customFields,
   const close = () => setModal(null);
 
   if (modal.type === 'contact') return (
-    <ContactForm c={modal.data} stages={stages} customFields={customFields}
+    <ContactForm c={modal.data} stages={stages} customFields={customFields} contacts={contacts}
       onSave={d => { saveContact(d); close(); }}
       onDelete={id => { if (window.confirm('Eliminare questo contatto?')) { deleteContact(id); close(); } }}
       onClose={close} />
@@ -72,7 +72,7 @@ export default function Modal({ modal, setModal, contacts, stages, customFields,
   );
 
   if (modal.type === 'contratto') return (
-    <ContrattoForm contact={modal.data.contact} contratto={modal.data.contratto} isEdit={modal.data.isEdit}
+    <ContrattoForm contact={modal.data.contact} contratto={modal.data.contratto} isEdit={modal.data.isEdit} contacts={contacts}
       onSave={(cid, ct) => {
         updateContact(cid, c => ({
           ...c,
@@ -177,7 +177,7 @@ function TagInput({ value, onChange, placeholder }) {
 }
 
 // ── Contact Form ─────────────────────────────────────────────
-function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
+function ContactForm({ c, stages, customFields, onSave, onDelete, onClose, contacts }) {
   const isNew = !c?.id;
   const [f, setF] = useState({
     id: c?.id || '', nome: c?.nome || '', azienda: c?.azienda || '',
@@ -193,6 +193,10 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
     contratti: c?.contratti || [],
   });
   const s = (k, v) => setF(p => ({ ...p, [k]: v }));
+  // Stessi suggerimenti auto-costruiti di ContrattoForm — vedi lì per il perché non è un elenco fisso.
+  const suggerimentiTipo = [...new Set(
+    (contacts||[]).flatMap(x => getContratti(x).flatMap(ct => (ct.prodotti||[]).map(p => p.tipoDettaglio))).filter(Boolean)
+  )].sort((a,b)=>a.localeCompare(b,'it'));
 
   return (
     <Overlay onClose={onClose}>
@@ -317,10 +321,15 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose }) {
                     onChange={e => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: x.prodotti.map((pp, j) => j === pi ? { ...pp, durataM: Number(e.target.value) } : pp) } : x))} />
                   <button type="button" className="btn btn-sm btn-danger"
                     onClick={() => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: x.prodotti.filter((_, j) => j !== pi) } : x))}>×</button>
+                  <input className="form-control" style={{ flex: '1 1 100%', minWidth: 160 }} list={`tipo-dettaglio-cf-${p.id || pi}`} placeholder="Tipo (es. Abbonamento, One Shot, Laboratorio...)" value={p.tipoDettaglio || ''}
+                    onChange={e => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: x.prodotti.map((pp, j) => j === pi ? { ...pp, tipoDettaglio: e.target.value } : pp) } : x))} />
+                  <datalist id={`tipo-dettaglio-cf-${p.id || pi}`}>
+                    {suggerimentiTipo.map(sg => <option key={sg} value={sg} />)}
+                  </datalist>
                 </div>
               ))}
               <button type="button" className="btn btn-sm" style={{ marginTop: 4 }}
-                onClick={() => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: [...(x.prodotti || []), { id: uid(), categoria: '', nome: '', importo: 0, durataM: 12 }] } : x))}>
+                onClick={() => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: [...(x.prodotti || []), { id: uid(), categoria: '', nome: '', importo: 0, durataM: 12, tipoDettaglio: '' }] } : x))}>
                 + Prodotto
               </button>
             </div>
@@ -509,13 +518,19 @@ function FuForm({ contactId, note, onSave, onDelete, onClose }) {
 }
 
 // ── Contratto Form ─────────────────────────────────────────────
-function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose }) {
+function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose, contacts }) {
   const ct = contratto || {};
   const [tipo, setTipo] = useState(ct.tipo || 'Nuovo');
   const [nuovoFatturato, setNuovoFatturato] = useState(ct.nuovoFatturato || '');
   const [prodotti, setProdotti] = useState(ct.prodotti || []);
   const [dataInizio, setDataInizio] = useState(ct.dataInizio || '');
-  const addP = () => setProdotti(p => [...p, { id: uid(), categoria: '', nome: '', importo: 0, durataM: 12 }]);
+  // Suggerimenti per "Tipo" (es. Abbonamento, One Shot, Laboratorio...): si costruiscono da soli
+  // da quello che è già stato scritto altrove, non è un elenco fisso — ogni canvass può avere
+  // tipologie diverse a seconda della linea di prodotto.
+  const suggerimentiTipo = [...new Set(
+    (contacts||[]).flatMap(c => getContratti(c).flatMap(x => (x.prodotti||[]).map(p => p.tipoDettaglio))).filter(Boolean)
+  )].sort((a,b)=>a.localeCompare(b,'it'));
+  const addP = () => setProdotti(p => [...p, { id: uid(), categoria: '', nome: '', importo: 0, durataM: 12, tipoDettaglio: '' }]);
   const updP = (id, k, v) => setProdotti(p => p.map(x => x.id === id ? { ...x, [k]: v } : x));
   const delP = id => setProdotti(p => p.filter(x => x.id !== id));
   const totale = prodotti.reduce((s, p) => s + (Number(p.importo) || 0), 0);
@@ -561,6 +576,13 @@ function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose }
               <input className="form-control" style={{ flex: 1, minWidth: 80 }} type="number" placeholder="€ importo" value={p.importo} onChange={e => updP(p.id, 'importo', e.target.value)} />
               <input className="form-control" style={{ flex: 1, minWidth: 80 }} type="number" placeholder="mesi" value={p.durataM || ''} onChange={e => updP(p.id, 'durataM', e.target.value)} />
               <button className="btn btn-sm btn-danger" onClick={() => delP(p.id)}>×</button>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
+              <span style={{ minWidth: 20 }} />
+              <input className="form-control" style={{ flex: 1 }} list={`tipo-dettaglio-${p.id}`} placeholder="Tipo (es. Abbonamento, One Shot, Laboratorio...)" value={p.tipoDettaglio || ''} onChange={e => updP(p.id, 'tipoDettaglio', e.target.value)} />
+              <datalist id={`tipo-dettaglio-${p.id}`}>
+                {suggerimentiTipo.map(s => <option key={s} value={s} />)}
+              </datalist>
             </div>
           </div>
         ))}
