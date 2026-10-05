@@ -251,26 +251,44 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
             </div>
 
             <div className="card" style={{ marginBottom: 0 }}>
-              <div className="card-title" style={{ marginBottom: 4 }}>Avanzamento per linea di prodotto</div>
-              <div className="fs-11 text-muted" style={{ marginBottom: 14 }}>Passa il mouse su una colonna per il nome completo e i valori</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, height: 160 }}>
-                {LINEE_BUDGET.map(l => {
-                  const target = budgetRows[l] || 0;
-                  const fatto = fatturatoPerLinea[l] || 0;
-                  const pct = target>0 ? (fatto/target)*100 : 0;
-                  const pctClamped = Math.min(100, pct);
-                  const barColor = target===0 ? '#C2DEFA' : pct>=100 ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
-                  return (
-                    <div key={l} title={`${l} — ${fmtEur(fatto)}${target>0?` / ${fmtEur(target)}`:''}`}
-                      style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'default' }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 800, color: barColor, marginBottom: 5 }}>{target>0?Math.round(pct)+'%':'—'}</div>
-                      <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-                        <div style={{ width: '58%', maxWidth: 30, height: `${target>0?Math.max(pctClamped,3):3}%`, background: barColor, borderRadius: '6px 6px 2px 2px', transition: 'height .5s ease' }} />
+              <div className="card-title" style={{ marginBottom: 16 }}>Avanzamento per linea di prodotto</div>
+              <div style={{ display: 'flex', gap: 20, alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', gap: 10, height: 160, alignItems: 'flex-end', flexShrink: 0 }}>
+                  {LINEE_BUDGET.map(l => {
+                    const target = budgetRows[l] || 0;
+                    const fatto = fatturatoPerLinea[l] || 0;
+                    const pct = target>0 ? (fatto/target)*100 : 0;
+                    const pctClamped = Math.min(100, pct);
+                    const barColor = target===0 ? '#C2DEFA' : pct>=100 ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
+                    return (
+                      <div key={l} title={l} style={{ width: 34, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'default' }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 800, color: barColor, marginBottom: 5 }}>{target>0?Math.round(pct)+'%':'—'}</div>
+                        <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                          <div style={{ width: 22, height: `${target>0?Math.max(pctClamped,3):3}%`, background: barColor, borderRadius: '6px 6px 2px 2px', transition: 'height .5s ease' }} />
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginTop: 7 }}>{SIGLE_BUDGET[l]}</div>
                       </div>
-                      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text2)', marginTop: 7 }}>{SIGLE_BUDGET[l]}</div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 9, borderLeft: '1px solid var(--border)', paddingLeft: 18, minWidth: 0 }}>
+                  {LINEE_BUDGET.map(l => {
+                    const target = budgetRows[l] || 0;
+                    const fatto = fatturatoPerLinea[l] || 0;
+                    const pct = target>0 ? Math.round((fatto/target)*100) : null;
+                    const dotColor = target===0 ? '#C2DEFA' : pct>=100 ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
+                    return (
+                      <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+                        <span style={{ fontWeight: 700, width: 32, flexShrink: 0 }}>{SIGLE_BUDGET[l]}</span>
+                        <span className="text-muted" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l}</span>
+                        <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtEur(fatto)}{target>0 && <span className="text-muted" style={{ fontWeight: 400 }}> / {fmtEur(target)}</span>}</span>
+                        <span style={{ fontWeight: 800, color: dotColor, minWidth: 34, textAlign: 'right' }}>{pct!==null?pct+'%':'—'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
               {fatturatoNonAssegnato>0 && (
                 <div className="fs-11 text-muted" style={{ marginTop: 14 }}>+ {fmtEur(fatturatoNonAssegnato)} da prodotti senza categoria tra le linee di budget — non compaiono qui sopra, ma restano nel fatturato Nuovo totale.</div>
