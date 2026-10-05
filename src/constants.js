@@ -35,6 +35,9 @@ export const PRODOTTI = [
   'Editoria elettronica','Software','Formazione','Partner24 Ore',
   'ItalyX','Quotidiani','Newsletter','Business Compass','Studi di Settore','Altri Prodotti',
 ];
+// Le 6 linee su cui Marco ha un budget assegnato — sottoinsieme di PRODOTTI (restano fuori
+// Newsletter, Business Compass, Studi di Settore, Altri Prodotti: categorie senza un target).
+export const LINEE_BUDGET = ['Editoria elettronica','Software','Partner24 Ore','Formazione','ItalyX','Quotidiani'];
 export const DEFAULT_STAGES = [
   { id: 'lead', name: 'Lead',           color: '#378ADD', isKo: false },
   { id: 'appt', name: 'Appuntamento',   color: '#EF9F27', isKo: false },

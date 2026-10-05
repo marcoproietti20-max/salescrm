@@ -9,6 +9,7 @@ function toDb(c) {
     proposta:c.proposta||null, importo_proposta:Number(c.importoProposta)||0,
     data_chiusura:c.dataChiusura||null, contratti:c.contratti||[], testo_proposta:c.testoProposta||null,
     note_interne:c.noteInterne||null, history:c.history||[], custom_data:c.customData||{},
+    specializzazioni:c.specializzazioni||[],
     updated_at:new Date().toISOString(),
   };
 }
@@ -19,6 +20,7 @@ function fromDb(r) {
     proposta:r.proposta||'', importoProposta:r.importo_proposta||0, dataChiusura:r.data_chiusura||'',
     contratti:r.contratti||[], testoProposta:r.testo_proposta||'', noteInterne:r.note_interne||'',
     history:r.history||[], customData:r.custom_data||{},
+    specializzazioni:r.specializzazioni||[],
   };
 }
 export async function dbLoadContacts() {
@@ -109,6 +111,16 @@ export function normPhone(t) {
   if(n.startsWith('+39')) n=n.slice(3);
   else if(n.startsWith('+')) n=n.slice(1);
   return n;
+}
+export async function dbLoadBudget(anno) {
+  const {data,error}=await supabase.from('budget').select('*').eq('anno',anno);
+  if(error){console.error('dbLoadBudget:',error);return [];}
+  return data||[];
+}
+export async function dbSaveBudgetRow(anno, linea, importo) {
+  const {error}=await supabase.from('budget').upsert({anno,linea,importo:Number(importo)||0,updated_at:new Date().toISOString()},{onConflict:'anno,linea'});
+  if(error){console.error('dbSaveBudgetRow:',error);return false;}
+  return true;
 }
 export async function dbLoadImportBatches() {
   const {data,error}=await supabase.from('import_batches').select('*').order('created_at',{ascending:false});

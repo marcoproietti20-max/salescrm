@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { uid } from '../constants';
+import React, { useState, useEffect } from 'react';
+import { uid, LINEE_BUDGET } from '../constants';
+import { dbLoadBudget, dbSaveBudgetRow } from '../supabase';
 
 export default function Settings({ brand, setBrand, stages, setStages, customFields, setCustomFields,
   contacts, setContacts, showToast }) {
@@ -7,6 +8,33 @@ export default function Settings({ brand, setBrand, stages, setStages, customFie
   const [newStage, setNewStage] = useState({ name: '', color: '#378ADD' });
   const [newField, setNewField] = useState({ name: '', type: 'text', options: '' });
   const sb = (k, v) => setBrand(b => ({ ...b, [k]: v }));
+
+  // ── Budget annuale ──────────────────────────────────────────
+  const [budgetAnno, setBudgetAnno] = useState(new Date().getFullYear());
+  const [budgetVals, setBudgetVals] = useState({});
+  const [budgetLoading, setBudgetLoading] = useState(true);
+  const [budgetSaving, setBudgetSaving] = useState(false);
+
+  useEffect(() => {
+    setBudgetLoading(true);
+    dbLoadBudget(budgetAnno).then(rows => {
+      const vals = {};
+      rows.forEach(r => { vals[r.linea] = r.importo; });
+      setBudgetVals(vals);
+      setBudgetLoading(false);
+    });
+  }, [budgetAnno]);
+
+  const bv = (linea, v) => setBudgetVals(p => ({ ...p, [linea]: v }));
+
+  const salvaBudget = async () => {
+    setBudgetSaving(true);
+    const righe = ['', ...LINEE_BUDGET];
+    const ok = await Promise.all(righe.map(l => dbSaveBudgetRow(budgetAnno, l, budgetVals[l] || 0)));
+    setBudgetSaving(false);
+    if (ok.every(Boolean)) showToast('Budget salvato', `Anno ${budgetAnno}`);
+    else showToast('Errore nel salvataggio di alcuni importi', '', 'info');
+  };
 
   const exportCSV = () => {
     const rows = [['Nome','Azienda','Telefono','Email','Fase','Fonte','Categoria','Esito','Proposta','Importo Proposta','Data Chiusura']];
@@ -79,6 +107,32 @@ export default function Settings({ brand, setBrand, stages, setStages, customFie
             {newField.type === 'select' && <input className="form-control" style={{ flex: 1, minWidth: 150 }} placeholder="Opzioni sep. da virgola" value={newField.options} onChange={e => setNewField(n => ({ ...n, options: e.target.value }))} />}
             <button className="btn btn-primary btn-sm" onClick={() => { if (!newField.name.trim()) return; const f = { id: uid(), name: newField.name, type: newField.type }; if (newField.type === 'select') f.options = newField.options.split(',').map(s => s.trim()).filter(Boolean); setCustomFields(p => [...p, f]); setNewField({ name: '', type: 'text', options: '' }); }}>+ Aggiungi</button>
           </div>
+        </Section>
+
+        <Section title="Budget annuale" desc="L'obiettivo assegnato dall'azienda, generale e per linea di prodotto. Alimenta l'avanzamento mostrato in Dashboard.">
+          <div className="form-group" style={{ maxWidth: 140 }}>
+            <label className="form-label">Anno</label>
+            <input className="form-control" type="number" value={budgetAnno} onChange={e => setBudgetAnno(Number(e.target.value) || new Date().getFullYear())} />
+          </div>
+          {budgetLoading ? (
+            <div className="fs-12 text-muted">Caricamento...</div>
+          ) : (
+            <>
+              <div className="form-group">
+                <label className="form-label">Budget generale</label>
+                <input className="form-control" type="number" value={budgetVals[''] || ''} onChange={e => bv('', e.target.value)} placeholder="€" />
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                {LINEE_BUDGET.map(l => (
+                  <div key={l} className="form-group" style={{ flex: '1 1 160px', minWidth: 160 }}>
+                    <label className="form-label">{l}</label>
+                    <input className="form-control" type="number" value={budgetVals[l] || ''} onChange={e => bv(l, e.target.value)} placeholder="€" />
+                  </div>
+                ))}
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={salvaBudget} disabled={budgetSaving}>{budgetSaving ? '⏳ Salvataggio...' : 'Salva budget'}</button>
+            </>
+          )}
         </Section>
 
         <Section title="Dati">

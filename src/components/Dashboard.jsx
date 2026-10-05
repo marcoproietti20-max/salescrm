@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Chart, ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
-import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, haContattoReale } from '../constants';
+import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, haContattoReale, LINEE_BUDGET } from '../constants';
 import { FonteBadge } from './Badges';
+import { dbLoadBudget } from '../supabase';
 Chart.register(ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend);
 const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
@@ -22,6 +23,38 @@ const FONTE_COLORS = {
   'Bookings':              '#0078D4',
   'Portafoglio':           '#2E7D32',
 };
+
+// Anello di avanzamento — disegnato a mano in SVG, nessuna dipendenza da Chart.js
+function BudgetRing({ pct, color, size = 148 }) {
+  const stroke = 14;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, pct));
+  const dash = (clamped / 100) * c;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#EBF4FC" strokeWidth={stroke} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+        strokeDasharray={`${dash} ${c}`} transform={`rotate(-90 ${size/2} ${size/2})`}
+        style={{ transition: 'stroke-dasharray .7s ease' }} />
+      <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle" fontSize="27" fontWeight="800" fill="#1E2B3C" fontFamily="DM Sans, sans-serif">{Math.round(pct)}%</text>
+      <text x="50%" y="65%" textAnchor="middle" dominantBaseline="middle" fontSize="10.5" fill="#8A95A3" fontFamily="DM Sans, sans-serif">del budget</text>
+    </svg>
+  );
+}
+
+// Il messaggio non guarda solo "quanto manca", ma lo confronta con quanto dovresti essere
+// avanti a questo punto dell'anno (il ritmo atteso) — altrimenti il 60% suonerebbe sempre
+// uguale, sia che tu lo raggiunga a marzo sia che tu lo raggiunga a novembre.
+function statoBudget(pctReale, pctAttesa) {
+  if (pctReale >= 100) return { msg: '🎉 Obiettivo raggiunto, complimenti!', color: '#1B7A3E', bg: '#E8F5EE' };
+  if (pctReale >= 90)  return { msg: '🔥 Manca pochissimo, sei quasi arrivato!', color: '#1B7A3E', bg: '#E8F5EE' };
+  const gap = pctReale - pctAttesa;
+  if (gap >= 8)   return { msg: '💪 Bravissimo, sei in anticipo sul ritmo atteso!', color: '#1B7A3E', bg: '#E8F5EE' };
+  if (gap >= -8)  return { msg: '👍 Sei in linea con il ritmo atteso', color: '#0078D4', bg: '#EBF4FC' };
+  if (gap >= -20) return { msg: '⚠️ Sei un po\u2019 indietro rispetto al ritmo atteso', color: '#E07B1A', bg: '#FEF3E2' };
+  return { msg: '🔴 Sei indietro, serve una spinta', color: '#C0392B', bg: '#FDECEA' };
+}
 
 export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const [filterApptMonth, setFilterApptMonth] = React.useState('');
@@ -45,6 +78,45 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const fatMese = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFatturato(c),0);
   const fatAnno = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFatturato(c),0);
   const totPrev = openHot.reduce((s,c)=>s+getPreventivato(c),0);
+
+  // ── Budget: caricato dal database (tabella "budget"), una riga per linea + una generale ──
+  const [budgetRows, setBudgetRows] = React.useState(null); // null = ancora in caricamento
+  React.useEffect(() => {
+    let vivo = true;
+    dbLoadBudget(Number(curYear)).then(rows => {
+      if (!vivo) return;
+      const map = {};
+      rows.forEach(r => { map[r.linea] = Number(r.importo)||0; });
+      setBudgetRows(map);
+    });
+    return () => { vivo = false; };
+  }, [curYear]);
+
+  // Fatturato dell'anno, diviso per linea (dal campo "categoria" di ogni prodotto).
+  // Ciò che non ha una categoria tra le 6 linee di budget finisce in "nonAssegnato",
+  // così non sparisce silenziosamente dal conteggio — resta visibile, solo non spalmato.
+  const fatturatoPerLinea = {};
+  LINEE_BUDGET.forEach(l => { fatturatoPerLinea[l] = 0; });
+  let fatturatoNonAssegnato = 0;
+  chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).forEach(c => {
+    getContratti(c).forEach(ct => {
+      if (ct.prodotti?.length) {
+        ct.prodotti.forEach(p => {
+          const imp = Number(p.importo)||0;
+          if (LINEE_BUDGET.includes(p.categoria)) fatturatoPerLinea[p.categoria] += imp;
+          else fatturatoNonAssegnato += imp;
+        });
+      } else {
+        fatturatoNonAssegnato += Number(ct.totale)||0;
+      }
+    });
+  });
+
+  const budgetGenerale = budgetRows?.[''] || 0;
+  const pctRealeBudget = budgetGenerale>0 ? (fatAnno/budgetGenerale)*100 : 0;
+  const giornoAnno = Math.ceil((new Date(today+'T12:00') - new Date(curYear+'-01-01T12:00')) / 86400000) + 1;
+  const pctAttesaBudget = Math.min(100, (giornoAnno/365)*100);
+  const statoB = statoBudget(pctRealeBudget, pctAttesaBudget);
   const urgentFU = contacts.reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='note'&&h.followup&&h.followup<=today).length,0);
   const koAndOkNames = [...stages.filter(s=>s.isKo).map(s=>s.name), 'Chiuso OK'];
   const programmatiScaduti = contacts.filter(c=>!koAndOkNames.includes(c.fase)).reduce((n,c)=>n+(c.history||[]).filter(h=>h.type==='appt'&&h.stato==='Programmato'&&h.date&&h.date.slice(0,10)<today).length,0);
@@ -156,6 +228,48 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
             {urgentFU>0&&<div style={{flex:1,background:'#C0392B',color:'white',border:'none',borderRadius:'var(--r)',padding:'10px 16px',cursor:'pointer',fontSize:13,fontWeight:600}} onClick={()=>navigateTo('followups')}>🔔 {urgentFU} follow-up urgenti — Vedi →</div>}
             {daRifissare>0&&<div style={{flex:1,background:'#E07B1A',color:'white',border:'none',borderRadius:'var(--r)',padding:'10px 16px',cursor:'pointer',fontSize:13,fontWeight:600}} onClick={()=>navigateTo('appointments',{filter:'da_aggiornare'})}>🔄 {daRifissare} appuntamenti da gestire — Vedi →</div>}
           </div>
+        )}
+
+        {budgetRows!==null && budgetGenerale>0 && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-title" style={{ marginBottom: 16 }}>📊 Avanzamento budget {curYear}</div>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', marginBottom: 18 }}>
+              <BudgetRing pct={pctRealeBudget} color={statoB.color} />
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontSize: 26, fontWeight: 800, color: '#1E2B3C', lineHeight: 1.2 }}>{fmtEur(fatAnno)} <span style={{ fontSize: 15, fontWeight: 600, color: '#8A95A3' }}>/ {fmtEur(budgetGenerale)}</span></div>
+                <div className="fs-12 text-muted" style={{ marginBottom: 12 }}>fatturato {curYear} sul budget generale assegnato</div>
+                <div style={{ background: statoB.bg, color: statoB.color, borderRadius: 'var(--r)', padding: '10px 14px', fontSize: 14, fontWeight: 700 }}>
+                  {statoB.msg}
+                </div>
+                <div className="fs-11 text-muted" style={{ marginTop: 8 }}>Ritmo atteso a oggi: {Math.round(pctAttesaBudget)}% dell'anno trascorso</div>
+              </div>
+            </div>
+
+            <div className="section-head" style={{ marginBottom: 10 }}>Per linea di prodotto</div>
+            {LINEE_BUDGET.map(l => {
+              const target = budgetRows[l] || 0;
+              const fatto = fatturatoPerLinea[l] || 0;
+              const pct = target>0 ? Math.min(100, (fatto/target)*100) : 0;
+              const barColor = target===0 ? '#C2DEFA' : pct>=100 ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
+              return (
+                <div key={l} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
+                    <span style={{ fontWeight: 600 }}>{l}</span>
+                    <span className="text-muted">{fmtEur(fatto)}{target>0 && ` / ${fmtEur(target)}`}</span>
+                  </div>
+                  <div style={{ background: 'var(--bg3)', borderRadius: 20, height: 8, overflow: 'hidden' }}>
+                    <div style={{ width: `${target>0?pct:0}%`, height: '100%', background: barColor, borderRadius: 20, transition: 'width .5s ease' }} />
+                  </div>
+                </div>
+              );
+            })}
+            {fatturatoNonAssegnato>0 && (
+              <div className="fs-11 text-muted" style={{ marginTop: 10 }}>+ {fmtEur(fatturatoNonAssegnato)} da prodotti senza una categoria tra le linee di budget — non compaiono nelle barre sopra, ma restano nel fatturato totale.</div>
+            )}
+          </div>
+        )}
+        {budgetRows!==null && budgetGenerale===0 && (
+          <div className="info-box blue">📊 Imposta il budget {curYear} in Impostazioni per vedere qui l'avanzamento.</div>
         )}
 
         <div className="metric-grid">
