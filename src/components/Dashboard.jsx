@@ -237,7 +237,7 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
           <div className="charts-grid" style={{ marginBottom: 16, alignItems: 'stretch' }}>
             <div className="card" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
               <div className="card-title" style={{ marginBottom: 16 }}>📊 Budget generale {curYear} — solo fatturato Nuovo</div>
-              <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+              <div className="budget-ring-row">
                 <BudgetRing pct={pctRealeBudget} color={statoB.color} />
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontSize: 24, fontWeight: 800, color: '#1E2B3C', lineHeight: 1.2 }}>{fmtEur(fatAnnoNuovo)} <span style={{ fontSize: 14, fontWeight: 600, color: '#8A95A3' }}>/ {fmtEur(budgetGenerale)}</span></div>
@@ -252,7 +252,7 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
 
             <div className="card" style={{ marginBottom: 0 }}>
               <div className="card-title" style={{ marginBottom: 16 }}>Avanzamento per linea di prodotto</div>
-              <div style={{ display: 'flex', gap: 20, alignItems: 'stretch' }}>
+              <div className="budget-linea-row">
                 <div style={{ display: 'flex', gap: 10, height: 160, alignItems: 'flex-end', flexShrink: 0 }}>
                   {LINEE_BUDGET.map(l => {
                     const target = budgetRows[l] || 0;

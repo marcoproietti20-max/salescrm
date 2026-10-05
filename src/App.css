@@ -1,4 +1,4 @@
-/* SalesCRM — Design System v3.1
+/* SalesCRM â€” Design System v3.1
    Palette: Bianco + Blu Microsoft #0078D4 */
 :root {
   --accent:     #0078D4;
@@ -176,15 +176,21 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
 .hamburger { display: none; position: fixed; top: 10px; left: 10px; z-index: 51; background: var(--accent); border: none; border-radius: var(--r); padding: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,120,212,0.3); }
 .hamburger svg { stroke: white; }
 
-/* Ricerca globale (ancorata in alto) e pulsante Esci (ancorato in basso a destra) —
+/* Ricerca globale (ancorata in alto) e pulsante Esci (ancorato in basso a destra) â€”
    su schermi stretti sono le regole qui sotto, non quelle inline nei componenti, a spostarle */
 .global-search-wrap { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 30; max-width: 320px; width: 100%; }
 .logout-btn { position: fixed; bottom: 16px; right: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text2); z-index: 20; }
 
-/* Griglie a colonne fisse (kanban Pipeline, calendario settimanale Appuntamenti/Follow-up) —
+/* Griglie a colonne fisse (kanban Pipeline, calendario settimanale Appuntamenti/Follow-up) â€”
    finora scritte come stile inline nei rispettivi componenti: qui diventano classi, per poter
-   essere corrette sotto i 900px con la stessa tecnica già in uso nella Vista Operatore. */
+   essere corrette sotto i 900px con la stessa tecnica giÃ  in uso nella Vista Operatore. */
 .kanban-grid, .week-grid { display: grid; gap: 12px; }
+
+/* Card Budget: anello+testo e colonne+legenda â€” da impilare in verticale sotto i 900px,
+   altrimenti il testo piÃ¹ lungo (il messaggio di stato, il nome completo di una linea)
+   allarga la riga oltre lo schermo invece di andare a capo. */
+.budget-ring-row { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; flex: 1; }
+.budget-linea-row { display: flex; gap: 20px; align-items: stretch; }
 
 @media(max-width:1100px) {
   .metric-grid { grid-template-columns: repeat(2,1fr); }
@@ -205,10 +211,16 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
   /* La ricerca globale scende sotto l'hamburger: resta "fixed" (mai "static", che la
      farebbe entrare nel flex layout di .app insieme a sidebar e contenuto, rompendolo) */
   .global-search-wrap { top: 56px; left: 8px; right: 8px; transform: none; max-width: none; width: auto; }
-  /* Il pulsante Esci resta "fixed" ma più piccolo e meno invadente su schermo stretto */
+  /* Il pulsante Esci resta "fixed" ma piÃ¹ piccolo e meno invadente su schermo stretto */
   .logout-btn { padding: 5px 10px; font-size: 11px; }
 
   .kanban-grid, .week-grid { grid-template-columns: 1fr !important; }
+
+  .budget-ring-row { flex-direction: column !important; align-items: flex-start !important; }
+  .budget-ring-row > *:last-child { min-width: 0 !important; width: 100%; }
+  .budget-linea-row { flex-direction: column !important; }
+  .budget-linea-row > *:first-child { flex-shrink: 1 !important; width: 100% !important; justify-content: space-between !important; }
+  .budget-linea-row > *:last-child { border-left: none !important; padding-left: 0 !important; padding-top: 14px !important; border-top: 1px solid var(--border); }
 }
 @media(max-width:600px) {
   .metric-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
