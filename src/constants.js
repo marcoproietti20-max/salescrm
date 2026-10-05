@@ -38,6 +38,8 @@ export const PRODOTTI = [
 // Le 6 linee su cui Marco ha un budget assegnato — sottoinsieme di PRODOTTI (restano fuori
 // Newsletter, Business Compass, Studi di Settore, Altri Prodotti: categorie senza un target).
 export const LINEE_BUDGET = ['Editoria elettronica','Software','Partner24 Ore','Formazione','ItalyX','Quotidiani'];
+// Sigle del mandato aziendale — usate come etichette brevi nel grafico a colonne
+export const SIGLE_BUDGET = { 'Editoria elettronica':'EE', 'Software':'SW', 'Partner24 Ore':'P24', 'Formazione':'EDU', 'ItalyX':'ITX', 'Quotidiani':'QD' };
 export const DEFAULT_STAGES = [
   { id: 'lead', name: 'Lead',           color: '#378ADD', isKo: false },
   { id: 'appt', name: 'Appuntamento',   color: '#EF9F27', isKo: false },

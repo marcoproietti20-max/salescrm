@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Chart, ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
-import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, haContattoReale, LINEE_BUDGET } from '../constants';
+import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, haContattoReale, LINEE_BUDGET, SIGLE_BUDGET } from '../constants';
 import { FonteBadge } from './Badges';
 import { dbLoadBudget } from '../supabase';
 Chart.register(ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend);
@@ -251,30 +251,29 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
             </div>
 
             <div className="card" style={{ marginBottom: 0 }}>
-              <div className="card-title" style={{ marginBottom: 16 }}>Avanzamento per linea di prodotto</div>
-              {LINEE_BUDGET.map(l => {
-                const target = budgetRows[l] || 0;
-                const fatto = fatturatoPerLinea[l] || 0;
-                const pct = target>0 ? (fatto/target)*100 : 0;
-                const pctClamped = Math.min(100, pct);
-                const barColor = target===0 ? '#C2DEFA' : pct>=100 ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
-                return (
-                  <div key={l} style={{ marginBottom: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12.5, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600 }}>{l}</span>
-                      <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-                        <span className="text-muted">{fmtEur(fatto)}{target>0 && ` / ${fmtEur(target)}`}</span>
-                        <span style={{ fontWeight: 800, color: barColor, minWidth: 38, textAlign: 'right' }}>{target>0?Math.round(pct):'—'}{target>0&&'%'}</span>
-                      </span>
+              <div className="card-title" style={{ marginBottom: 4 }}>Avanzamento per linea di prodotto</div>
+              <div className="fs-11 text-muted" style={{ marginBottom: 14 }}>Passa il mouse su una colonna per il nome completo e i valori</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 8, height: 160 }}>
+                {LINEE_BUDGET.map(l => {
+                  const target = budgetRows[l] || 0;
+                  const fatto = fatturatoPerLinea[l] || 0;
+                  const pct = target>0 ? (fatto/target)*100 : 0;
+                  const pctClamped = Math.min(100, pct);
+                  const barColor = target===0 ? '#C2DEFA' : pct>=100 ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
+                  return (
+                    <div key={l} title={`${l} — ${fmtEur(fatto)}${target>0?` / ${fmtEur(target)}`:''}`}
+                      style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'default' }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: barColor, marginBottom: 5 }}>{target>0?Math.round(pct)+'%':'—'}</div>
+                      <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                        <div style={{ width: '58%', maxWidth: 30, height: `${target>0?Math.max(pctClamped,3):3}%`, background: barColor, borderRadius: '6px 6px 2px 2px', transition: 'height .5s ease' }} />
+                      </div>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text2)', marginTop: 7 }}>{SIGLE_BUDGET[l]}</div>
                     </div>
-                    <div style={{ background: 'var(--bg3)', borderRadius: 20, height: 8, overflow: 'hidden' }}>
-                      <div style={{ width: `${target>0?pctClamped:0}%`, height: '100%', background: barColor, borderRadius: 20, transition: 'width .5s ease' }} />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
               {fatturatoNonAssegnato>0 && (
-                <div className="fs-11 text-muted" style={{ marginTop: 6 }}>+ {fmtEur(fatturatoNonAssegnato)} da prodotti senza categoria tra le linee di budget — non compaiono qui sopra, ma restano nel fatturato Nuovo totale.</div>
+                <div className="fs-11 text-muted" style={{ marginTop: 14 }}>+ {fmtEur(fatturatoNonAssegnato)} da prodotti senza categoria tra le linee di budget — non compaiono qui sopra, ma restano nel fatturato Nuovo totale.</div>
               )}
             </div>
           </div>
