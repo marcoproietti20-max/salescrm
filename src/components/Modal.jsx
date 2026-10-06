@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FONTI, CATEGORIE, ESITI, PROPOSTE, STATI_APPT, PRODOTTI, uid, fmt, fmtDT, getContratti, getPreventivato } from '../constants';
+import { FONTI, CATEGORIE, ESITI, PROPOSTE, STATI_APPT, PRODOTTI, CATALOGO_PRODOTTI, uid, fmt, fmtDT, getContratti, getPreventivato } from '../constants';
 import { StageBadge, FonteBadge, EsitoBadge, PropostaBadge, StatoBadge } from './Badges';
 import CallButton, { PhoneLink } from './CallButton';
 import EmailButton from './EmailButton';
@@ -313,8 +313,11 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose, conta
                     <option value="">— categoria —</option>
                     {PRODOTTI.map(pr => <option key={pr} value={pr}>{pr}</option>)}
                   </select>
-                  <input className="form-control" style={{ flex: 2, minWidth: 80 }} type="text" placeholder="Nome prodotto" value={p.nome || ''}
+                  <input className="form-control" style={{ flex: 2, minWidth: 80 }} type="text" list={`catalogo-${p.id || pi}`} placeholder="Nome prodotto — cerca o scrivi" value={p.nome || ''}
                     onChange={e => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: x.prodotti.map((pp, j) => j === pi ? { ...pp, nome: e.target.value } : pp) } : x))} />
+                  <datalist id={`catalogo-${p.id || pi}`}>
+                    {(CATALOGO_PRODOTTI[p.categoria] || []).map(nomeP => <option key={nomeP} value={nomeP} />)}
+                  </datalist>
                   <input className="form-control" style={{ flex: 1, minWidth: 70 }} type="number" placeholder="€" value={p.importo || ''}
                     onChange={e => { const v = Number(e.target.value) || 0; s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, totale: (x.prodotti || []).reduce((s, pp, j) => s + (j === pi ? v : Number(pp.importo) || 0), 0), prodotti: x.prodotti.map((pp, j) => j === pi ? { ...pp, importo: v } : pp) } : x)); }} />
                   <input className="form-control" style={{ flex: 1, minWidth: 60 }} type="number" placeholder="mesi" value={p.durataM || ''}
@@ -569,7 +572,10 @@ function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose, 
                 <option value="">— categoria —</option>
                 {PRODOTTI.map(pr => <option key={pr} value={pr}>{pr}</option>)}
               </select>
-              <input className="form-control" style={{ flex: 2, minWidth: 100 }} type="text" placeholder="Nome prodotto" value={p.nome || ''} onChange={e => updP(p.id, 'nome', e.target.value)} />
+              <input className="form-control" style={{ flex: 2, minWidth: 100 }} type="text" list={`catalogo-ct-${p.id}`} placeholder="Nome prodotto — cerca o scrivi" value={p.nome || ''} onChange={e => updP(p.id, 'nome', e.target.value)} />
+              <datalist id={`catalogo-ct-${p.id}`}>
+                {(CATALOGO_PRODOTTI[p.categoria] || []).map(nomeP => <option key={nomeP} value={nomeP} />)}
+              </datalist>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={{ minWidth: 20 }} />
