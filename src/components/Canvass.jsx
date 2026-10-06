@@ -188,7 +188,7 @@ export function statoDisplay(cv, today) {
   return { label: 'Attivo', color: '#1B7A3E', bg: '#E8F5EE' };
 }
 
-function CanvassCard({ cv, contacts, today, onClick }) {
+export function CanvassCard({ cv, contacts, today, onClick }) {
   const { pct, raggiunto, premioStimato } = calcolaAvanzamento(cv, contacts);
   const st = statoDisplay(cv, today);
   const barColor = raggiunto ? '#1B7A3E' : pct >= 70 ? '#0078D4' : pct >= 40 ? '#E07B1A' : '#C0392B';

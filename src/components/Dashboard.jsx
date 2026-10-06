@@ -3,7 +3,7 @@ import { Chart, ArcElement, BarElement, BarController, DoughnutController, Categ
 import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataChiusura, getContratti, getFattNuovo, getFattRinnovo, haContattoReale, LINEE_BUDGET, SIGLE_BUDGET } from '../constants';
 import { FonteBadge } from './Badges';
 import { dbLoadBudget, dbLoadCanvass } from '../supabase';
-import { calcolaAvanzamento, statoDisplay } from './Canvass';
+import { calcolaAvanzamento, statoDisplay, CanvassCard } from './Canvass';
 Chart.register(ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend);
 const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
@@ -247,33 +247,6 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
           </div>
         )}
 
-        {canvassAttivi!==null && canvassAttivi.length>0 && (
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div className="card-title" style={{ marginBottom: 14 }}>🎯 Canvass attivi</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 12 }}>
-              {canvassAttivi.map(cv => {
-                const { pct, raggiunto, premioStimato } = calcolaAvanzamento(cv, contacts);
-                const barColor = raggiunto ? '#1B7A3E' : pct>=70 ? '#0078D4' : pct>=40 ? '#E07B1A' : '#C0392B';
-                return (
-                  <div key={cv.id} onClick={()=>navigateTo('canvass')} style={{ border: '1px solid var(--border)', borderRadius: 'var(--r)', padding: '11px 13px', cursor: 'pointer' }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cv.nome}</div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, marginBottom: 4 }}>
-                      <span className="text-muted">Target</span>
-                      <span style={{ fontWeight: 800, color: barColor }}>{Math.round(pct)}%</span>
-                    </div>
-                    <div style={{ background: 'var(--bg3)', borderRadius: 20, height: 6, overflow: 'hidden', marginBottom: 6 }}>
-                      <div style={{ width: `${Math.min(100,pct)}%`, height: '100%', background: barColor, borderRadius: 20 }} />
-                    </div>
-                    {raggiunto
-                      ? <div className="fs-11" style={{ fontWeight: 700, color: '#1B7A3E' }}>🎉 {fmtEur(premioStimato)}</div>
-                      : <div className="fs-11 text-muted">fino a {fmt(cv.data_fine,{day:'2-digit',month:'short'})}</div>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {budgetRows!==null && budgetGenerale>0 && (
           <div className="charts-grid" style={{ marginBottom: 16, alignItems: 'stretch' }}>
             <div className="card" style={{ marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
@@ -339,6 +312,17 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
         )}
         {budgetRows!==null && budgetGenerale===0 && (
           <div className="info-box blue" style={{ marginBottom: 16 }}>📊 Imposta il budget {curYear} in Impostazioni per vedere qui l'avanzamento.</div>
+        )}
+
+        {canvassAttivi!==null && canvassAttivi.length>0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div className="card-title" style={{ marginBottom: 14 }}>🎯 Canvass attivi</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 14 }}>
+              {canvassAttivi.map(cv => (
+                <CanvassCard key={cv.id} cv={cv} contacts={contacts} today={today} onClick={()=>navigateTo('canvass')} />
+              ))}
+            </div>
+          </div>
         )}
 
         <div className="metric-grid">
