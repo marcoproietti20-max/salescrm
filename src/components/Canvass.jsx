@@ -33,23 +33,40 @@ function TagInput({ value, onChange, placeholder }) {
 }
 
 const CANVASS_VUOTO = {
-  nome: '', linea_prodotto: '', data_inizio: '', data_fine: '',
+  nome: '', linee_prodotto: [], data_inizio: '', data_fine: '',
   tipi_target: [], tipi_premio: [], target_individuale: '',
   premio_regole: [], cap_premio: '', premio_area_pct: '',
   premio_manuale: '', note: '', stato: 'attivo',
+  gettone_attivo: false, gettone_prodotto_a: '', gettone_prodotto_b: '',
+  gettone_mesi_lookback: 6, gettone_scaglioni: [],
 };
 
-// Il cuore del calcolo: legge SOLO quello che il canvass stesso dichiara (periodo, linea,
+// Le linee valide di un canvass — nuovo campo linee_prodotto (array), con compatibilità
+// verso i canvass creati prima (campo singolo linea_prodotto). Array vuoto = qualsiasi linea.
+export function getLinee(cv) {
+  if (cv.linee_prodotto && cv.linee_prodotto.length) return cv.linee_prodotto;
+  if (cv.linea_prodotto) return [cv.linea_prodotto];
+  return [];
+}
+// Somma/sottrae mesi a una data ISO (YYYY-MM-DD), restituendo di nuovo una data ISO.
+function addMesi(dataIso, n) {
+  const d = new Date(dataIso + 'T12:00:00');
+  d.setMonth(d.getMonth() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+// Il cuore del calcolo: legge SOLO quello che il canvass stesso dichiara (periodo, linee,
 // quali tipi contano per il target, quali per il premio, le percentuali) — non assume nulla
 // di specifico su "come funzionano i canvass in generale", perché ognuno ha la sua logica.
 export function calcolaAvanzamento(cv, contacts) {
+  const linee = getLinee(cv);
   let fatturatoTarget = 0;
   const fatturatoPerTipo = {};
   (contacts || []).forEach(c => {
     getContratti(c).filter(ct => ct.tipo !== 'Rinnovo').forEach(ct => {
       if (!ct.dataInizio || ct.dataInizio < cv.data_inizio || ct.dataInizio > cv.data_fine) return;
       (ct.prodotti || []).forEach(p => {
-        if (cv.linea_prodotto && p.categoria !== cv.linea_prodotto) return;
+        if (linee.length && !linee.includes(p.categoria)) return;
         const imp = Number(p.importo) || 0;
         if ((cv.tipi_target || []).includes(p.tipoDettaglio)) fatturatoTarget += imp;
         if ((cv.tipi_premio || []).includes(p.tipoDettaglio)) {
@@ -70,6 +87,52 @@ export function calcolaAvanzamento(cv, contacts) {
   }
   if (cv.premio_manuale) premioStimato = Number(cv.premio_manuale);
   return { fatturatoTarget, fatturatoPerTipo, pct, raggiunto, premioStimato, target };
+}
+
+// Gettone premio per nuovi clienti con ordine in bundle (es. Canvass 15/2026): un meccanismo
+// a parte rispetto alle "regole premio" percentuali — qui si contano CLIENTI, non fatturato,
+// con un importo che cresce a scaglioni dal 3° cliente in poi. Attivo solo se il canvass ha
+// un gettone_config; se raggiunto/non raggiunto il target non cambia il conteggio in sé,
+// ma la regola aziendale è che il gettone scatta solo a target già raggiunto — quindi lo
+// mostriamo sempre calcolato, ed è l'interfaccia a dire chiaramente se è già sbloccato o no.
+export function calcolaGettoni(cv, contacts) {
+  const gc = cv.gettone_config;
+  if (!gc || !gc.prodotto_a || !gc.prodotto_b) return { dettaglio: [], totale: 0 };
+  const linee = getLinee(cv);
+  const mesiLookback = Number(gc.mesi_lookback) || 6;
+  const sogliaInf = addMesi(cv.data_inizio, -mesiLookback);
+  const a = gc.prodotto_a.toLowerCase(), b = gc.prodotto_b.toLowerCase();
+
+  const candidati = [];
+  (contacts || []).forEach(c => {
+    getContratti(c).filter(ct => ct.tipo !== 'Rinnovo').forEach(ct => {
+      if (!ct.dataInizio || ct.dataInizio < cv.data_inizio || ct.dataInizio > cv.data_fine) return;
+      const prodotti = ct.prodotti || [];
+      const haA = prodotti.some(p => (p.nome || '').toLowerCase().includes(a));
+      const haB = prodotti.some(p => (p.nome || '').toLowerCase().includes(b));
+      if (!haA || !haB) return;
+      // "Nuovo cliente": nessun ALTRO contratto, su una delle linee valide, nei mesi di lookback precedenti.
+      const giaCliente = getContratti(c).some(ct2 => {
+        if (ct2 === ct || !ct2.dataInizio) return false;
+        if (ct2.dataInizio < sogliaInf || ct2.dataInizio >= cv.data_inizio) return false;
+        return (ct2.prodotti || []).some(p => !linee.length || linee.includes(p.categoria));
+      });
+      if (giaCliente) return;
+      candidati.push({ contattoId: c.id, nome: c.nome, azienda: c.azienda, data: ct.dataInizio });
+    });
+  });
+  candidati.sort((x, y) => x.data.localeCompare(y.data));
+
+  const scaglioni = [...(gc.scaglioni || [])].sort((x, y) => (Number(x.daCliente) || 0) - (Number(y.daCliente) || 0));
+  let totale = 0;
+  const dettaglio = candidati.map((cand, i) => {
+    const n = i + 1;
+    const applicabile = scaglioni.filter(s => (Number(s.daCliente) || 0) <= n).slice(-1)[0];
+    const importo = applicabile ? Number(applicabile.importo) || 0 : 0;
+    totale += importo;
+    return { ...cand, n, importo };
+  });
+  return { dettaglio, totale };
 }
 
 export function statoDisplay(cv, today) {
@@ -128,9 +191,15 @@ export default function Canvass({ contacts, showToast }) {
   const apriDettaglio = (cv) => { setSelected(cv); setForm(null); };
   const apriModifica = (cv) => setForm({
     ...CANVASS_VUOTO, ...cv,
+    linee_prodotto: getLinee(cv),
     target_individuale: cv.target_individuale ?? '', cap_premio: cv.cap_premio ?? '',
     premio_area_pct: cv.premio_area_pct ?? '', premio_manuale: cv.premio_manuale ?? '',
     premio_regole: cv.premio_regole || [],
+    gettone_attivo: !!cv.gettone_config,
+    gettone_prodotto_a: cv.gettone_config?.prodotto_a || '',
+    gettone_prodotto_b: cv.gettone_config?.prodotto_b || '',
+    gettone_mesi_lookback: cv.gettone_config?.mesi_lookback ?? 6,
+    gettone_scaglioni: cv.gettone_config?.scaglioni || [],
   });
   const apriNuovo = () => { setSelected({ isNew: true }); setForm({ ...CANVASS_VUOTO }); };
   const chiudi = () => { setSelected(null); setForm(null); };
@@ -139,14 +208,19 @@ export default function Canvass({ contacts, showToast }) {
   const addRegola = () => setForm(p => ({ ...p, premio_regole: [...(p.premio_regole || []), { tipo: '', pct: '' }] }));
   const updRegola = (i, k, v) => setForm(p => ({ ...p, premio_regole: p.premio_regole.map((r, idx) => idx === i ? { ...r, [k]: v } : r) }));
   const delRegola = (i) => setForm(p => ({ ...p, premio_regole: p.premio_regole.filter((_, idx) => idx !== i) }));
+  const toggleLinea = (l) => setForm(p => ({ ...p, linee_prodotto: p.linee_prodotto.includes(l) ? p.linee_prodotto.filter(x => x !== l) : [...p.linee_prodotto, l] }));
+  const addScaglione = () => setForm(p => ({ ...p, gettone_scaglioni: [...(p.gettone_scaglioni || []), { daCliente: '', importo: '' }] }));
+  const updScaglione = (i, k, v) => setForm(p => ({ ...p, gettone_scaglioni: p.gettone_scaglioni.map((s, idx) => idx === i ? { ...s, [k]: v } : s) }));
+  const delScaglione = (i) => setForm(p => ({ ...p, gettone_scaglioni: p.gettone_scaglioni.filter((_, idx) => idx !== i) }));
 
   const salva = async () => {
     if (!form.nome.trim()) { showToast('Dai un nome al canvass', '', 'info'); return; }
     if (!form.data_inizio || !form.data_fine) { showToast('Inserisci le date di inizio e fine', '', 'info'); return; }
     setSaving(true);
+    const gettoneValido = form.gettone_attivo && form.gettone_prodotto_a.trim() && form.gettone_prodotto_b.trim();
     const payload = {
       ...(selected.isNew ? {} : { id: selected.id }),
-      nome: form.nome.trim(), linea_prodotto: form.linea_prodotto || null,
+      nome: form.nome.trim(), linea_prodotto: null, linee_prodotto: form.linee_prodotto,
       data_inizio: form.data_inizio, data_fine: form.data_fine,
       tipi_target: form.tipi_target, tipi_premio: form.tipi_premio,
       target_individuale: Number(form.target_individuale) || 0,
@@ -154,6 +228,12 @@ export default function Canvass({ contacts, showToast }) {
       cap_premio: form.cap_premio === '' ? null : Number(form.cap_premio),
       premio_area_pct: form.premio_area_pct === '' ? null : Number(form.premio_area_pct),
       note: form.note || null, stato: form.stato || 'attivo',
+      gettone_config: gettoneValido ? {
+        prodotto_a: form.gettone_prodotto_a.trim(), prodotto_b: form.gettone_prodotto_b.trim(),
+        mesi_lookback: Number(form.gettone_mesi_lookback) || 6,
+        scaglioni: form.gettone_scaglioni.filter(s => s.daCliente !== '' && s.importo !== '')
+          .map(s => ({ daCliente: Number(s.daCliente), importo: Number(s.importo) })),
+      } : null,
     };
     const saved = await dbSaveCanvass(payload);
     setSaving(false);
@@ -205,6 +285,7 @@ export default function Canvass({ contacts, showToast }) {
       {/* ── DETTAGLIO ── */}
       {selected && !selected.isNew && !form && (() => {
         const { fatturatoTarget, fatturatoPerTipo, pct, raggiunto, premioStimato, target } = calcolaAvanzamento(selected, contacts);
+        const gettoni = selected.gettone_config ? calcolaGettoni(selected, contacts) : null;
         const st = statoDisplay(selected, today);
         const barColor = raggiunto ? '#1B7A3E' : pct >= 70 ? '#0078D4' : pct >= 40 ? '#E07B1A' : '#C0392B';
         return (
@@ -216,7 +297,7 @@ export default function Canvass({ contacts, showToast }) {
               </div>
               <div className="fs-12 text-muted" style={{ marginBottom: 14 }}>
                 {fmt(selected.data_inizio, { day: '2-digit', month: 'short', year: 'numeric' })} — {fmt(selected.data_fine, { day: '2-digit', month: 'short', year: 'numeric' })}
-                {selected.linea_prodotto && ` · ${selected.linea_prodotto}`}
+                {getLinee(selected).length > 0 && ` · ${getLinee(selected).join(', ')}`}
                 {' · '}<span style={{ color: st.color, fontWeight: 700 }}>{st.label}</span>
               </div>
 
@@ -246,6 +327,24 @@ export default function Canvass({ contacts, showToast }) {
                   <div className="fs-12" style={{ marginTop: 8, color: '#0078D4' }}>ℹ️ Sei almeno all'80% individuale: se l'area raggiunge il suo target, hai diritto anche al bonus di area (+{selected.premio_area_pct}%) — da verificare separatamente, non calcolato qui.</div>
                 )}
               </div>
+
+              {gettoni && (
+                <div style={{ background: raggiunto ? '#E8F5EE' : 'var(--bg3)', borderRadius: 'var(--r)', padding: '12px 14px', marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>🎟️ Gettone nuovi clienti in bundle</div>
+                  {!raggiunto && <div className="fs-12 text-muted" style={{ marginBottom: 8 }}>Scatta solo a target individuale raggiunto — qui sotto il conteggio calcolato comunque, come anteprima.</div>}
+                  {gettoni.dettaglio.length === 0
+                    ? <div className="fs-12 text-muted">Nessun cliente nuovo in bundle finora in questo periodo.</div>
+                    : gettoni.dettaglio.map(d => (
+                      <div key={d.contattoId + d.data} className="fs-12" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                        <span>#{d.n} — {d.nome}{d.azienda ? ` (${d.azienda})` : ''} — {fmt(d.data, { day: '2-digit', month: 'short' })}</span>
+                        <span style={{ fontWeight: 700, color: d.importo > 0 ? '#1B7A3E' : 'var(--text3)' }}>{d.importo > 0 ? fmtEur(d.importo) : '—'}</span>
+                      </div>
+                    ))}
+                  <div className="fs-13" style={{ fontWeight: 800, marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                    Totale gettoni{raggiunto ? '' : ' (se il target verrà raggiunto)'}: {fmtEur(gettoni.totale)}
+                  </div>
+                </div>
+              )}
 
               {selected.note && <div className="fs-12 text-muted" style={{ marginBottom: 14, whiteSpace: 'pre-wrap' }}>📝 {selected.note}</div>}
 
@@ -278,11 +377,18 @@ export default function Canvass({ contacts, showToast }) {
               <div className="form-group"><label className="form-label">Data fine *</label><input className="form-control" type="date" value={form.data_fine} onChange={e => fx('data_fine', e.target.value)} /></div>
             </div>
             <div className="form-group">
-              <label className="form-label">Linea di prodotto (categoria)</label>
-              <select className="form-control" value={form.linea_prodotto} onChange={e => fx('linea_prodotto', e.target.value)}>
-                <option value="">— qualsiasi —</option>
-                {PRODOTTI.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+              <label className="form-label">Linee di prodotto (categorie) <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— nessuna selezionata = qualsiasi</span></label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {PRODOTTI.map(p => {
+                  const sel = form.linee_prodotto.includes(p);
+                  return (
+                    <button key={p} type="button" onClick={() => toggleLinea(p)}
+                      className="btn btn-sm" style={sel ? { background: 'var(--accent)', color: 'white', borderColor: 'var(--accent)' } : {}}>
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="form-group">
@@ -319,6 +425,35 @@ export default function Canvass({ contacts, showToast }) {
               <label className="form-label">Premio manuale (€) <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— se compilato, sovrascrive il calcolo automatico</span></label>
               <input className="form-control" type="number" value={form.premio_manuale} onChange={e => fx('premio_manuale', e.target.value)} placeholder="Lascia vuoto per usare il calcolo automatico" />
             </div>
+
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <input type="checkbox" checked={form.gettone_attivo} onChange={e => fx('gettone_attivo', e.target.checked)} id="gettone-toggle" />
+              <label htmlFor="gettone-toggle" className="form-label" style={{ margin: 0, cursor: 'pointer' }}>🎟️ Attiva gettone premio per nuovi clienti in bundle</label>
+            </div>
+            {form.gettone_attivo && (
+              <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r)', padding: 14, marginBottom: 14 }}>
+                <div className="fs-12 text-muted" style={{ marginBottom: 10 }}>Un cliente conta come "in bundle" se, nello stesso contratto, ha almeno un prodotto il cui nome contiene il primo testo <strong>e</strong> almeno uno che contiene il secondo. "Nuovo cliente" = nessun altro contratto, sulle linee sopra, nei mesi di tolleranza precedenti.</div>
+                <div className="form-row" style={{ marginBottom: 10 }}>
+                  <div className="form-group" style={{ margin: 0 }}><label className="form-label">Prodotto A (testo da cercare nel nome)</label><input className="form-control" value={form.gettone_prodotto_a} onChange={e => fx('gettone_prodotto_a', e.target.value)} placeholder="Es. Banca Dati AI" /></div>
+                  <div className="form-group" style={{ margin: 0 }}><label className="form-label">Prodotto B (testo da cercare nel nome)</label><input className="form-control" value={form.gettone_prodotto_b} onChange={e => fx('gettone_prodotto_b', e.target.value)} placeholder="Es. Software Valore24 AI" /></div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Mesi di tolleranza per "nuovo cliente"</label>
+                  <input className="form-control" style={{ maxWidth: 120 }} type="number" value={form.gettone_mesi_lookback} onChange={e => fx('gettone_mesi_lookback', e.target.value)} />
+                </div>
+                <div className="form-label" style={{ marginBottom: 6 }}>Scaglioni (dal cliente N° in poi, importo €)</div>
+                {form.gettone_scaglioni.map((s, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                    <span className="fs-12 text-muted">dal</span>
+                    <input className="form-control" style={{ width: 70 }} type="number" placeholder="N°" value={s.daCliente} onChange={e => updScaglione(i, 'daCliente', e.target.value)} />
+                    <span className="fs-12 text-muted">cliente →</span>
+                    <input className="form-control" style={{ width: 90 }} type="number" placeholder="€" value={s.importo} onChange={e => updScaglione(i, 'importo', e.target.value)} />
+                    <button className="btn btn-sm btn-danger" onClick={() => delScaglione(i)}>×</button>
+                  </div>
+                ))}
+                <button className="btn btn-sm" onClick={addScaglione}>+ Aggiungi scaglione</button>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">Note</label>
