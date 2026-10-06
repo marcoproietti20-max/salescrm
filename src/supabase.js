@@ -128,6 +128,28 @@ export async function dbDeleteCanvass(id) {
   if(error){console.error('dbDeleteCanvass:',error);return false;}
   return true;
 }
+
+export async function dbLoadStoricoProvvigioni() {
+  const {data,error}=await supabase.from('provvigioni_storico').select('*').order('mese_competenza',{ascending:false});
+  if(error){console.error('dbLoadStoricoProvvigioni:',error);return [];}
+  return data||[];
+}
+// Cancella solo le righe già importate da QUESTO stesso file (non l'intero mese) — così ricaricare
+// lo stesso file due volte è sicuro, ma un secondo file diverso per lo stesso mese si aggiunge.
+export async function dbEliminaStoricoFile(fileOrigine) {
+  const {error}=await supabase.from('provvigioni_storico').delete().eq('file_origine',fileOrigine);
+  if(error){console.error('dbEliminaStoricoFile:',error);return false;}
+  return true;
+}
+export async function dbSalvaStoricoBatch(righe) {
+  if(!righe.length) return true;
+  const BATCH=200;
+  for(let i=0;i<righe.length;i+=BATCH){
+    const {error}=await supabase.from('provvigioni_storico').insert(righe.slice(i,i+BATCH));
+    if(error){console.error('dbSalvaStoricoBatch:',error);return false;}
+  }
+  return true;
+}
 export async function dbLoadBudget(anno) {
   const {data,error}=await supabase.from('budget').select('*').eq('anno',anno);
   if(error){console.error('dbLoadBudget:',error);return [];}

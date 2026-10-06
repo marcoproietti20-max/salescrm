@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { fmtEur, fmt, getContratti } from '../constants';
 import { nomeCorrisponde } from './Canvass';
+import { dbLoadStoricoProvvigioni, dbEliminaStoricoFile, dbSalvaStoricoBatch } from '../supabase';
 
 // ── Tabella aliquote ──────────────────────────────────────────────────────
 // Ogni riga: categoria (deve corrispondere a PRODOTTI), parola chiave facoltativa nel nome
@@ -119,7 +120,88 @@ export function calcolaTuttiEventi(contacts) {
 export function meseStr(d) { return d.toISOString().slice(0, 7); }
 export function addMesiData(dataIso, n) { return addMesi(dataIso, n); }
 
-export default function Provvigioni({ contacts, navigateTo }) {
+// ── Importazione estratti conto ────────────────────────────────────────────
+// Gli estratti sono file .XLS che in realtà sono testo delimitato da tabulazioni, esportati
+// dall'azienda in due codifiche diverse nel tempo (UTF-16 oppure normale) — si riconosce
+// guardando quanti byte nulli ci sono: tipico dell'UTF-16, assente nell'altra.
+function rilevaEDecodifica(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const campione = bytes.slice(0, 2000);
+  let nulli = 0;
+  for (let i = 0; i < campione.length; i++) if (campione[i] === 0) nulli++;
+  const isUtf16 = nulli / campione.length > 0.3;
+  const decoder = new TextDecoder(isUtf16 ? 'utf-16le' : 'windows-1252');
+  return decoder.decode(buffer);
+}
+function parseTSV(testo) {
+  const righe = testo.split(/\r\n|\r|\n/).filter(r => r.trim().length > 0);
+  if (!righe.length) return [];
+  const headers = righe[0].split('\t').map(h => h.trim());
+  const dati = [];
+  for (let i = 1; i < righe.length; i++) {
+    const celle = righe[i].split('\t');
+    if (celle.length < 5) continue;
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h] = (celle[idx] || '').trim(); });
+    if (!obj['RAGIONE SOCIALE'] && !obj['NUMERO ORDINE']) continue;
+    dati.push(obj);
+  }
+  return dati;
+}
+function numIta(s) {
+  if (!s) return 0;
+  const n = parseFloat(String(s).trim().replace(/\./g, '').replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+function dataIta(s) {
+  if (!s) return null;
+  const m = String(s).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!m) return null;
+  let [, d, mo, y] = m;
+  if (y.length === 2) y = (parseInt(y) < 50 ? '20' : '19') + y;
+  return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
+}
+const MESI_IT = { gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6, luglio: 7, agosto: 8, settembre: 9, ottobre: 10, novembre: 11, dicembre: 12 };
+// Il mese nel nome del file è quello in cui Marco lo ha RICEVUTO — il periodo di competenza
+// reale è sempre il mese precedente (così glielo ha spiegato lui).
+function meseCompetenzaDaFilename(filename) {
+  const base = filename.replace(/\.[^.]+$/, '').toLowerCase();
+  const m = base.match(/([a-zàèìòù]+)[_\s]+(\d{4})/i);
+  if (!m || !MESI_IT[m[1]]) return null;
+  const mese = MESI_IT[m[1]], anno = parseInt(m[2]);
+  let meseComp = mese - 1, annoComp = anno;
+  if (meseComp === 0) { meseComp = 12; annoComp -= 1; }
+  return { meseRicevuto: `${anno}-${String(mese).padStart(2, '0')}`, meseCompetenza: `${annoComp}-${String(meseComp).padStart(2, '0')}` };
+}
+function mappaRigaStorico(obj, meseInfo, nomeFile) {
+  return {
+    mese_competenza: meseInfo.meseCompetenza, mese_ricevuto: meseInfo.meseRicevuto,
+    numero_ordine: obj['NUMERO ORDINE'] || null, codice_cliente: obj['CODICE CLIENTE'] || null,
+    ragione_sociale: obj['RAGIONE SOCIALE'] || null, tipo_contratto: obj['TIPO CONTRATTO'] || null,
+    sostituzione: obj['SOSTITUZIONE'] || null, codice_prodotto: obj['CODICE PRODOTTO'] || null,
+    descrizione_prodotto: obj['DESCRIZIONE PRODOTTO'] || null,
+    decorrenza: dataIta(obj['DECORRENZA']), data_fattura: dataIta(obj['DATA FATTURA']),
+    durata: numIta(obj['DURATA']), annualita: numIta(obj['ANNUALITA']),
+    imponibile: numIta(obj['IMPONIBILE PROVV.']), aliquota: numIta(obj['ALIQUOTA PROVVIGIONE']),
+    importo_provvigioni: numIta(obj['IMPORTO PROVVIGIONI']), note: obj['NOTE'] || null,
+    file_origine: nomeFile,
+  };
+}
+// Traduce una riga di storico reale nella stessa identica forma di un "evento" calcolato,
+// così la tabella e le metriche della pagina funzionano senza distinguere la provenienza.
+function storicoComeEvento(r) {
+  const annoNum = r.annualita || 1;
+  return {
+    contattoId: r.codice_cliente, nome: r.ragione_sociale, azienda: null,
+    prodottoNome: r.descrizione_prodotto || '(senza nome)', categoria: null,
+    etichettaRegola: r.sostituzione === 'U' ? 'Upgrade' : r.sostituzione === 'S' ? 'Standard' : '—',
+    anno: annoNum, primoAnno: annoNum === 1, tipo: r.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo',
+    maggiorata: false, data: r.data_fattura || (r.mese_competenza + '-15'),
+    importo: r.imponibile, pct: r.aliquota, provvigione: r.importo_provvigioni,
+  };
+}
+
+export default function Provvigioni({ contacts, navigateTo, showToast }) {
   const oggi = new Date().toISOString().slice(0, 10);
   const [offset, setOffset] = useState(0); // 0 = mese di competenza corrente (default) — l'incasso vero arriva ~45 giorni dopo
 
@@ -131,7 +213,49 @@ export default function Provvigioni({ contacts, navigateTo }) {
     return d.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
   }, [meseSelezionato]);
 
-  const eventiMese = useMemo(() => tuttiEventi.filter(e => e.data.startsWith(meseSelezionato)).sort((a,b)=>a.data.localeCompare(b.data)), [tuttiEventi, meseSelezionato]);
+  // ── Storico reale dagli estratti conto — ha sempre la precedenza sulla proiezione calcolata ──
+  const [storico, setStorico] = useState(null); // null = ancora in caricamento
+  const ricaricaStorico = () => dbLoadStoricoProvvigioni().then(setStorico);
+  useEffect(() => { ricaricaStorico(); }, []);
+
+  const mesiConStorico = useMemo(() => new Set((storico||[]).map(r=>r.mese_competenza)), [storico]);
+  const haStoricoMeseSelezionato = mesiConStorico.has(meseSelezionato);
+
+  const eventiMese = useMemo(() => {
+    if (haStoricoMeseSelezionato) {
+      return (storico||[]).filter(r=>r.mese_competenza===meseSelezionato).map(storicoComeEvento).sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+    }
+    return tuttiEventi.filter(e => e.data.startsWith(meseSelezionato)).sort((a,b)=>a.data.localeCompare(b.data));
+  }, [tuttiEventi, meseSelezionato, storico, haStoricoMeseSelezionato]);
+
+  // ── Caricamento di un nuovo estratto conto: anteprima prima di confermare ──
+  const [anteprima, setAnteprima] = useState(null); // { file, meseInfo, righe, totale }
+  const [caricando, setCaricando] = useState(false);
+  const fileRef = React.useRef();
+
+  const selezionaFile = async (e) => {
+    const file = e.target.files[0]; if (!file) return; e.target.value = '';
+    const buffer = await file.arrayBuffer();
+    const testo = rilevaEDecodifica(buffer);
+    const righeGrezze = parseTSV(testo);
+    const meseInfo = meseCompetenzaDaFilename(file.name);
+    if (!meseInfo) { showToast('Non riesco a capire il mese dal nome del file', 'Rinominalo tipo "Ottobre_2026.XLS"', 'info'); return; }
+    const righe = righeGrezze.map(r => mappaRigaStorico(r, meseInfo, file.name));
+    const totale = righe.reduce((s,r)=>s+r.importo_provvigioni, 0);
+    setAnteprima({ file: file.name, meseInfo, righe, totale });
+  };
+
+  const confermaImport = async () => {
+    if (!anteprima) return;
+    setCaricando(true);
+    await dbEliminaStoricoFile(anteprima.file); // sicuro ricaricare lo stesso file due volte
+    const ok = await dbSalvaStoricoBatch(anteprima.righe);
+    setCaricando(false);
+    if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
+    showToast('Estratto importato', `${anteprima.righe.length} righe — competenza ${anteprima.meseInfo.meseCompetenza}`);
+    setAnteprima(null);
+    ricaricaStorico();
+  };
 
   // Il mese mostrato è quello di competenza — l'incasso vero arriva dopo: pre-fattura il 15
   // del mese successivo, pagamento entro la fine di quel mese successivo.
@@ -177,12 +301,17 @@ export default function Provvigioni({ contacts, navigateTo }) {
           <button className="btn btn-sm" onClick={()=>setOffset(o=>o-1)}>← Prec.</button>
           <button className="btn btn-sm" onClick={()=>setOffset(0)}>Oggi</button>
           <button className="btn btn-sm" onClick={()=>setOffset(o=>o+1)}>Succ. →</button>
+          <button className="btn btn-sm btn-primary" onClick={()=>fileRef.current?.click()}>📁 Carica estratto conto</button>
+          <input ref={fileRef} type="file" accept=".xls,.XLS,.txt" style={{ display: 'none' }} onChange={selezionaFile} />
         </div>
       </div>
       <div className="content">
 
         <div className="info-box blue" style={{ marginBottom: 16 }}>
-          📅 Competenza <strong style={{ textTransform: 'capitalize' }}>{etichettaMese}</strong> — pre-fattura il <strong>{prefatturaStr}</strong>, incasso previsto entro il <strong>{incassoStr}</strong>. Calcolato da ogni contratto già inserito, proiettando un incasso per ciascun anno della sua durata. Le aliquote sono quelle del piano provvigionale in vigore; verifica sempre i casi segnalati come "non riconosciuto".
+          📅 Competenza <strong style={{ textTransform: 'capitalize' }}>{etichettaMese}</strong> — pre-fattura il <strong>{prefatturaStr}</strong>, incasso previsto entro il <strong>{incassoStr}</strong>.{' '}
+          {haStoricoMeseSelezionato
+            ? <strong>📄 Dato reale, importato dall'estratto conto.</strong>
+            : <>Stima calcolata da ogni contratto inserito, proiettando un incasso per ciascun anno della sua durata — verifica sempre i casi segnalati come "non riconosciuto".</>}
         </div>
 
         <div className="metric-grid" style={{ marginBottom: 16 }}>
@@ -251,7 +380,41 @@ export default function Provvigioni({ contacts, navigateTo }) {
             </tbody>
           </table>
         </div>
+
+        {mesiConStorico.size > 0 && (
+          <div className="fs-11 text-muted" style={{ marginTop: 10 }}>
+            Mesi con dato reale già importato: {[...mesiConStorico].sort().reverse().map(m => new Date(m+'-01T12:00:00').toLocaleDateString('it-IT',{month:'short',year:'numeric'})).join(', ')}
+          </div>
+        )}
       </div>
+
+      {/* ── Anteprima prima di confermare l'import ── */}
+      {anteprima && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,30,40,.45)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={()=>setAnteprima(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 480, padding: 22 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Conferma importazione</div>
+            <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>{anteprima.file}</div>
+
+            <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r)', padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ fontSize: 13, marginBottom: 6 }}>Mese ricevuto: <strong>{new Date(anteprima.meseInfo.meseRicevuto+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}</strong></div>
+              <div style={{ fontSize: 13, marginBottom: 6 }}>Competenza dedotta: <strong>{new Date(anteprima.meseInfo.meseCompetenza+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}</strong></div>
+              <div style={{ fontSize: 13, marginBottom: 6 }}>Righe lette: <strong>{anteprima.righe.length}</strong></div>
+              <div style={{ fontSize: 13 }}>Totale provvigioni nel file: <strong style={{ color: '#1B7A3E' }}>{fmtEur(anteprima.totale)}</strong></div>
+            </div>
+
+            {mesiConStorico.has(anteprima.meseInfo.meseCompetenza) && (
+              <div className="info-box amber" style={{ marginBottom: 16 }}>⚠️ Per questo mese hai già importato almeno un altro file. Confermando, questo file si aggiunge a quello già presente (non lo sostituisce) — a meno che il nome sia identico a un file già caricato, nel qual caso lo sostituisce.</div>
+            )}
+
+            <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Controlla che il mese dedotto sia giusto prima di confermare — si basa sul nome del file.</div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn" onClick={()=>setAnteprima(null)} disabled={caricando}>Annulla</button>
+              <button className="btn btn-primary" onClick={confermaImport} disabled={caricando}>{caricando?'⏳ Importazione...':'Conferma import'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
