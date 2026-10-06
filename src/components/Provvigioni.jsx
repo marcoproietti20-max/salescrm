@@ -63,6 +63,10 @@ const bucketDurata = (durataM) => {
 // maggiorata 45% se la regola lo prevede, è un contratto "Nuovo" (mai Rinnovo), e parte entro
 // la scadenza. Solo l'anno 1 è "il nuovo/rinnovo dell'anno"; gli anni successivi sono incassi
 // proiettati dello stesso contratto, da tenere sempre separati in tutte le statistiche.
+// Percentuale fissa sulla componente di avviamento (es. Valore24 Office AI) — una tantum,
+// pagata solo alla firma, indipendente dalla linea/categoria e dalla durata del contratto.
+export const PCT_AVVIAMENTO = 10;
+
 export function eventiProdotto(p, ct, contatto) {
   const regola = trovaRegola(p.categoria, p.nome);
   if (!regola) return [];
@@ -71,6 +75,15 @@ export function eventiProdotto(p, ct, contatto) {
   const tipoKey = ct.tipo === 'Rinnovo' ? 'rinnovo' : 'nuovo';
   const importo = Number(p.importo) || 0;
   const eventi = [];
+  const importoAvv = Number(p.importoAvviamento) || 0;
+  if (importoAvv > 0 && ct.dataInizio) {
+    eventi.push({
+      contattoId: contatto.id, nome: contatto.nome, azienda: contatto.azienda,
+      prodottoNome: (p.nome || '(senza nome)') + ' — avviamento', categoria: p.categoria, etichettaRegola: 'Avviamento (una tantum)',
+      anno: 1, primoAnno: true, tipo: tipoKey, maggiorata: false, avviamento: true,
+      data: ct.dataInizio, importo: importoAvv, pct: PCT_AVVIAMENTO, provvigione: importoAvv * PCT_AVVIAMENTO / 100,
+    });
+  }
   for (let anno = 1; anno <= anni; anno++) {
     let pct = regola[tipoKey][bucket];
     let maggiorata = false;
@@ -108,7 +121,7 @@ export function addMesiData(dataIso, n) { return addMesi(dataIso, n); }
 
 export default function Provvigioni({ contacts, navigateTo }) {
   const oggi = new Date().toISOString().slice(0, 10);
-  const [offset, setOffset] = useState(1); // 0 = mese corrente, 1 = mese prossimo (default)
+  const [offset, setOffset] = useState(0); // 0 = mese di competenza corrente (default) — l'incasso vero arriva ~45 giorni dopo
 
   const tuttiEventi = useMemo(() => calcolaTuttiEventi(contacts), [contacts]);
 
@@ -119,6 +132,20 @@ export default function Provvigioni({ contacts, navigateTo }) {
   }, [meseSelezionato]);
 
   const eventiMese = useMemo(() => tuttiEventi.filter(e => e.data.startsWith(meseSelezionato)).sort((a,b)=>a.data.localeCompare(b.data)), [tuttiEventi, meseSelezionato]);
+
+  // Il mese mostrato è quello di competenza — l'incasso vero arriva dopo: pre-fattura il 15
+  // del mese successivo, pagamento entro la fine di quel mese successivo.
+  const { prefatturaStr, incassoStr } = useMemo(() => {
+    const meseSucc = addMesi(meseSelezionato + '-01', 1);
+    const d = new Date(meseSucc + 'T12:00:00');
+    const ultimoGiorno = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+    const pf = new Date(d.getFullYear(), d.getMonth(), 15);
+    const inc = new Date(d.getFullYear(), d.getMonth(), ultimoGiorno);
+    return {
+      prefatturaStr: pf.toLocaleDateString('it-IT', { day:'2-digit', month:'long', year:'numeric' }),
+      incassoStr: inc.toLocaleDateString('it-IT', { day:'2-digit', month:'long', year:'numeric' }),
+    };
+  }, [meseSelezionato]);
 
   const totMese = eventiMese.reduce((s,e)=>s+e.provvigione, 0);
   const totPrimoAnno = eventiMese.filter(e=>e.primoAnno).reduce((s,e)=>s+e.provvigione, 0);
@@ -148,14 +175,14 @@ export default function Provvigioni({ contacts, navigateTo }) {
         <span className="page-title">Provvigioni</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="btn btn-sm" onClick={()=>setOffset(o=>o-1)}>← Prec.</button>
-          <button className="btn btn-sm" onClick={()=>setOffset(1)}>Mese prossimo</button>
+          <button className="btn btn-sm" onClick={()=>setOffset(0)}>Oggi</button>
           <button className="btn btn-sm" onClick={()=>setOffset(o=>o+1)}>Succ. →</button>
         </div>
       </div>
       <div className="content">
 
         <div className="info-box blue" style={{ marginBottom: 16 }}>
-          📅 Stai guardando <strong style={{ textTransform: 'capitalize' }}>{etichettaMese}</strong> — calcolato da ogni contratto già inserito, proiettando un incasso per ciascun anno della sua durata. Le aliquote sono quelle del piano provvigionale in vigore; verifica sempre i casi segnalati come "non riconosciuto".
+          📅 Competenza <strong style={{ textTransform: 'capitalize' }}>{etichettaMese}</strong> — pre-fattura il <strong>{prefatturaStr}</strong>, incasso previsto entro il <strong>{incassoStr}</strong>. Calcolato da ogni contratto già inserito, proiettando un incasso per ciascun anno della sua durata. Le aliquote sono quelle del piano provvigionale in vigore; verifica sempre i casi segnalati come "non riconosciuto".
         </div>
 
         <div className="metric-grid" style={{ marginBottom: 16 }}>

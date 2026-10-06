@@ -111,11 +111,16 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
     return () => { vivo = false; };
   }, [today]);
 
-  // ── Provvigioni del mese prossimo — stesso motore di calcolo della pagina dedicata ──
-  const meseProssimo = meseStr(new Date(addMesiData(today.slice(0,7)+'-01', 1) + 'T12:00:00'));
-  const totProvvProssimoMese = React.useMemo(() => {
-    return calcolaTuttiEventi(contacts).filter(e=>e.data.startsWith(meseProssimo)).reduce((s,e)=>s+e.provvigione,0);
-  }, [contacts, meseProssimo]);
+  // ── Provvigioni del mese di competenza corrente — stesso motore della pagina dedicata ──
+  const meseCorrenteProvv = today.slice(0,7);
+  const totProvvMeseCorrente = React.useMemo(() => {
+    return calcolaTuttiEventi(contacts).filter(e=>e.data.startsWith(meseCorrenteProvv)).reduce((s,e)=>s+e.provvigione,0);
+  }, [contacts, meseCorrenteProvv]);
+  const incassoEntroStr = React.useMemo(() => {
+    const succ = new Date(addMesiData(meseCorrenteProvv+'-01', 1) + 'T12:00:00');
+    const ultimo = new Date(succ.getFullYear(), succ.getMonth()+1, 0);
+    return ultimo.toLocaleDateString('it-IT', { day:'2-digit', month:'long' });
+  }, [meseCorrenteProvv]);
 
   // ── Budget: caricato dal database (tabella "budget"), una riga per linea + una generale ──
   const [budgetRows, setBudgetRows] = React.useState(null); // null = ancora in caricamento
@@ -332,12 +337,13 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
           </div>
         )}
 
-        {totProvvProssimoMese>0 && (
+        {totProvvMeseCorrente>0 && (
           <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={()=>navigateTo('provvigioni')}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div className="card-title" style={{ marginBottom: 6 }}>💶 Provvigioni — mese prossimo</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: '#1B7A3E' }}>{fmtEur(totProvvProssimoMese)}</div>
+                <div className="card-title" style={{ marginBottom: 6 }}>💶 Provvigioni di questo mese</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#1B7A3E' }}>{fmtEur(totProvvMeseCorrente)}</div>
+                <div className="fs-11 text-muted">Incasso previsto entro il {incassoEntroStr}</div>
               </div>
               <span className="fs-12" style={{ color: 'var(--accent)' }}>Vedi dettaglio →</span>
             </div>

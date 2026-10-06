@@ -326,6 +326,8 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose, conta
                     onClick={() => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: x.prodotti.filter((_, j) => j !== pi) } : x))}>×</button>
                   <input className="form-control" style={{ flex: '1 1 100%', minWidth: 160 }} list={`tipo-dettaglio-cf-${p.id || pi}`} placeholder="Tipo (es. Abbonamento, One Shot, Laboratorio...)" value={p.tipoDettaglio || ''}
                     onChange={e => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: x.prodotti.map((pp, j) => j === pi ? { ...pp, tipoDettaglio: e.target.value } : pp) } : x))} />
+                  <input className="form-control" style={{ flex: '1 1 100%', minWidth: 160 }} type="number" placeholder="€ avviamento una tantum (facoltativo, 10%)" value={p.importoAvviamento || ''}
+                    onChange={e => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: x.prodotti.map((pp, j) => j === pi ? { ...pp, importoAvviamento: e.target.value } : pp) } : x))} />
                   <datalist id={`tipo-dettaglio-cf-${p.id || pi}`}>
                     {suggerimentiTipo.map(sg => <option key={sg} value={sg} />)}
                   </datalist>
@@ -334,6 +336,10 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose, conta
               <button type="button" className="btn btn-sm" style={{ marginTop: 4 }}
                 onClick={() => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: [...(x.prodotti || []), { id: uid(), categoria: '', nome: '', importo: 0, durataM: 12, tipoDettaglio: '' }] } : x))}>
                 + Prodotto
+              </button>
+              <button type="button" className="btn btn-sm" style={{ marginTop: 4 }} title="Aggiunge una riga Quotidiani — ricorda di scrivere un nome che NON contenga 'Carta', altrimenti prende l'aliquota Stand Alone invece che Bundle"
+                onClick={() => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: [...(x.prodotti || []), { id: uid(), categoria: 'Quotidiani', nome: 'Quotidiano Digitale', importo: 0, durataM: (x.prodotti||[])[0]?.durataM || 12, tipoDettaglio: '' }] } : x))}>
+                + Quotidiano in bundle
               </button>
             </div>
           ))}
@@ -586,6 +592,7 @@ function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose, 
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
               <span style={{ minWidth: 20 }} />
               <input className="form-control" style={{ flex: 1 }} list={`tipo-dettaglio-${p.id}`} placeholder="Tipo (es. Abbonamento, One Shot, Laboratorio...)" value={p.tipoDettaglio || ''} onChange={e => updP(p.id, 'tipoDettaglio', e.target.value)} />
+              <input className="form-control" style={{ flex: 1 }} type="number" placeholder="€ avviamento una tantum (facoltativo, 10%)" value={p.importoAvviamento || ''} onChange={e => updP(p.id, 'importoAvviamento', e.target.value)} />
               <datalist id={`tipo-dettaglio-${p.id}`}>
                 {suggerimentiTipo.map(s => <option key={s} value={s} />)}
               </datalist>
@@ -593,6 +600,10 @@ function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose, 
           </div>
         ))}
         <button className="btn btn-sm" onClick={addP} style={{ marginBottom: 14 }}>+ Aggiungi prodotto</button>
+        <button className="btn btn-sm" style={{ marginBottom: 14, marginLeft: 6 }} title="Aggiunge una riga Quotidiani — ricorda di scrivere un nome che NON contenga 'Carta', altrimenti prende l'aliquota Stand Alone invece che Bundle"
+          onClick={() => setProdotti(p => [...p, { id: uid(), categoria: 'Quotidiani', nome: 'Quotidiano Digitale', importo: 0, durataM: p[0]?.durataM || 12, tipoDettaglio: '' }])}>
+          + Quotidiano in bundle
+        </button>
         <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r)', padding: '10px 14px', fontSize: 14, fontWeight: 700 }}>
           Totale: <span style={{ color: 'var(--green)' }}>€{totale.toLocaleString('it-IT')}</span>
         </div>
