@@ -35,7 +35,7 @@ function TagInput({ value, onChange, placeholder }) {
 const CANVASS_VUOTO = {
   nome: '', linee_prodotto: [], data_inizio: '', data_fine: '',
   tipi_target: [], nomi_target: [], tipi_premio: [], tipi_esclusi_premio: [], target_individuale: '',
-  premio_regole: [], premio_pct_flat: '', cap_premio: '', premio_area_pct: '',
+  premio_regole: [], premio_regole_nome: [], premio_pct_flat: '', cap_premio: '', premio_area_pct: '',
   premio_manuale: '', note: '', stato: 'attivo',
   gettone_attivo: false, gettone_prodotto_a: '', gettone_prodotto_b: '',
   gettone_mesi_lookback: 6, gettone_scaglioni: [],
@@ -74,6 +74,23 @@ function prodottoQualifica(p, tipiList, nomiList) {
   return false;
 }
 
+// Quale percentuale si applica a un prodotto premiabile, in ordine di priorità — la prima
+// regola che trova una corrispondenza vince, non si sommano mai più regole sullo stesso prodotto:
+// 1) una regola per parola chiave nel nome (es. "Top AI" → 15%, "Office AI" → 5%)
+// 2) una regola per Tipo (il campo "Tipo" del prodotto, se lo usi)
+// 3) la percentuale unica di riserva, se impostata
+// Se nessuna delle tre si applica, il prodotto resta "premiabile" ma contribuisce 0 — visibile
+// nel dettaglio, così noti subito un prodotto per cui manca ancora una regola, invece di scoprirlo
+// da un premio stimato più basso del previsto.
+function pctPerProdotto(cv, p) {
+  const nomeRegola = (cv.premio_regole_nome || []).find(r => r.parola && nomeCorrisponde(p.nome, r.parola));
+  if (nomeRegola) return { pct: Number(nomeRegola.pct) || 0, fonte: `parola chiave "${nomeRegola.parola}"` };
+  const tipoRegola = (cv.premio_regole || []).find(r => r.tipo && r.tipo === p.tipoDettaglio);
+  if (tipoRegola) return { pct: Number(tipoRegola.pct) || 0, fonte: `tipo "${tipoRegola.tipo}"` };
+  if (cv.premio_pct_flat) return { pct: Number(cv.premio_pct_flat) || 0, fonte: 'percentuale unica' };
+  return { pct: 0, fonte: null };
+}
+
 export function calcolaAvanzamento(cv, contacts) {
   const linee = getLinee(cv);
   // Se non configuri NÉ tipi NÉ parole chiave, di proposito non conta nulla — un default
@@ -83,6 +100,7 @@ export function calcolaAvanzamento(cv, contacts) {
   let fatturatoTarget = 0;
   let fatturatoPremiabileTotale = 0;
   const fatturatoPerTipo = {};
+  const dettaglioPremio = []; // ogni prodotto premiabile, con l'aliquota applicata — per "vedi i contratti conteggiati"
   (contacts || []).forEach(c => {
     getContratti(c).filter(ct => ct.tipo !== 'Rinnovo').forEach(ct => {
       if (!ct.dataInizio || ct.dataInizio < cv.data_inizio || ct.dataInizio > cv.data_fine) return;
@@ -97,23 +115,24 @@ export function calcolaAvanzamento(cv, contacts) {
         if (inPremio) {
           fatturatoPremiabileTotale += imp;
           if (p.tipoDettaglio) fatturatoPerTipo[p.tipoDettaglio] = (fatturatoPerTipo[p.tipoDettaglio] || 0) + imp;
+          const { pct: pctProdotto, fonte } = pctPerProdotto(cv, p);
+          dettaglioPremio.push({
+            contattoId: c.id, nome: c.nome, azienda: c.azienda, data: ct.dataInizio,
+            prodottoNome: p.nome || '(senza nome)', importo: imp, pct: pctProdotto, fonte,
+            contributo: imp * pctProdotto / 100,
+          });
         }
       });
     });
   });
+  dettaglioPremio.sort((a, b) => a.data.localeCompare(b.data));
   const target = Number(cv.target_individuale) || 0;
   const pct = target > 0 ? (fatturatoTarget / target) * 100 : 0;
   const raggiunto = target > 0 && pct >= 100;
-  let premioStimato = 0;
-  if (raggiunto) {
-    (cv.premio_regole || []).forEach(r => {
-      premioStimato += (fatturatoPerTipo[r.tipo] || 0) * (Number(r.pct) || 0) / 100;
-    });
-    if (cv.premio_pct_flat) premioStimato += fatturatoPremiabileTotale * Number(cv.premio_pct_flat) / 100;
-    if (cv.cap_premio) premioStimato = Math.min(premioStimato, Number(cv.cap_premio));
-  }
+  let premioStimato = raggiunto ? dettaglioPremio.reduce((s, d) => s + d.contributo, 0) : 0;
+  if (raggiunto && cv.cap_premio) premioStimato = Math.min(premioStimato, Number(cv.cap_premio));
   if (cv.premio_manuale) premioStimato = Number(cv.premio_manuale);
-  return { fatturatoTarget, fatturatoPremiabileTotale, fatturatoPerTipo, pct, raggiunto, premioStimato, target };
+  return { fatturatoTarget, fatturatoPremiabileTotale, fatturatoPerTipo, dettaglioPremio, pct, raggiunto, premioStimato, target };
 }
 
 // Gettone premio per nuovi clienti con ordine in bundle (es. Canvass 15/2026): un meccanismo
@@ -203,6 +222,7 @@ export default function Canvass({ contacts, showToast }) {
   const [selected, setSelected] = useState(null); // canvass in visualizzazione/modifica, oppure {isNew:true}
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [mostraContratti, setMostraContratti] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
 
   const load = () => dbLoadCanvass().then(rows => { setLista(rows); setLoading(false); });
@@ -215,14 +235,14 @@ export default function Canvass({ contacts, showToast }) {
     return true;
   });
 
-  const apriDettaglio = (cv) => { setSelected(cv); setForm(null); };
+  const apriDettaglio = (cv) => { setSelected(cv); setForm(null); setMostraContratti(false); };
   const apriModifica = (cv) => setForm({
     ...CANVASS_VUOTO, ...cv,
     linee_prodotto: getLinee(cv),
     target_individuale: cv.target_individuale ?? '', cap_premio: cv.cap_premio ?? '',
     premio_area_pct: cv.premio_area_pct ?? '', premio_manuale: cv.premio_manuale ?? '',
     premio_regole: cv.premio_regole || [], tipi_esclusi_premio: cv.tipi_esclusi_premio || [],
-    nomi_target: cv.nomi_target || [],
+    nomi_target: cv.nomi_target || [], premio_regole_nome: cv.premio_regole_nome || [],
     premio_pct_flat: cv.premio_pct_flat ?? '',
     gettone_attivo: !!cv.gettone_config,
     gettone_prodotto_a: cv.gettone_config?.prodotto_a || '',
@@ -237,6 +257,9 @@ export default function Canvass({ contacts, showToast }) {
   const addRegola = () => setForm(p => ({ ...p, premio_regole: [...(p.premio_regole || []), { tipo: '', pct: '' }] }));
   const updRegola = (i, k, v) => setForm(p => ({ ...p, premio_regole: p.premio_regole.map((r, idx) => idx === i ? { ...r, [k]: v } : r) }));
   const delRegola = (i) => setForm(p => ({ ...p, premio_regole: p.premio_regole.filter((_, idx) => idx !== i) }));
+  const addRegolaNome = () => setForm(p => ({ ...p, premio_regole_nome: [...(p.premio_regole_nome || []), { parola: '', pct: '' }] }));
+  const updRegolaNome = (i, k, v) => setForm(p => ({ ...p, premio_regole_nome: p.premio_regole_nome.map((r, idx) => idx === i ? { ...r, [k]: v } : r) }));
+  const delRegolaNome = (i) => setForm(p => ({ ...p, premio_regole_nome: p.premio_regole_nome.filter((_, idx) => idx !== i) }));
   const toggleLinea = (l) => setForm(p => ({ ...p, linee_prodotto: p.linee_prodotto.includes(l) ? p.linee_prodotto.filter(x => x !== l) : [...p.linee_prodotto, l] }));
   const addScaglione = () => setForm(p => ({ ...p, gettone_scaglioni: [...(p.gettone_scaglioni || []), { daCliente: '', importo: '' }] }));
   const updScaglione = (i, k, v) => setForm(p => ({ ...p, gettone_scaglioni: p.gettone_scaglioni.map((s, idx) => idx === i ? { ...s, [k]: v } : s) }));
@@ -255,6 +278,7 @@ export default function Canvass({ contacts, showToast }) {
       tipi_premio: form.tipi_premio, tipi_esclusi_premio: form.tipi_esclusi_premio,
       target_individuale: Number(form.target_individuale) || 0,
       premio_regole: form.premio_regole.filter(r => r.tipo && r.pct !== ''),
+      premio_regole_nome: form.premio_regole_nome.filter(r => r.parola && r.pct !== ''),
       premio_pct_flat: form.premio_pct_flat === '' ? null : Number(form.premio_pct_flat),
       cap_premio: form.cap_premio === '' ? null : Number(form.cap_premio),
       premio_area_pct: form.premio_area_pct === '' ? null : Number(form.premio_area_pct),
@@ -315,7 +339,7 @@ export default function Canvass({ contacts, showToast }) {
 
       {/* ── DETTAGLIO ── */}
       {selected && !selected.isNew && !form && (() => {
-        const { fatturatoTarget, fatturatoPerTipo, pct, raggiunto, premioStimato, target } = calcolaAvanzamento(selected, contacts);
+        const { fatturatoTarget, dettaglioPremio, pct, raggiunto, premioStimato, target } = calcolaAvanzamento(selected, contacts);
         const gettoni = selected.gettone_config ? calcolaGettoni(selected, contacts) : null;
         const st = statoDisplay(selected, today);
         const barColor = raggiunto ? '#1B7A3E' : pct >= 70 ? '#0078D4' : pct >= 40 ? '#E07B1A' : '#C0392B';
@@ -346,17 +370,34 @@ export default function Canvass({ contacts, showToast }) {
                 {raggiunto ? (
                   <>
                     <div style={{ fontWeight: 700, color: '#1B7A3E', marginBottom: 6 }}>🎉 Target raggiunto — premio stimato: {fmtEur(premioStimato)}</div>
-                    {selected.premio_pct_flat && <div className="fs-12 text-muted">Fatturato premiabile: {fmtEur(calcolaAvanzamento(selected, contacts).fatturatoPremiabileTotale)} × {selected.premio_pct_flat}% = {fmtEur(calcolaAvanzamento(selected, contacts).fatturatoPremiabileTotale * selected.premio_pct_flat / 100)}</div>}
-                    {(selected.premio_regole || []).filter(r => r.tipo).map((r, i) => (
-                      <div key={i} className="fs-12 text-muted">{r.tipo}: {fmtEur(fatturatoPerTipo[r.tipo] || 0)} × {r.pct}% = {fmtEur((fatturatoPerTipo[r.tipo] || 0) * r.pct / 100)}</div>
-                    ))}
-                    {selected.cap_premio && <div className="fs-11 text-muted" style={{ marginTop: 4 }}>Tetto massimo: {fmtEur(selected.cap_premio)}</div>}
+                    {selected.cap_premio && <div className="fs-11 text-muted" style={{ marginBottom: 4 }}>Tetto massimo: {fmtEur(selected.cap_premio)}</div>}
                   </>
                 ) : (
                   <div className="fs-13 text-muted">Premio non ancora sbloccato — manca {fmtEur(Math.max(0, target - fatturatoTarget))} al 100% del target.</div>
                 )}
                 {selected.premio_area_pct && pct >= 80 && (
                   <div className="fs-12" style={{ marginTop: 8, color: '#0078D4' }}>ℹ️ Sei almeno all'80% individuale: se l'area raggiunge il suo target, hai diritto anche al bonus di area (+{selected.premio_area_pct}%) — da verificare separatamente, non calcolato qui.</div>
+                )}
+                {dettaglioPremio.length > 0 && (
+                  <div style={{ marginTop: 10, borderTop: raggiunto ? '1px solid #1B7A3E33' : '1px solid var(--border)', paddingTop: 8 }}>
+                    <button className="btn btn-sm" onClick={() => setMostraContratti(v => !v)}>
+                      {mostraContratti ? '▲ Nascondi' : '▼ Vedi'} i {dettaglioPremio.length} contratti conteggiati
+                    </button>
+                    {mostraContratti && (
+                      <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto' }}>
+                        {dettaglioPremio.map((d, i) => (
+                          <div key={i} className="fs-12" style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', borderBottom: i < dettaglioPremio.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {fmt(d.data, { day: '2-digit', month: 'short' })} — {d.nome}{d.azienda ? ` (${d.azienda})` : ''} — {d.prodottoNome}
+                            </span>
+                            <span style={{ fontWeight: 700, whiteSpace: 'nowrap', color: d.contributo > 0 ? '#1B7A3E' : 'var(--text3)' }}>
+                              {fmtEur(d.importo)} × {d.pct}% = {fmtEur(d.contributo)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -452,6 +493,17 @@ export default function Canvass({ contacts, showToast }) {
               <label className="form-label">Percentuale premio unica <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— se il canvass ha un'unica aliquota (non diversa per tipo), usa questa invece delle regole sotto</span></label>
               <input className="form-control" type="number" value={form.premio_pct_flat} onChange={e => fx('premio_pct_flat', e.target.value)} placeholder="Es. 15 — si applica a tutto il fatturato premiabile" />
             </div>
+
+            <div className="card-title" style={{ marginTop: 14, marginBottom: 4 }}>Regole premio per parola chiave nel nome <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— stesso riconoscimento usato sopra per il target</span></div>
+            <div className="fs-11 text-muted" style={{ marginBottom: 8 }}>Es. "Top AI" → 15%, "Office AI" → 5%. Se un prodotto corrisponde a più parole chiave, si applica la prima che trova — non si sommano.</div>
+            {form.premio_regole_nome.map((r, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                <input className="form-control" style={{ flex: 2 }} placeholder='Parola chiave, es. "Top AI"' value={r.parola} onChange={e => updRegolaNome(i, 'parola', e.target.value)} />
+                <input className="form-control" style={{ flex: 1 }} type="number" placeholder="%" value={r.pct} onChange={e => updRegolaNome(i, 'pct', e.target.value)} />
+                <button className="btn btn-sm btn-danger" onClick={() => delRegolaNome(i)}>×</button>
+              </div>
+            ))}
+            <button className="btn btn-sm" onClick={addRegolaNome} style={{ marginBottom: 14 }}>+ Aggiungi regola per parola chiave</button>
 
             <div className="card-title" style={{ marginTop: 14, marginBottom: 8 }}>Regole premio per tipo <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— solo se l'aliquota cambia da tipo a tipo</span></div>
             {form.premio_regole.length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 8 }}>Nessuna regola per tipo</div>}
