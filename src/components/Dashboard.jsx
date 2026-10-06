@@ -76,8 +76,27 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
   const tassoChiusura = svoltiList.length>0 ? Math.round((svoltiOK.length/svoltiList.length)*100) : null;
   const openHot = contacts.filter(c=>c.fase==='In valutazione');
   const curMonth = today.slice(0,7); const curYear = today.slice(0,4);
-  const fatMese = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curMonth)).reduce((s,c)=>s+getFatturato(c),0);
-  const fatAnno = chiusiOK.filter(c=>getDataChiusura(c).startsWith(curYear)).reduce((s,c)=>s+getFatturato(c),0);
+  // Fatturato mensile/annuale: calcolato contratto per contratto, sulla data di inizio di
+  // OGNI singolo contratto — non sull'unica data del contatto (getDataChiusura), che ammucchiava
+  // sotto una sola data tutti i contratti di un cliente anche se nati in mesi diversi, disallineando
+  // "Fatturato mese" da "Nuovo mese"/"Rinnovo mese" qui sotto, che usavano già il metodo corretto.
+  const monthlyNuovo = Array(12).fill(0); const monthlyRinnovo = Array(12).fill(0);
+  chiusiOK.forEach(c=>{
+    getContratti(c).forEach(ct=>{
+      const d=ct.dataInizio||getDataChiusura(c);
+      if(!d||!d.startsWith(curYear)) return;
+      const m=parseInt(d.slice(5,7))-1; if(m<0||m>11) return;
+      const v=(ct.prodotti||[]).reduce((s,p)=>s+(Number(p.importo)||0),0)||(Number(ct.totale)||0);
+      if(ct.tipo==='Rinnovo') monthlyRinnovo[m]+=v; else monthlyNuovo[m]+=v;
+    });
+  });
+  const curMonthIdxForMetric = parseInt(today.slice(5,7))-1;
+  const fatNuovoMese = monthlyNuovo[curMonthIdxForMetric]||0;
+  const fatRinnovoMese = monthlyRinnovo[curMonthIdxForMetric]||0;
+  const fatNuovoAnno = monthlyNuovo.reduce((s,v)=>s+v,0);
+  const fatRinnovoAnno = monthlyRinnovo.reduce((s,v)=>s+v,0);
+  const fatMese = fatNuovoMese + fatRinnovoMese;
+  const fatAnno = fatNuovoAnno + fatRinnovoAnno;
   const totPrev = openHot.reduce((s,c)=>s+getPreventivato(c),0);
 
   // ── Canvass attivi: solo quelli la cui finestra include oggi, mai quelli archiviati o scaduti ──
@@ -144,23 +163,6 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
     return !!ultimo && (ultimo.stato==='Non effettuato'||ultimo.stato==='Non si è presentato');
   }).length;
   const daRifissare = programmatiScaduti + sospesi;
-
-  // Group by contract's own dataInizio (same source of truth as "Chiuso per mese")
-  const monthlyNuovo = Array(12).fill(0); const monthlyRinnovo = Array(12).fill(0);
-  chiusiOK.forEach(c=>{
-    getContratti(c).forEach(ct=>{
-      const d=ct.dataInizio||getDataChiusura(c);
-      if(!d||!d.startsWith(curYear)) return;
-      const m=parseInt(d.slice(5,7))-1; if(m<0||m>11) return;
-      const v=(ct.prodotti||[]).reduce((s,p)=>s+(Number(p.importo)||0),0)||(Number(ct.totale)||0);
-      if(ct.tipo==='Rinnovo') monthlyRinnovo[m]+=v; else monthlyNuovo[m]+=v;
-    });
-  });
-  const curMonthIdxForMetric = parseInt(today.slice(5,7))-1;
-  const fatNuovoMese = monthlyNuovo[curMonthIdxForMetric]||0;
-  const fatRinnovoMese = monthlyRinnovo[curMonthIdxForMetric]||0;
-  const fatNuovoAnno = monthlyNuovo.reduce((s,v)=>s+v,0);
-  const fatRinnovoAnno = monthlyRinnovo.reduce((s,v)=>s+v,0);
 
   const activeStages = stages.filter(s=>!s.isKo);
   const stageCnt = {}; activeStages.forEach(s=>stageCnt[s.name]=0);
