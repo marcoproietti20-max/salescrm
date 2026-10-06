@@ -4,6 +4,7 @@ import { fmtEur, fmt, FONTI, STATI_APPT, getFatturato, getPreventivato, getDataC
 import { FonteBadge } from './Badges';
 import { dbLoadBudget, dbLoadCanvass } from '../supabase';
 import { calcolaAvanzamento, statoDisplay, CanvassCard } from './Canvass';
+import { calcolaTuttiEventi, meseStr, addMesiData } from './Provvigioni';
 Chart.register(ArcElement, BarElement, BarController, DoughnutController, CategoryScale, LinearScale, Tooltip, Legend);
 const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
@@ -109,6 +110,12 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
     });
     return () => { vivo = false; };
   }, [today]);
+
+  // ── Provvigioni del mese prossimo — stesso motore di calcolo della pagina dedicata ──
+  const meseProssimo = meseStr(new Date(addMesiData(today.slice(0,7)+'-01', 1) + 'T12:00:00'));
+  const totProvvProssimoMese = React.useMemo(() => {
+    return calcolaTuttiEventi(contacts).filter(e=>e.data.startsWith(meseProssimo)).reduce((s,e)=>s+e.provvigione,0);
+  }, [contacts, meseProssimo]);
 
   // ── Budget: caricato dal database (tabella "budget"), una riga per linea + una generale ──
   const [budgetRows, setBudgetRows] = React.useState(null); // null = ancora in caricamento
@@ -321,6 +328,18 @@ export default function Dashboard({ contacts, stages, today, navigateTo }) {
               {canvassAttivi.map(cv => (
                 <CanvassCard key={cv.id} cv={cv} contacts={contacts} today={today} onClick={()=>navigateTo('canvass')} />
               ))}
+            </div>
+          </div>
+        )}
+
+        {totProvvProssimoMese>0 && (
+          <div className="card" style={{ marginBottom: 16, cursor: 'pointer' }} onClick={()=>navigateTo('provvigioni')}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div className="card-title" style={{ marginBottom: 6 }}>💶 Provvigioni — mese prossimo</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: '#1B7A3E' }}>{fmtEur(totProvvProssimoMese)}</div>
+              </div>
+              <span className="fs-12" style={{ color: 'var(--accent)' }}>Vedi dettaglio →</span>
             </div>
           </div>
         )}

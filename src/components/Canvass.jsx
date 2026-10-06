@@ -61,7 +61,7 @@ function addMesi(dataIso, n) {
 // Un prodotto corrisponde a una "parola chiave" se TUTTE le parole di quella chiave sono
 // presenti nel suo nome, in qualsiasi ordine — "Top AI" prende "TOP24 FISCO GOLD AI" anche se
 // "FISCO GOLD" sta in mezzo, non serve che la frase sia scritta identica e consecutiva.
-function nomeCorrisponde(nome, parolaChiave) {
+export function nomeCorrisponde(nome, parolaChiave) {
   const n = (nome || '').toLowerCase();
   return parolaChiave.toLowerCase().split(/\s+/).filter(Boolean).every(w => n.includes(w));
 }

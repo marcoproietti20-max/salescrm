@@ -14,6 +14,7 @@ import Settings from './components/Settings';
 import Telemarketing from './components/Telemarketing';
 import Portafoglio from './components/Portafoglio';
 import Canvass from './components/Canvass';
+import Provvigioni from './components/Provvigioni';
 import OperatorView from './components/OperatorView';
 import Modal from './components/Modal';
 import Toast from './components/Toast';
@@ -250,7 +251,7 @@ export default function App() {
 
   const logout = async () => { await supabase.auth.signOut(); setSession(null); setProfile(null); setContacts([]); };
 
-  const pages = { dashboard: Dashboard, contacts: Contacts, pipeline: Pipeline, appointments: Appointments, followups: FollowUps, chiuso: ChiusoPerMese, archivio: ArchivioKO, calendly: Calendly, telemarketing: Telemarketing, portafoglio: Portafoglio, canvass: Canvass, settings: Settings };
+  const pages = { dashboard: Dashboard, contacts: Contacts, pipeline: Pipeline, appointments: Appointments, followups: FollowUps, chiuso: ChiusoPerMese, archivio: ArchivioKO, calendly: Calendly, telemarketing: Telemarketing, portafoglio: Portafoglio, canvass: Canvass, provvigioni: Provvigioni, settings: Settings };
   const Page = pages[page] || Dashboard;
 
   if (authLoading) return (
