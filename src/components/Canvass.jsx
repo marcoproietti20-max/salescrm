@@ -34,8 +34,8 @@ function TagInput({ value, onChange, placeholder }) {
 
 const CANVASS_VUOTO = {
   nome: '', linee_prodotto: [], data_inizio: '', data_fine: '',
-  tipi_target: [], tipi_premio: [], target_individuale: '',
-  premio_regole: [], cap_premio: '', premio_area_pct: '',
+  tipi_target: [], nomi_target: [], tipi_premio: [], tipi_esclusi_premio: [], target_individuale: '',
+  premio_regole: [], premio_pct_flat: '', cap_premio: '', premio_area_pct: '',
   premio_manuale: '', note: '', stato: 'attivo',
   gettone_attivo: false, gettone_prodotto_a: '', gettone_prodotto_b: '',
   gettone_mesi_lookback: 6, gettone_scaglioni: [],
@@ -58,9 +58,30 @@ function addMesi(dataIso, n) {
 // Il cuore del calcolo: legge SOLO quello che il canvass stesso dichiara (periodo, linee,
 // quali tipi contano per il target, quali per il premio, le percentuali) — non assume nulla
 // di specifico su "come funzionano i canvass in generale", perché ognuno ha la sua logica.
+// Un prodotto corrisponde a una "parola chiave" se TUTTE le parole di quella chiave sono
+// presenti nel suo nome, in qualsiasi ordine — "Top AI" prende "TOP24 FISCO GOLD AI" anche se
+// "FISCO GOLD" sta in mezzo, non serve che la frase sia scritta identica e consecutiva.
+function nomeCorrisponde(nome, parolaChiave) {
+  const n = (nome || '').toLowerCase();
+  return parolaChiave.toLowerCase().split(/\s+/).filter(Boolean).every(w => n.includes(w));
+}
+// Un prodotto qualifica se il suo Tipo è in tipiList, OPPURE il suo nome corrisponde a una
+// delle parole chiave in nomiList — due strade indipendenti per intercettarlo, utile quando
+// non si vuole (o non si può) taggare ogni singolo contratto a mano.
+function prodottoQualifica(p, tipiList, nomiList) {
+  if ((tipiList || []).length && tipiList.includes(p.tipoDettaglio)) return true;
+  if ((nomiList || []).length && nomiList.some(k => nomeCorrisponde(p.nome, k))) return true;
+  return false;
+}
+
 export function calcolaAvanzamento(cv, contacts) {
   const linee = getLinee(cv);
+  // Se non configuri NÉ tipi NÉ parole chiave, di proposito non conta nulla — un default
+  // "conta tutto" sarebbe silenzioso e rischioso: meglio restare a zero (visibile, segnala
+  // che manca una configurazione) piuttosto che gonfiare un numero senza che nessuno se ne accorga.
+  const haTipiPremio = (cv.tipi_premio || []).length > 0;
   let fatturatoTarget = 0;
+  let fatturatoPremiabileTotale = 0;
   const fatturatoPerTipo = {};
   (contacts || []).forEach(c => {
     getContratti(c).filter(ct => ct.tipo !== 'Rinnovo').forEach(ct => {
@@ -68,9 +89,14 @@ export function calcolaAvanzamento(cv, contacts) {
       (ct.prodotti || []).forEach(p => {
         if (linee.length && !linee.includes(p.categoria)) return;
         const imp = Number(p.importo) || 0;
-        if ((cv.tipi_target || []).includes(p.tipoDettaglio)) fatturatoTarget += imp;
-        if ((cv.tipi_premio || []).includes(p.tipoDettaglio)) {
-          fatturatoPerTipo[p.tipoDettaglio] = (fatturatoPerTipo[p.tipoDettaglio] || 0) + imp;
+        if (!prodottoQualifica(p, cv.tipi_target, cv.nomi_target)) return;
+        fatturatoTarget += imp;
+        const inPremio = haTipiPremio
+          ? cv.tipi_premio.includes(p.tipoDettaglio)
+          : !((cv.tipi_esclusi_premio || []).includes(p.tipoDettaglio));
+        if (inPremio) {
+          fatturatoPremiabileTotale += imp;
+          if (p.tipoDettaglio) fatturatoPerTipo[p.tipoDettaglio] = (fatturatoPerTipo[p.tipoDettaglio] || 0) + imp;
         }
       });
     });
@@ -83,10 +109,11 @@ export function calcolaAvanzamento(cv, contacts) {
     (cv.premio_regole || []).forEach(r => {
       premioStimato += (fatturatoPerTipo[r.tipo] || 0) * (Number(r.pct) || 0) / 100;
     });
+    if (cv.premio_pct_flat) premioStimato += fatturatoPremiabileTotale * Number(cv.premio_pct_flat) / 100;
     if (cv.cap_premio) premioStimato = Math.min(premioStimato, Number(cv.cap_premio));
   }
   if (cv.premio_manuale) premioStimato = Number(cv.premio_manuale);
-  return { fatturatoTarget, fatturatoPerTipo, pct, raggiunto, premioStimato, target };
+  return { fatturatoTarget, fatturatoPremiabileTotale, fatturatoPerTipo, pct, raggiunto, premioStimato, target };
 }
 
 // Gettone premio per nuovi clienti con ordine in bundle (es. Canvass 15/2026): un meccanismo
@@ -194,7 +221,9 @@ export default function Canvass({ contacts, showToast }) {
     linee_prodotto: getLinee(cv),
     target_individuale: cv.target_individuale ?? '', cap_premio: cv.cap_premio ?? '',
     premio_area_pct: cv.premio_area_pct ?? '', premio_manuale: cv.premio_manuale ?? '',
-    premio_regole: cv.premio_regole || [],
+    premio_regole: cv.premio_regole || [], tipi_esclusi_premio: cv.tipi_esclusi_premio || [],
+    nomi_target: cv.nomi_target || [],
+    premio_pct_flat: cv.premio_pct_flat ?? '',
     gettone_attivo: !!cv.gettone_config,
     gettone_prodotto_a: cv.gettone_config?.prodotto_a || '',
     gettone_prodotto_b: cv.gettone_config?.prodotto_b || '',
@@ -222,9 +251,11 @@ export default function Canvass({ contacts, showToast }) {
       ...(selected.isNew ? {} : { id: selected.id }),
       nome: form.nome.trim(), linea_prodotto: null, linee_prodotto: form.linee_prodotto,
       data_inizio: form.data_inizio, data_fine: form.data_fine,
-      tipi_target: form.tipi_target, tipi_premio: form.tipi_premio,
+      tipi_target: form.tipi_target, nomi_target: form.nomi_target,
+      tipi_premio: form.tipi_premio, tipi_esclusi_premio: form.tipi_esclusi_premio,
       target_individuale: Number(form.target_individuale) || 0,
       premio_regole: form.premio_regole.filter(r => r.tipo && r.pct !== ''),
+      premio_pct_flat: form.premio_pct_flat === '' ? null : Number(form.premio_pct_flat),
       cap_premio: form.cap_premio === '' ? null : Number(form.cap_premio),
       premio_area_pct: form.premio_area_pct === '' ? null : Number(form.premio_area_pct),
       note: form.note || null, stato: form.stato || 'attivo',
@@ -315,6 +346,7 @@ export default function Canvass({ contacts, showToast }) {
                 {raggiunto ? (
                   <>
                     <div style={{ fontWeight: 700, color: '#1B7A3E', marginBottom: 6 }}>🎉 Target raggiunto — premio stimato: {fmtEur(premioStimato)}</div>
+                    {selected.premio_pct_flat && <div className="fs-12 text-muted">Fatturato premiabile: {fmtEur(calcolaAvanzamento(selected, contacts).fatturatoPremiabileTotale)} × {selected.premio_pct_flat}% = {fmtEur(calcolaAvanzamento(selected, contacts).fatturatoPremiabileTotale * selected.premio_pct_flat / 100)}</div>}
                     {(selected.premio_regole || []).filter(r => r.tipo).map((r, i) => (
                       <div key={i} className="fs-12 text-muted">{r.tipo}: {fmtEur(fatturatoPerTipo[r.tipo] || 0)} × {r.pct}% = {fmtEur((fatturatoPerTipo[r.tipo] || 0) * r.pct / 100)}</div>
                     ))}
@@ -397,16 +429,32 @@ export default function Canvass({ contacts, showToast }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Tipi che contano per il target</label>
-              <TagInput value={form.tipi_target} onChange={v => fx('tipi_target', v)} placeholder="Es. Abbonamento, One Shot, Su commessa... Invio per aggiungere" />
+              <label className="form-label">Tipi che contano per il target <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— dal campo "Tipo" del prodotto, se lo usi</span></label>
+              <TagInput value={form.tipi_target} onChange={v => fx('tipi_target', v)} placeholder="Es. Abbonamento, One Shot... Invio per aggiungere" />
             </div>
             <div className="form-group">
-              <label className="form-label">Tipi che contano per il premio (di solito un sottoinsieme)</label>
-              <TagInput value={form.tipi_premio} onChange={v => fx('tipi_premio', v)} placeholder="Es. Abbonamento, Laboratorio... Invio per aggiungere" />
+              <label className="form-label">Oppure: parole chiave nel nome del prodotto <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— un prodotto conta se il suo nome contiene TUTTE le parole di una chiave, in qualsiasi ordine</span></label>
+              <TagInput value={form.nomi_target} onChange={v => fx('nomi_target', v)} placeholder='Es. "Top AI" prende anche "TOP24 FISCO GOLD AI" — Invio per aggiungere' />
+              <div className="fs-11 text-muted" style={{ marginTop: 4 }}>Conta come target un prodotto che corrisponde ad ALMENO UNA tra Tipi e parole chiave sopra. Se entrambi i campi restano vuoti, nessun prodotto conta — meglio accorgersene subito che gonfiare un numero senza saperlo.</div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Tipi che contano per il premio <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— vuoto = stessi del target (vedi sotto per le eccezioni)</span></label>
+              <TagInput value={form.tipi_premio} onChange={v => fx('tipi_premio', v)} placeholder="Lascia vuoto, oppure Es. Abbonamento, Laboratorio... Invio per aggiungere" />
+            </div>
+            {form.tipi_premio.length === 0 && (
+              <div className="form-group">
+                <label className="form-label">Tipi da escludere dal premio <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— contano per il target ma non generano premio (es. Newsletter)</span></label>
+                <TagInput value={form.tipi_esclusi_premio} onChange={v => fx('tipi_esclusi_premio', v)} placeholder="Solo le eccezioni — i prodotti vanno taggati con questo Tipo" />
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">Percentuale premio unica <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— se il canvass ha un'unica aliquota (non diversa per tipo), usa questa invece delle regole sotto</span></label>
+              <input className="form-control" type="number" value={form.premio_pct_flat} onChange={e => fx('premio_pct_flat', e.target.value)} placeholder="Es. 15 — si applica a tutto il fatturato premiabile" />
             </div>
 
-            <div className="card-title" style={{ marginTop: 14, marginBottom: 8 }}>Regole premio (% per tipo)</div>
-            {form.premio_regole.length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 8 }}>Nessuna regola — il premio stimato resterà €0</div>}
+            <div className="card-title" style={{ marginTop: 14, marginBottom: 8 }}>Regole premio per tipo <span className="text-muted" style={{ fontWeight: 400, textTransform: 'none' }}>— solo se l'aliquota cambia da tipo a tipo</span></div>
+            {form.premio_regole.length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 8 }}>Nessuna regola per tipo</div>}
             {form.premio_regole.map((r, i) => (
               <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
                 <input className="form-control" style={{ flex: 2 }} placeholder="Tipo (deve corrispondere a uno di sopra)" value={r.tipo} onChange={e => updRegola(i, 'tipo', e.target.value)} />
