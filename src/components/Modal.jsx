@@ -4,6 +4,50 @@ import { StageBadge, FonteBadge, EsitoBadge, PropostaBadge, StatoBadge } from '.
 import CallButton, { PhoneLink } from './CallButton';
 import EmailButton from './EmailButton';
 
+// Rettifiche future su un singolo prodotto: per un anno specifico, "escludi" (es. nota di
+// credito, cliente che smette di pagare — l'anno teoricamente dura ma non verrà più fatturato)
+// oppure "aliquota" (un'aliquota manuale diversa dalla tabella, es. cliente fuori zona con
+// provvigione ridotta dal secondo anno). Caso raro, per questo resta un pannello richiudibile
+// che non intasa la riga del prodotto. Non tocca il contratto: resta sempre reversibile.
+function RettificheProdotto({ prodotto, onChange }) {
+  const [aperto, setAperto] = useState(false);
+  const rett = prodotto.rettifiche || [];
+  const aggiorna = (lista) => onChange(lista);
+  const aggiungi = () => aggiorna([...rett, { anno: 2, tipo: 'escluso', valore: '' }]);
+  const modifica = (idx, campo, val) => aggiorna(rett.map((r, i) => i === idx ? { ...r, [campo]: val } : r));
+  const rimuovi = (idx) => aggiorna(rett.filter((_, i) => i !== idx));
+  return (
+    <div style={{ flex: '1 1 100%', marginTop: -2, marginBottom: 2 }}>
+      <button type="button" className="btn btn-sm" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => setAperto(o => !o)}>
+        ⚙ Rettifiche annualità{rett.length > 0 ? ` (${rett.length})` : ''}
+      </button>
+      {aperto && (
+        <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r)', padding: 8, marginTop: 4 }}>
+          <div className="fs-11 text-muted" style={{ marginBottom: 6 }}>Interviene solo sulla proiezione futura di questo prodotto, un anno alla volta. Non tocca il contratto né gli altri anni.</div>
+          {rett.map((r, idx) => (
+            <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
+              <span className="fs-11">Anno</span>
+              <input className="form-control" style={{ width: 54 }} type="number" min="1" value={r.anno}
+                onChange={e => modifica(idx, 'anno', Number(e.target.value) || 1)} />
+              <select className="form-control" style={{ width: 110 }} value={r.tipo}
+                onChange={e => modifica(idx, 'tipo', e.target.value)}>
+                <option value="escluso">Escludi</option>
+                <option value="aliquota">Aliquota manuale</option>
+              </select>
+              {r.tipo === 'aliquota' && (
+                <input className="form-control" style={{ width: 64 }} type="number" placeholder="%" value={r.valore}
+                  onChange={e => modifica(idx, 'valore', e.target.value)} />
+              )}
+              <button type="button" className="btn btn-sm btn-danger" onClick={() => rimuovi(idx)}>×</button>
+            </div>
+          ))}
+          <button type="button" className="btn btn-sm" onClick={aggiungi}>+ Aggiungi rettifica</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Modal({ modal, setModal, contacts, stages, customFields,
   saveContact, deleteContact, updateContact, showToast }) {
   const close = () => setModal(null);
@@ -284,7 +328,7 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose, conta
           {(f.contratti || []).map((ct, ci) => (
             <div key={ct.id || ci} style={{ background: 'var(--green-lt)', border: '1px solid rgba(27,122,62,0.3)', borderRadius: 'var(--r)', padding: '12px 14px', marginBottom: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: ct.annullato ? 'var(--text3)' : 'var(--green)', textDecoration: ct.annullato ? 'line-through' : 'none' }}>
                   Contratto #{ci + 1} — €{((ct.prodotti || []).reduce((s, p) => s + (Number(p.importo) || 0), 0) || ct.totale || 0).toLocaleString('it-IT')}
                 </span>
                 <button type="button" className="btn btn-sm btn-danger"
@@ -305,6 +349,11 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose, conta
                     onChange={e => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, dataInizio: e.target.value } : x))} />
                 </div>
               </div>
+              <label className="fs-12" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, cursor: 'pointer' }} title="Il contratto resta così com'è, ma smette di generare provvigioni future proiettate (es. nota di credito, cliente che non paga più). Lo storico già importato non viene toccato.">
+                <input type="checkbox" checked={!!ct.annullato}
+                  onChange={e => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, annullato: e.target.checked } : x))} />
+                Contratto annullato — non proiettare più provvigioni future
+              </label>
               {(ct.prodotti || []).length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 6 }}>Nessun prodotto</div>}
               {(ct.prodotti || []).map((p, pi) => (
                 <div key={p.id || pi} style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -331,6 +380,7 @@ function ContactForm({ c, stages, customFields, onSave, onDelete, onClose, conta
                   <datalist id={`tipo-dettaglio-cf-${p.id || pi}`}>
                     {suggerimentiTipo.map(sg => <option key={sg} value={sg} />)}
                   </datalist>
+                  <RettificheProdotto prodotto={p} onChange={nuoveRett => s('contratti', (f.contratti || []).map((x, i) => i === ci ? { ...x, prodotti: x.prodotti.map((pp, j) => j === pi ? { ...pp, rettifiche: nuoveRett } : pp) } : x))} />
                 </div>
               ))}
               <button type="button" className="btn btn-sm" style={{ marginTop: 4 }}
@@ -533,6 +583,7 @@ function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose, 
   const [nuovoFatturato, setNuovoFatturato] = useState(ct.nuovoFatturato || '');
   const [prodotti, setProdotti] = useState(ct.prodotti || []);
   const [dataInizio, setDataInizio] = useState(ct.dataInizio || '');
+  const [annullato, setAnnullato] = useState(!!ct.annullato);
   // Suggerimenti per "Tipo" (es. Abbonamento, One Shot, Laboratorio...): si costruiscono da soli
   // da quello che è già stato scritto altrove, non è un elenco fisso — ogni canvass può avere
   // tipologie diverse a seconda della linea di prodotto.
@@ -568,6 +619,10 @@ function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose, 
             <input className="form-control" type="number" value={nuovoFatturato} onChange={e => setNuovoFatturato(e.target.value)} />
           </div>
         )}
+        <label className="fs-12" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, cursor: 'pointer' }} title="Il contratto resta così com'è, ma smette di generare provvigioni future proiettate (es. nota di credito, cliente che non paga più). Lo storico già importato non viene toccato.">
+          <input type="checkbox" checked={annullato} onChange={e => setAnnullato(e.target.checked)} />
+          Contratto annullato — non proiettare più provvigioni future
+        </label>
         <div className="form-label" style={{ marginBottom: 8 }}>Prodotti</div>
         {prodotti.length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 8 }}>Nessun prodotto — clicca "+ Aggiungi"</div>}
         {prodotti.map((p, i) => (
@@ -597,6 +652,7 @@ function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose, 
                 {suggerimentiTipo.map(s => <option key={s} value={s} />)}
               </datalist>
             </div>
+            <RettificheProdotto prodotto={p} onChange={nuoveRett => updP(p.id, 'rettifiche', nuoveRett)} />
           </div>
         ))}
         <button className="btn btn-sm" onClick={addP} style={{ marginBottom: 14 }}>+ Aggiungi prodotto</button>
@@ -611,7 +667,7 @@ function ContrattoForm({ contact, contratto, isEdit, onSave, onDelete, onClose, 
       <div className="modal-footer">
         {isEdit && <button className="btn btn-danger" style={{ marginRight: 'auto' }} onClick={() => onDelete(contact.id, ct.id)}>Elimina contratto</button>}
         <button className="btn" onClick={onClose}>Annulla</button>
-        <button className="btn btn-primary" onClick={() => onSave(contact.id, { id: ct.id || uid(), tipo, nuovoFatturato: Number(nuovoFatturato) || 0, prodotti, dataInizio, totale })}>Salva</button>
+        <button className="btn btn-primary" onClick={() => onSave(contact.id, { id: ct.id || uid(), tipo, nuovoFatturato: Number(nuovoFatturato) || 0, prodotti, dataInizio, totale, annullato })}>Salva</button>
       </div>
     </Overlay>
   );
@@ -714,6 +770,7 @@ function SchedaModal({ contact: initialContact, contacts, stages, setModal, upda
                     <span><strong>Totale:</strong> <span style={{ color: 'var(--green)', fontWeight: 700 }}>€{(ct.totale || 0).toLocaleString('it-IT')}</span></span>
                     <span className="badge" style={{ background: ct.tipo === 'Rinnovo' ? 'var(--accent-lt)' : 'var(--green-lt)', color: ct.tipo === 'Rinnovo' ? 'var(--accent-dk)' : 'var(--green)', border: 'none', fontSize: 10 }}>{ct.tipo || 'Nuovo'}</span>
                     {ct.dataInizio && <span><strong>Inizio:</strong> {fmt(ct.dataInizio)}</span>}
+                    {ct.annullato && <span className="badge" style={{ background: '#FDECEC', color: '#C0392B', border: 'none', fontSize: 10 }}>Annullato — niente provvigioni future</span>}
                   </div>
                   {(ct.prodotti || []).length > 0 && (
                     <div className="fs-12">

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { fmtEur, fmt, getContratti } from '../constants';
 import { nomeCorrisponde } from './Canvass';
-import { dbLoadStoricoProvvigioni, dbEliminaStoricoFile, dbSalvaStoricoBatch } from '../supabase';
+import { dbLoadStoricoProvvigioni, dbEliminaStoricoFile, dbSalvaStoricoBatch, dbEliminaStoricoRiga, dbLoadExtraProvvigioni, dbSalvaExtraProvvigioni, dbEliminaExtraProvvigioni } from '../supabase';
 
 // ── Tabella aliquote ──────────────────────────────────────────────────────
 // Ogni riga: categoria (deve corrispondere a PRODOTTI), parola chiave facoltativa nel nome
@@ -68,6 +68,15 @@ const bucketDurata = (durataM) => {
 // pagata solo alla firma, indipendente dalla linea/categoria e dalla durata del contratto.
 export const PCT_AVVIAMENTO = 10;
 
+// Trova, tra le rettifiche di un prodotto, quella per un anno specifico — interventi puntuali
+// che Marco può impostare sul singolo prodotto: "escludi" (es. nota di credito, cliente che
+// smette di pagare: l'anno teoricamente dura ma non verrà più fatturato) oppure "aliquota"
+// (un'aliquota manuale diversa da quella di tabella, es. cliente fuori zona con aliquota
+// ridotta dal secondo anno). Non toccano il contratto, restano sempre reversibili.
+function trovaRettifica(p, anno) {
+  return (p.rettifiche || []).find(r => Number(r.anno) === anno) || null;
+}
+
 export function eventiProdotto(p, ct, contatto) {
   const regola = trovaRegola(p.categoria, p.nome);
   if (!regola) return [];
@@ -86,15 +95,21 @@ export function eventiProdotto(p, ct, contatto) {
     });
   }
   for (let anno = 1; anno <= anni; anno++) {
+    const rettifica = trovaRettifica(p, anno);
+    if (rettifica && rettifica.tipo === 'escluso') continue; // anno spento manualmente, non proiettato
     let pct = regola[tipoKey][bucket];
     let maggiorata = false;
     if (anno === 1 && tipoKey === 'nuovo' && regola.maggiorata45 && ct.dataInizio && ct.dataInizio <= SCADENZA_MAGGIORATA_45) {
       pct = 45; maggiorata = true;
     }
+    let rettificata = false;
+    if (rettifica && rettifica.tipo === 'aliquota' && rettifica.valore !== '' && rettifica.valore != null) {
+      pct = Number(rettifica.valore) || 0; maggiorata = false; rettificata = true;
+    }
     eventi.push({
       contattoId: contatto.id, nome: contatto.nome, azienda: contatto.azienda,
       prodottoNome: p.nome || '(senza nome)', categoria: p.categoria, etichettaRegola: regola.etichetta,
-      anno, primoAnno: anno === 1, tipo: tipoKey, maggiorata,
+      anno, primoAnno: anno === 1, tipo: tipoKey, maggiorata, rettificata,
       data: anno === 1 ? ct.dataInizio : addMesi(ct.dataInizio, (anno - 1) * 12),
       importo, pct, provvigione: importo * pct / 100,
     });
@@ -108,7 +123,7 @@ export function calcolaTuttiEventi(contacts) {
   const eventi = [];
   (contacts || []).forEach(c => {
     getContratti(c).forEach(ct => {
-      if (!ct.dataInizio) return;
+      if (!ct.dataInizio || ct.annullato) return; // contratto annullato: niente proiezione futura
       (ct.prodotti || []).forEach(p => {
         eventi.push(...eventiProdotto(p, ct, c));
       });
@@ -186,10 +201,11 @@ function mappaRigaStorico(obj, meseRicevuto, nomeFile) {
   return {
     mese_competenza: mesiCompetenzaDaDecorrenza(decorrenza, obj['ANNUALITA']),
     mese_ricevuto: meseRicevuto,
-    numero_ordine: obj['NUMERO ORDINE'] || null, codice_cliente: obj['CODICE CLIENTE'] || null,
+    numero_ordine: obj['NUMERO ORDINE'] || null, posizione: obj['POSIZIONE'] || null, codice_cliente: obj['CODICE CLIENTE'] || null,
     ragione_sociale: obj['RAGIONE SOCIALE'] || null, tipo_contratto: obj['TIPO CONTRATTO'] || null,
     sostituzione: obj['SOSTITUZIONE'] || null, codice_prodotto: obj['CODICE PRODOTTO'] || null,
     descrizione_prodotto: obj['DESCRIZIONE PRODOTTO'] || null,
+    numero_fattura: obj['NUMERO FATTURA'] || null,
     decorrenza, data_fattura: dataFattura,
     durata: numIta(obj['DURATA']), annualita: numIta(obj['ANNUALITA']),
     imponibile: numIta(obj['IMPONIBILE PROVV.']), aliquota: numIta(obj['ALIQUOTA PROVVIGIONE']),
@@ -197,11 +213,23 @@ function mappaRigaStorico(obj, meseRicevuto, nomeFile) {
     file_origine: nomeFile,
   };
 }
+// Chiave che identifica una riga in modo univoco per il controllo duplicati: ordine, posizione,
+// prodotto, sostituzione, numero fattura, importo esatto (compreso il segno) E nota. La nota è
+// essenziale — un originale (nota vuota), il suo insoluto (nota "INSOLUTI", importo negativo) e
+// il ripreso che lo recupera (nota "RIPRESO", importo di nuovo positivo) condividono tutto il
+// resto ma sono tre eventi legittimi, non una riga ripetuta. È un vero duplicato solo quando la
+// riga è IDENTICA in ogni campo, compresa la nota, e proviene da un file diverso già importato:
+// capita quando una situazione ancora aperta (es. lo stesso insoluto) viene rilistata tale e
+// quale nell'estratto successivo senza che sia cambiato nulla.
+function chiaveRiga(r) {
+  return [r.numero_ordine, r.posizione, r.codice_prodotto, r.sostituzione, r.numero_fattura, Math.round((r.importo_provvigioni||0)*100), (r.note||'').trim()].join('|');
+}
 // Traduce una riga di storico reale nella stessa identica forma di un "evento" calcolato,
 // così la tabella e le metriche della pagina funzionano senza distinguere la provenienza.
 function storicoComeEvento(r) {
   const annoNum = r.annualita || 1;
   return {
+    id: r.id, storico: true,
     contattoId: r.codice_cliente, nome: r.ragione_sociale, azienda: null,
     prodottoNome: r.descrizione_prodotto || '(senza nome)', categoria: null,
     etichettaRegola: r.sostituzione === 'U' ? 'Upgrade' : r.sostituzione === 'S' ? 'Standard' : '—',
@@ -250,14 +278,21 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     const righeGrezze = parseTSV(testo);
     const meseRicevuto = meseRicevutoDaFilename(file.name); // solo informativo, mai bloccante
     const righe = righeGrezze.map(r => mappaRigaStorico(r, meseRicevuto, file.name));
-    const righeValide = righe.filter(r => r.mese_competenza);
-    const righeSenzaData = righe.length - righeValide.length;
+    const righeConData = righe.filter(r => r.mese_competenza);
+    const righeSenzaData = righe.length - righeConData.length;
+    // Confronto con tutto lo storico già importato da ALTRI file, per scartare i veri duplicati
+    // (stessa riga identica, nota compresa, già presente altrove) senza toccare ripresi/insoluti
+    // legittimi, che condividono ordine e fattura ma non la nota o il segno dell'importo.
+    const chiaviEsistenti = new Set((storico||[]).filter(r => r.file_origine !== file.name).map(chiaveRiga));
+    const righeValide = righeConData.filter(r => !chiaviEsistenti.has(chiaveRiga(r)));
+    const righeDuplicate = righeConData.filter(r => chiaviEsistenti.has(chiaveRiga(r)));
     const totale = righeValide.reduce((s,r)=>s+r.importo_provvigioni, 0);
+    const totaleDuplicati = righeDuplicate.reduce((s,r)=>s+r.importo_provvigioni, 0);
     // Ripartizione per mese di competenza reale — un file può contenere più mesi insieme
     const perMese = {};
     righeValide.forEach(r => { perMese[r.mese_competenza] = (perMese[r.mese_competenza]||0) + r.importo_provvigioni; });
     const mesiTrovati = Object.entries(perMese).sort((a,b)=>b[0].localeCompare(a[0]));
-    setAnteprima({ file: file.name, meseRicevuto, righe: righeValide, righeSenzaData, totale, mesiTrovati });
+    setAnteprima({ file: file.name, meseRicevuto, righe: righeValide, righeSenzaData, righeDuplicate, totaleDuplicati, totale, mesiTrovati });
   };
 
   const confermaImport = async () => {
@@ -267,9 +302,38 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     const ok = await dbSalvaStoricoBatch(anteprima.righe);
     setCaricando(false);
     if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
-    showToast('Estratto importato', `${anteprima.righe.length} righe su ${anteprima.mesiTrovati.length} mes${anteprima.mesiTrovati.length===1?'e':'i'}`);
+    const extra = anteprima.righeDuplicate.length ? `, ${anteprima.righeDuplicate.length} duplicate scartate` : '';
+    showToast('Estratto importato', `${anteprima.righe.length} righe su ${anteprima.mesiTrovati.length} mes${anteprima.mesiTrovati.length===1?'e':'i'}${extra}`);
     setAnteprima(null);
     ricaricaStorico();
+  };
+
+  const eliminaRigaStorico = async (riga) => {
+    if (!window.confirm(`Eliminare definitivamente questa riga dello storico (${riga.nome||''} — ${fmtEur(riga.provvigione)})?`)) return;
+    const ok = await dbEliminaStoricoRiga(riga.id);
+    if (!ok) { showToast('Errore durante l\'eliminazione', '', 'info'); return; }
+    showToast('Riga eliminata', '');
+    ricaricaStorico();
+  };
+
+  // ── Premi/rimborsi manuali, per mese — una riga distinta nel totale, non legata a nessun contratto ──
+  const [extra, setExtra] = useState([]);
+  const ricaricaExtra = () => dbLoadExtraProvvigioni().then(setExtra);
+  useEffect(() => { ricaricaExtra(); }, []);
+  const extraMese = useMemo(() => extra.filter(x => x.mese === meseSelezionato), [extra, meseSelezionato]);
+  const totExtra = extraMese.reduce((s,x)=>s+(Number(x.importo)||0), 0);
+  const [nuovoExtra, setNuovoExtra] = useState({ descrizione: '', importo: '' });
+  const aggiungiExtra = async () => {
+    if (!nuovoExtra.descrizione.trim() || !nuovoExtra.importo) return;
+    const ok = await dbSalvaExtraProvvigioni({ mese: meseSelezionato, descrizione: nuovoExtra.descrizione.trim(), importo: Number(nuovoExtra.importo) });
+    if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
+    setNuovoExtra({ descrizione: '', importo: '' });
+    ricaricaExtra();
+  };
+  const eliminaExtra = async (id) => {
+    const ok = await dbEliminaExtraProvvigioni(id);
+    if (!ok) return;
+    ricaricaExtra();
   };
 
   // Il mese mostrato è quello di competenza — l'incasso vero arriva dopo: pre-fattura il 15
@@ -286,7 +350,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     };
   }, [meseSelezionato]);
 
-  const totMese = eventiMese.reduce((s,e)=>s+e.provvigione, 0);
+  const totMese = eventiMese.reduce((s,e)=>s+e.provvigione, 0) + totExtra;
   const totPrimoAnno = eventiMese.filter(e=>e.primoAnno).reduce((s,e)=>s+e.provvigione, 0);
   const totProiezione = eventiMese.filter(e=>!e.primoAnno).reduce((s,e)=>s+e.provvigione, 0);
   const totNuovo = eventiMese.filter(e=>e.primoAnno && e.tipo==='nuovo').reduce((s,e)=>s+e.provvigione, 0);
@@ -335,6 +399,9 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
           <div className="metric-card"><div className="metric-label">Di cui Rinnovo (1° anno)</div><div className="metric-value">{fmtEur(totRinnovo)}</div></div>
           <div className="metric-card"><div className="metric-label">Proiezione anni successivi</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(totProiezione)}</div></div>
         </div>
+        {totExtra !== 0 && (
+          <div className="fs-12" style={{ marginBottom: 16, color: 'var(--text2)' }}>Di cui <strong>{fmtEur(totExtra)}</strong> di premi/rimborsi inseriti manualmente per questo mese.</div>
+        )}
 
         <div className="charts-grid" style={{ marginBottom: 16 }}>
           <div className="card" style={{ marginBottom: 0 }}>
@@ -375,9 +442,9 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
         <div className="card-title" style={{ marginBottom: 10 }}>Dettaglio — {eventiMese.length} contratti/prodotti in questo mese</div>
         <div className="table-wrap">
           <table className="crm-table">
-            <thead><tr><th>Cliente</th><th>Prodotto</th><th>Linea/livello</th><th>Anno</th><th>Aliquota</th><th>Imponibile</th><th>Provvigione</th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Prodotto</th><th>Linea/livello</th><th>Anno</th><th>Aliquota</th><th>Imponibile</th><th>Provvigione</th><th></th></tr></thead>
             <tbody>
-              {eventiMese.length === 0 ? <tr><td colSpan={7} className="empty">Nessun incasso previsto in questo mese</td></tr> : eventiMese.map((e,i) => (
+              {eventiMese.length === 0 ? <tr><td colSpan={8} className="empty">Nessun incasso previsto in questo mese</td></tr> : eventiMese.map((e,i) => (
                 <tr key={i}>
                   <td className="fw-600">{e.nome}{e.azienda ? <div className="fs-11 text-muted">{e.azienda}</div> : null}</td>
                   <td className="fs-12">{e.prodottoNome}</td>
@@ -386,14 +453,40 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                     {e.primoAnno
                       ? <span className="badge" style={{ background: e.tipo==='nuovo'?'#EBF4FC':'#EEF1F5', color: e.tipo==='nuovo'?'#0050A0':'#5A6B7E' }}>{e.tipo==='nuovo'?'Nuovo':'Rinnovo'}{e.maggiorata && ' 🔥'}</span>
                       : <span className="badge" style={{ background: '#F1EDFC', color: '#7B68EE' }}>Proiezione anno {e.anno}</span>}
+                    {e.rettificata && <span className="badge" style={{ background: '#FFF3DB', color: '#A8710A', marginLeft: 4 }} title="Aliquota modificata manualmente per questo anno">✎</span>}
                   </td>
                   <td className="fs-12 fw-600">{e.pct}%</td>
                   <td className="fs-12">{fmtEur(e.importo)}</td>
                   <td className="fw-600" style={{ color: '#1B7A3E' }}>{fmtEur(e.provvigione)}</td>
+                  <td>
+                    {e.storico && (
+                      <button className="btn btn-sm" title="Elimina questa riga dello storico" onClick={()=>eliminaRigaStorico(e)} style={{ color: '#C0392B' }}>🗑</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* ── Premi/rimborsi manuali del mese ── */}
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-title" style={{ marginBottom: 10 }}>Premi/rimborsi manuali — {etichettaMese}</div>
+          {extraMese.length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 10 }}>Nessuno inserito per questo mese.</div>}
+          {extraMese.map(x => (
+            <div key={x.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5, marginBottom: 6 }}>
+              <span>{x.descrizione}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <strong>{fmtEur(Number(x.importo))}</strong>
+                <button className="btn btn-sm" onClick={()=>eliminaExtra(x.id)} style={{ color: '#C0392B' }}>🗑</button>
+              </span>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <input className="form-control" style={{ flex: 2 }} placeholder="Descrizione (es. Premio trimestrale Q3)" value={nuovoExtra.descrizione} onChange={e=>setNuovoExtra(v=>({...v, descrizione: e.target.value}))} />
+            <input className="form-control" style={{ flex: 1 }} type="number" placeholder="€ importo" value={nuovoExtra.importo} onChange={e=>setNuovoExtra(v=>({...v, importo: e.target.value}))} />
+            <button className="btn btn-sm btn-primary" onClick={aggiungiExtra}>+ Aggiungi</button>
+          </div>
         </div>
 
         {mesiConStorico.size > 0 && (
@@ -428,6 +521,12 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
 
             {anteprima.mesiTrovati.some(([mese]) => mesiConStorico.has(mese)) && (
               <div className="info-box amber" style={{ marginBottom: 16 }}>⚠️ Per almeno uno dei mesi sopra (segnato con ⚠️) hai già importato dati in precedenza. Confermando, le righe di questo file si aggiungono a quelle già presenti per quel mese (non le sostituiscono) — a meno che il nome del file sia identico a uno già caricato, nel qual caso quel file viene sostituito.</div>
+            )}
+
+            {anteprima.righeDuplicate.length > 0 && (
+              <div className="info-box amber" style={{ marginBottom: 16 }}>
+                🔁 {anteprima.righeDuplicate.length} rig{anteprima.righeDuplicate.length===1?'a':'he'} (per {fmtEur(anteprima.totaleDuplicati)}) già present{anteprima.righeDuplicate.length===1?'e':'i'} identiche in un file diverso già importato — le sto escludendo da questo import per non contarle due volte. Non riguarda ripresi o insoluti, quelli restano e vengono contati normalmente.
+              </div>
             )}
 
             <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Il mese di competenza di ogni riga è dedotto da decorrenza e annualità, non dal nome del file: un file può contenere righe di mesi diversi, come sopra.</div>

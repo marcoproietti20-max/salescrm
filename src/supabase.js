@@ -150,6 +150,30 @@ export async function dbSalvaStoricoBatch(righe) {
   }
   return true;
 }
+// Cancella una singola riga dello storico (es. nota di credito, cliente che non paga più) —
+// resta un intervento puntuale e reversibile solo in quanto si può re-importare il file.
+export async function dbEliminaStoricoRiga(id) {
+  const {error}=await supabase.from('provvigioni_storico').delete().eq('id',id);
+  if(error){console.error('dbEliminaStoricoRiga:',error);return false;}
+  return true;
+}
+
+export async function dbLoadExtraProvvigioni() {
+  const {data,error}=await supabase.from('provvigioni_extra').select('*').order('mese',{ascending:false});
+  if(error){console.error('dbLoadExtraProvvigioni:',error);return [];}
+  return data||[];
+}
+export async function dbSalvaExtraProvvigioni(row) {
+  const payload = row.id ? row : { mese: row.mese, descrizione: row.descrizione, importo: Number(row.importo)||0 };
+  const {data,error}=await supabase.from('provvigioni_extra').upsert(payload).select();
+  if(error){console.error('dbSalvaExtraProvvigioni:',error);return null;}
+  return data?.[0]||null;
+}
+export async function dbEliminaExtraProvvigioni(id) {
+  const {error}=await supabase.from('provvigioni_extra').delete().eq('id',id);
+  if(error){console.error('dbEliminaExtraProvvigioni:',error);return false;}
+  return true;
+}
 export async function dbLoadBudget(anno) {
   const {data,error}=await supabase.from('budget').select('*').eq('anno',anno);
   if(error){console.error('dbLoadBudget:',error);return [];}
