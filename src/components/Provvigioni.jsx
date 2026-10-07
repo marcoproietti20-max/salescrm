@@ -162,25 +162,35 @@ function dataIta(s) {
   return `${y}-${mo.padStart(2, '0')}-${d.padStart(2, '0')}`;
 }
 const MESI_IT = { gennaio: 1, febbraio: 2, marzo: 3, aprile: 4, maggio: 5, giugno: 6, luglio: 7, agosto: 8, settembre: 9, ottobre: 10, novembre: 11, dicembre: 12 };
-// Il mese nel nome del file è quello in cui Marco lo ha RICEVUTO — il periodo di competenza
-// reale è sempre il mese precedente (così glielo ha spiegato lui).
-function meseCompetenzaDaFilename(filename) {
+// Il nome del file NON è affidabile per capire la competenza — un singolo estratto può
+// contenere fatture di mesi molto diversi tra loro (rettifiche, ripresi, pagamenti in ritardo).
+// Lo uso solo come etichetta di provenienza facoltativa (mese "ricevuto"), mai per decidere
+// la competenza: quella si calcola riga per riga dalla sua vera DATA FATTURA.
+function meseRicevutoDaFilename(filename) {
   const base = filename.replace(/\.[^.]+$/, '').toLowerCase();
   const m = base.match(/([a-zàèìòù]+)[_\s]+(\d{4})/i);
   if (!m || !MESI_IT[m[1]]) return null;
-  const mese = MESI_IT[m[1]], anno = parseInt(m[2]);
-  let meseComp = mese - 1, annoComp = anno;
-  if (meseComp === 0) { meseComp = 12; annoComp -= 1; }
-  return { meseRicevuto: `${anno}-${String(mese).padStart(2, '0')}`, meseCompetenza: `${annoComp}-${String(meseComp).padStart(2, '0')}` };
+  return `${m[2]}-${String(MESI_IT[m[1]]).padStart(2, '0')}`;
 }
-function mappaRigaStorico(obj, meseInfo, nomeFile) {
+// La competenza si calcola da decorrenza+annualità (stessa logica del motore di proiezione:
+// l'anno N di un contratto cade N-1 anni dopo la sua decorrenza), non dalla data fattura —
+// un rinnovo inserito in anticipo può avere decorrenza mesi dopo la fattura che lo genera.
+function mesiCompetenzaDaDecorrenza(decorrenzaIso, annualita) {
+  if (!decorrenzaIso) return null;
+  const n = (Number(annualita)||1) - 1;
+  return addMesi(decorrenzaIso, n*12).slice(0,7);
+}
+function mappaRigaStorico(obj, meseRicevuto, nomeFile) {
+  const dataFattura = dataIta(obj['DATA FATTURA']);
+  const decorrenza = dataIta(obj['DECORRENZA']);
   return {
-    mese_competenza: meseInfo.meseCompetenza, mese_ricevuto: meseInfo.meseRicevuto,
+    mese_competenza: mesiCompetenzaDaDecorrenza(decorrenza, obj['ANNUALITA']),
+    mese_ricevuto: meseRicevuto,
     numero_ordine: obj['NUMERO ORDINE'] || null, codice_cliente: obj['CODICE CLIENTE'] || null,
     ragione_sociale: obj['RAGIONE SOCIALE'] || null, tipo_contratto: obj['TIPO CONTRATTO'] || null,
     sostituzione: obj['SOSTITUZIONE'] || null, codice_prodotto: obj['CODICE PRODOTTO'] || null,
     descrizione_prodotto: obj['DESCRIZIONE PRODOTTO'] || null,
-    decorrenza: dataIta(obj['DECORRENZA']), data_fattura: dataIta(obj['DATA FATTURA']),
+    decorrenza, data_fattura: dataFattura,
     durata: numIta(obj['DURATA']), annualita: numIta(obj['ANNUALITA']),
     imponibile: numIta(obj['IMPONIBILE PROVV.']), aliquota: numIta(obj['ALIQUOTA PROVVIGIONE']),
     importo_provvigioni: numIta(obj['IMPORTO PROVVIGIONI']), note: obj['NOTE'] || null,
@@ -229,7 +239,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
   }, [tuttiEventi, meseSelezionato, storico, haStoricoMeseSelezionato]);
 
   // ── Caricamento di un nuovo estratto conto: anteprima prima di confermare ──
-  const [anteprima, setAnteprima] = useState(null); // { file, meseInfo, righe, totale }
+  const [anteprima, setAnteprima] = useState(null); // { file, meseRicevuto, righe, righeSenzaData, totale, mesiTrovati }
   const [caricando, setCaricando] = useState(false);
   const fileRef = React.useRef();
 
@@ -238,11 +248,16 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     const buffer = await file.arrayBuffer();
     const testo = rilevaEDecodifica(buffer);
     const righeGrezze = parseTSV(testo);
-    const meseInfo = meseCompetenzaDaFilename(file.name);
-    if (!meseInfo) { showToast('Non riesco a capire il mese dal nome del file', 'Rinominalo tipo "Ottobre_2026.XLS"', 'info'); return; }
-    const righe = righeGrezze.map(r => mappaRigaStorico(r, meseInfo, file.name));
-    const totale = righe.reduce((s,r)=>s+r.importo_provvigioni, 0);
-    setAnteprima({ file: file.name, meseInfo, righe, totale });
+    const meseRicevuto = meseRicevutoDaFilename(file.name); // solo informativo, mai bloccante
+    const righe = righeGrezze.map(r => mappaRigaStorico(r, meseRicevuto, file.name));
+    const righeValide = righe.filter(r => r.mese_competenza);
+    const righeSenzaData = righe.length - righeValide.length;
+    const totale = righeValide.reduce((s,r)=>s+r.importo_provvigioni, 0);
+    // Ripartizione per mese di competenza reale — un file può contenere più mesi insieme
+    const perMese = {};
+    righeValide.forEach(r => { perMese[r.mese_competenza] = (perMese[r.mese_competenza]||0) + r.importo_provvigioni; });
+    const mesiTrovati = Object.entries(perMese).sort((a,b)=>b[0].localeCompare(a[0]));
+    setAnteprima({ file: file.name, meseRicevuto, righe: righeValide, righeSenzaData, totale, mesiTrovati });
   };
 
   const confermaImport = async () => {
@@ -252,7 +267,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     const ok = await dbSalvaStoricoBatch(anteprima.righe);
     setCaricando(false);
     if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
-    showToast('Estratto importato', `${anteprima.righe.length} righe — competenza ${anteprima.meseInfo.meseCompetenza}`);
+    showToast('Estratto importato', `${anteprima.righe.length} righe su ${anteprima.mesiTrovati.length} mes${anteprima.mesiTrovati.length===1?'e':'i'}`);
     setAnteprima(null);
     ricaricaStorico();
   };
@@ -396,17 +411,26 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
             <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>{anteprima.file}</div>
 
             <div style={{ background: 'var(--bg3)', borderRadius: 'var(--r)', padding: '12px 14px', marginBottom: 16 }}>
-              <div style={{ fontSize: 13, marginBottom: 6 }}>Mese ricevuto: <strong>{new Date(anteprima.meseInfo.meseRicevuto+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}</strong></div>
-              <div style={{ fontSize: 13, marginBottom: 6 }}>Competenza dedotta: <strong>{new Date(anteprima.meseInfo.meseCompetenza+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}</strong></div>
-              <div style={{ fontSize: 13, marginBottom: 6 }}>Righe lette: <strong>{anteprima.righe.length}</strong></div>
-              <div style={{ fontSize: 13 }}>Totale provvigioni nel file: <strong style={{ color: '#1B7A3E' }}>{fmtEur(anteprima.totale)}</strong></div>
+              <div style={{ fontSize: 13, marginBottom: 6 }}>Righe lette: <strong>{anteprima.righe.length}</strong>{anteprima.righeSenzaData > 0 && <span className="text-muted"> ({anteprima.righeSenzaData} scartate, data mancante)</span>}</div>
+              <div style={{ fontSize: 13, marginBottom: anteprima.mesiTrovati.length ? 10 : 0 }}>Totale provvigioni nel file: <strong style={{ color: '#1B7A3E' }}>{fmtEur(anteprima.totale)}</strong></div>
+              {anteprima.mesiTrovati.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                  <div className="fs-11 text-muted" style={{ marginBottom: 4 }}>Ripartizione per mese di competenza (decorrenza + annualità):</div>
+                  {anteprima.mesiTrovati.map(([mese, tot]) => (
+                    <div key={mese} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
+                      <span>{new Date(mese+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}{mesiConStorico.has(mese) && ' ⚠️'}</span>
+                      <span style={{ fontWeight: 600 }}>{fmtEur(tot)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {mesiConStorico.has(anteprima.meseInfo.meseCompetenza) && (
-              <div className="info-box amber" style={{ marginBottom: 16 }}>⚠️ Per questo mese hai già importato almeno un altro file. Confermando, questo file si aggiunge a quello già presente (non lo sostituisce) — a meno che il nome sia identico a un file già caricato, nel qual caso lo sostituisce.</div>
+            {anteprima.mesiTrovati.some(([mese]) => mesiConStorico.has(mese)) && (
+              <div className="info-box amber" style={{ marginBottom: 16 }}>⚠️ Per almeno uno dei mesi sopra (segnato con ⚠️) hai già importato dati in precedenza. Confermando, le righe di questo file si aggiungono a quelle già presenti per quel mese (non le sostituiscono) — a meno che il nome del file sia identico a uno già caricato, nel qual caso quel file viene sostituito.</div>
             )}
 
-            <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Controlla che il mese dedotto sia giusto prima di confermare — si basa sul nome del file.</div>
+            <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Il mese di competenza di ogni riga è dedotto da decorrenza e annualità, non dal nome del file: un file può contenere righe di mesi diversi, come sopra.</div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button className="btn" onClick={()=>setAnteprima(null)} disabled={caricando}>Annulla</button>
