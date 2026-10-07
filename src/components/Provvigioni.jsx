@@ -230,13 +230,16 @@ function chiaveRiga(r) {
 // così la tabella e le metriche della pagina funzionano senza distinguere la provenienza.
 function storicoComeEvento(r) {
   const annoNum = r.annualita || 1;
+  // Durata del contratto in anni, così come l'ha fatturata l'azienda — serve per vedere a
+  // colpo d'occhio a che punto siamo (es. "anno 2 di 3, restano 1") sulle righe reali.
+  const anniTotali = r.durata ? Math.max(1, Math.round(r.durata / 12)) : null;
   return {
     id: r.id, storico: true,
     contattoId: r.codice_cliente, nome: r.ragione_sociale, azienda: null,
     codiceCliente: r.codice_cliente, numeroOrdine: r.numero_ordine, numeroFattura: r.numero_fattura,
     prodottoNome: r.descrizione_prodotto || '(senza nome)', categoria: null,
     etichettaRegola: r.sostituzione === 'U' ? 'Upgrade' : r.sostituzione === 'S' ? 'Standard' : '—',
-    anno: annoNum, primoAnno: annoNum === 1, tipo: r.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo',
+    anno: annoNum, anniTotali, primoAnno: annoNum === 1, tipo: r.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo',
     maggiorata: false, data: r.data_fattura || (r.mese_competenza + '-15'),
     importo: r.imponibile, pct: r.aliquota, provvigione: r.importo_provvigioni,
   };
@@ -353,11 +356,17 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     };
   }, [meseSelezionato]);
 
+  // Tre categorie, non quattro: "Nuovo" è solo l'acquisizione — primo anno di un contratto nato
+  // come Nuovo. Tutto il resto è "Ricorrente": sia il rinnovo fatturato quest'anno su un cliente
+  // già acquisito, sia la rata di un anno successivo di un contratto pluriennale, nuovo o rinnovo
+  // che sia alla firma — quell'anno 2 o 3 non è mai un "nuovo rinnovo", è lo stesso incasso che
+  // si ripete, come confermato più volte: va tenuto separato dal dato di rinnovo vero e proprio.
   const totMese = eventiMese.reduce((s,e)=>s+e.provvigione, 0) + totExtra;
   const totPrimoAnno = eventiMese.filter(e=>e.primoAnno).reduce((s,e)=>s+e.provvigione, 0);
   const totProiezione = eventiMese.filter(e=>!e.primoAnno).reduce((s,e)=>s+e.provvigione, 0);
   const totNuovo = eventiMese.filter(e=>e.primoAnno && e.tipo==='nuovo').reduce((s,e)=>s+e.provvigione, 0);
   const totRinnovo = eventiMese.filter(e=>e.primoAnno && e.tipo==='rinnovo').reduce((s,e)=>s+e.provvigione, 0);
+  const totRicorrente = totRinnovo + totProiezione;
 
   // Proiezione dei prossimi 12 mesi (da oggi), per vedere a colpo d'occhio il ricorrente in arrivo
   const prossimi12 = useMemo(() => {
@@ -396,15 +405,19 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
             : <>Stima calcolata da ogni contratto inserito, proiettando un incasso per ciascun anno della sua durata — verifica sempre i casi segnalati come "non riconosciuto".</>}
         </div>
 
-        <div className="metric-grid" style={{ marginBottom: 16 }}>
+        <div className="metric-grid" style={{ marginBottom: 8 }}>
           <div className="metric-card"><div className="metric-label">Totale del mese</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{fmtEur(totMese)}</div></div>
-          <div className="metric-card"><div className="metric-label">Di cui Nuovo (1° anno)</div><div className="metric-value" style={{ color: '#0050A0' }}>{fmtEur(totNuovo)}</div></div>
-          <div className="metric-card"><div className="metric-label">Di cui Rinnovo (1° anno)</div><div className="metric-value">{fmtEur(totRinnovo)}</div></div>
-          <div className="metric-card"><div className="metric-label">Proiezione anni successivi</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(totProiezione)}</div></div>
+          <div className="metric-card" title="Primo anno di un contratto nato come Nuovo — l'acquisizione vera e propria del cliente in questo mese.">
+            <div className="metric-label">Nuovo — acquisizione</div><div className="metric-value" style={{ color: '#0050A0' }}>{fmtEur(totNuovo)}</div>
+          </div>
+          <div className="metric-card" title="Tutto ciò che non è una nuova acquisizione di questo mese: i rinnovi fatturati quest'anno su clienti già acquisiti, e le rate di anni successivi di qualsiasi contratto pluriennale, nato come Nuovo o come Rinnovo.">
+            <div className="metric-label">Ricorrente</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(totRicorrente)}</div>
+          </div>
         </div>
-        {totExtra !== 0 && (
-          <div className="fs-12" style={{ marginBottom: 16, color: 'var(--text2)' }}>Di cui <strong>{fmtEur(totExtra)}</strong> di premi/rimborsi inseriti manualmente per questo mese.</div>
-        )}
+        <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>
+          Ricorrente = <strong>{fmtEur(totRinnovo)}</strong> di rinnovo fatturato quest'anno su clienti già acquisiti, più <strong>{fmtEur(totProiezione)}</strong> di proiezione — le rate di anno 2, 3... di contratti pluriennali già firmati (nuovi o rinnovo), che continuano a generare provvigione senza che tu debba fare nulla.
+          {totExtra !== 0 && <> Di cui <strong>{fmtEur(totExtra)}</strong> inserito manualmente come premio/rimborso per questo mese.</>}
+        </div>
 
         <div className="charts-grid" style={{ marginBottom: 16 }}>
           <div className="card" style={{ marginBottom: 0 }}>
@@ -445,9 +458,9 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
         <div className="card-title" style={{ marginBottom: 10 }}>Dettaglio — {eventiMese.length} contratti/prodotti in questo mese</div>
         <div className="table-wrap">
           <table className="crm-table">
-            <thead><tr><th>Cliente</th><th>Prodotto</th><th>Linea/livello</th><th>Anno</th><th>Aliquota</th><th>Imponibile</th><th>Provvigione</th><th></th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Prodotto</th><th>Linea/livello</th><th>Anno</th><th>Durata contratto</th><th>Aliquota</th><th>Imponibile</th><th>Provvigione</th><th></th></tr></thead>
             <tbody>
-              {eventiMese.length === 0 ? <tr><td colSpan={8} className="empty">Nessun incasso previsto in questo mese</td></tr> : eventiMese.map((e,i) => (
+              {eventiMese.length === 0 ? <tr><td colSpan={9} className="empty">Nessun incasso previsto in questo mese</td></tr> : eventiMese.map((e,i) => (
                 <tr key={i}>
                   <td className="fw-600">
                     {e.nome || <span className="text-muted">(nome non disponibile)</span>}
@@ -461,6 +474,11 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                       ? <span className="badge" style={{ background: e.tipo==='nuovo'?'#EBF4FC':'#EEF1F5', color: e.tipo==='nuovo'?'#0050A0':'#5A6B7E' }}>{e.tipo==='nuovo'?'Nuovo':'Rinnovo'}{e.maggiorata && ' 🔥'}</span>
                       : <span className="badge" style={{ background: '#F1EDFC', color: '#7B68EE' }}>{e.storico ? `Anno ${e.anno}` : `Proiezione anno ${e.anno}`}</span>}
                     {e.rettificata && <span className="badge" style={{ background: '#FFF3DB', color: '#A8710A', marginLeft: 4 }} title="Aliquota modificata manualmente per questo anno">✎</span>}
+                  </td>
+                  <td className="fs-12">
+                    {e.anniTotali
+                      ? <>anno {e.anno} di {e.anniTotali}{e.anniTotali - e.anno > 0 && <div className="fs-11 text-muted">restano {e.anniTotali - e.anno}</div>}</>
+                      : <span className="text-muted">—</span>}
                   </td>
                   <td className="fs-12 fw-600">{e.pct}%</td>
                   <td className="fs-12">{fmtEur(e.importo)}</td>
