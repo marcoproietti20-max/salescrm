@@ -90,7 +90,7 @@ export function eventiProdotto(p, ct, contatto) {
     eventi.push({
       contattoId: contatto.id, nome: contatto.nome, azienda: contatto.azienda,
       prodottoNome: (p.nome || '(senza nome)') + ' — avviamento', categoria: p.categoria, etichettaRegola: 'Avviamento (una tantum)',
-      anno: 1, primoAnno: true, tipo: tipoKey, maggiorata: false, avviamento: true,
+      anno: 1, anniTotali: anni, primoAnno: true, tipo: tipoKey, maggiorata: false, avviamento: true,
       data: ct.dataInizio, importo: importoAvv, pct: PCT_AVVIAMENTO, provvigione: importoAvv * PCT_AVVIAMENTO / 100,
     });
   }
@@ -109,7 +109,7 @@ export function eventiProdotto(p, ct, contatto) {
     eventi.push({
       contattoId: contatto.id, nome: contatto.nome, azienda: contatto.azienda,
       prodottoNome: p.nome || '(senza nome)', categoria: p.categoria, etichettaRegola: regola.etichetta,
-      anno, primoAnno: anno === 1, tipo: tipoKey, maggiorata, rettificata,
+      anno, anniTotali: anni, primoAnno: anno === 1, tipo: tipoKey, maggiorata, rettificata,
       data: anno === 1 ? ct.dataInizio : addMesi(ct.dataInizio, (anno - 1) * 12),
       importo, pct, provvigione: importo * pct / 100,
     });
