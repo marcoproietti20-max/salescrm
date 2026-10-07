@@ -158,7 +158,7 @@ function parseTSV(testo) {
     if (celle.length < 5) continue;
     const obj = {};
     headers.forEach((h, idx) => { obj[h] = (celle[idx] || '').trim(); });
-    if (!obj['RAGIONE SOCIALE'] && !obj['NUMERO ORDINE']) continue;
+    if (!obj['RAGIONE SOCIALE FATTURAZIONE'] && !obj['RAGIONE SOCIALE CLIENTE'] && !obj['NUMERO ORDINE']) continue;
     dati.push(obj);
   }
   return dati;
@@ -202,7 +202,9 @@ function mappaRigaStorico(obj, meseRicevuto, nomeFile) {
     mese_competenza: mesiCompetenzaDaDecorrenza(decorrenza, obj['ANNUALITA']),
     mese_ricevuto: meseRicevuto,
     numero_ordine: obj['NUMERO ORDINE'] || null, posizione: obj['POSIZIONE'] || null, codice_cliente: obj['CODICE CLIENTE'] || null,
-    ragione_sociale: obj['RAGIONE SOCIALE'] || null, tipo_contratto: obj['TIPO CONTRATTO'] || null,
+    // "RAGIONE SOCIALE CLIENTE" è quasi sempre vuota nei file reali (1232 righe su 1258 nel
+    // campione verificato) — il nome compilato davvero è "RAGIONE SOCIALE FATTURAZIONE".
+    ragione_sociale: obj['RAGIONE SOCIALE FATTURAZIONE'] || obj['RAGIONE SOCIALE CLIENTE'] || null, tipo_contratto: obj['TIPO CONTRATTO'] || null,
     sostituzione: obj['SOSTITUZIONE'] || null, codice_prodotto: obj['CODICE PRODOTTO'] || null,
     descrizione_prodotto: obj['DESCRIZIONE PRODOTTO'] || null,
     numero_fattura: obj['NUMERO FATTURA'] || null,
@@ -231,6 +233,7 @@ function storicoComeEvento(r) {
   return {
     id: r.id, storico: true,
     contattoId: r.codice_cliente, nome: r.ragione_sociale, azienda: null,
+    codiceCliente: r.codice_cliente, numeroOrdine: r.numero_ordine, numeroFattura: r.numero_fattura,
     prodottoNome: r.descrizione_prodotto || '(senza nome)', categoria: null,
     etichettaRegola: r.sostituzione === 'U' ? 'Upgrade' : r.sostituzione === 'S' ? 'Standard' : '—',
     anno: annoNum, primoAnno: annoNum === 1, tipo: r.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo',
@@ -446,13 +449,17 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
             <tbody>
               {eventiMese.length === 0 ? <tr><td colSpan={8} className="empty">Nessun incasso previsto in questo mese</td></tr> : eventiMese.map((e,i) => (
                 <tr key={i}>
-                  <td className="fw-600">{e.nome}{e.azienda ? <div className="fs-11 text-muted">{e.azienda}</div> : null}</td>
+                  <td className="fw-600">
+                    {e.nome || <span className="text-muted">(nome non disponibile)</span>}
+                    {e.azienda ? <div className="fs-11 text-muted">{e.azienda}</div> : null}
+                    {e.storico && <div className="fs-11 text-muted">{e.codiceCliente ? `cod. ${e.codiceCliente}` : ''}{e.codiceCliente && (e.numeroOrdine||e.numeroFattura) ? ' · ' : ''}{e.numeroOrdine ? `ordine ${e.numeroOrdine}` : ''}{e.numeroOrdine && e.numeroFattura ? ' · ' : ''}{e.numeroFattura ? `fatt. ${e.numeroFattura}` : ''}</div>}
+                  </td>
                   <td className="fs-12">{e.prodottoNome}</td>
                   <td className="fs-12">{e.etichettaRegola}</td>
                   <td className="fs-12">
                     {e.primoAnno
                       ? <span className="badge" style={{ background: e.tipo==='nuovo'?'#EBF4FC':'#EEF1F5', color: e.tipo==='nuovo'?'#0050A0':'#5A6B7E' }}>{e.tipo==='nuovo'?'Nuovo':'Rinnovo'}{e.maggiorata && ' 🔥'}</span>
-                      : <span className="badge" style={{ background: '#F1EDFC', color: '#7B68EE' }}>Proiezione anno {e.anno}</span>}
+                      : <span className="badge" style={{ background: '#F1EDFC', color: '#7B68EE' }}>{e.storico ? `Anno ${e.anno}` : `Proiezione anno ${e.anno}`}</span>}
                     {e.rettificata && <span className="badge" style={{ background: '#FFF3DB', color: '#A8710A', marginLeft: 4 }} title="Aliquota modificata manualmente per questo anno">✎</span>}
                   </td>
                   <td className="fs-12 fw-600">{e.pct}%</td>
