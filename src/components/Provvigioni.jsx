@@ -407,17 +407,19 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
 
         <div className="metric-grid" style={{ marginBottom: 8 }}>
           <div className="metric-card"><div className="metric-label">Totale del mese</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{fmtEur(totMese)}</div></div>
-          <div className="metric-card" title="Primo anno di un contratto nato come Nuovo — l'acquisizione vera e propria del cliente in questo mese.">
-            <div className="metric-label">Nuovo — acquisizione</div><div className="metric-value" style={{ color: '#0050A0' }}>{fmtEur(totNuovo)}</div>
+          <div className="metric-card" title="Primo anno di un contratto con un cliente nuovo.">
+            <div className="metric-label">Nuovo</div><div className="metric-value" style={{ color: '#0050A0' }}>{fmtEur(totNuovo)}</div>
           </div>
-          <div className="metric-card" title="Tutto ciò che non è una nuova acquisizione di questo mese: i rinnovi fatturati quest'anno su clienti già acquisiti, e le rate di anni successivi di qualsiasi contratto pluriennale, nato come Nuovo o come Rinnovo.">
-            <div className="metric-label">Ricorrente</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(totRicorrente)}</div>
+          <div className="metric-card" title="Rinnovo fatturato quest'anno su un cliente già nel tuo portafoglio.">
+            <div className="metric-label">Rinnovo</div><div className="metric-value">{fmtEur(totRinnovo)}</div>
+          </div>
+          <div className="metric-card" title="Provvigioni pagate negli anni successivi in base alla durata del contratto: 12 mesi zero ricorrenti, 24 mesi uno, 36 mesi due, ecc. — indipendentemente dal fatto che il contratto sia nato Nuovo o Rinnovo.">
+            <div className="metric-label">Ricorrenti</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(totProiezione)}</div>
           </div>
         </div>
-        <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>
-          Ricorrente = <strong>{fmtEur(totRinnovo)}</strong> di rinnovo fatturato quest'anno su clienti già acquisiti, più <strong>{fmtEur(totProiezione)}</strong> di proiezione — le rate di anno 2, 3... di contratti pluriennali già firmati (nuovi o rinnovo), che continuano a generare provvigione senza che tu debba fare nulla.
-          {totExtra !== 0 && <> Di cui <strong>{fmtEur(totExtra)}</strong> inserito manualmente come premio/rimborso per questo mese.</>}
-        </div>
+        {totExtra !== 0 && (
+          <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Di cui <strong>{fmtEur(totExtra)}</strong> inserito manualmente come premio/rimborso per questo mese.</div>
+        )}
 
         <div className="charts-grid" style={{ marginBottom: 16 }}>
           <div className="card" style={{ marginBottom: 0 }}>
