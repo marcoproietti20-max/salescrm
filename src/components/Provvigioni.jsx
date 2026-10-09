@@ -124,8 +124,11 @@ export function eventiProdotto(p, ct, contatto) {
   return eventi;
 }
 
-// Tutti gli eventi di tutti i contatti, in un'unica lista piatta — usata sia dalla pagina
-// dedicata sia dalla card compatta in Dashboard.
+// Tutti gli eventi di tutti i contatti, in un'unica lista piatta — usata dalla dashboard
+// "previsionale" (stima dai contratti inseriti a mano) e dalla card compatta in Dashboard.
+// Non ha più alcun ruolo nella dashboard "ufficiale" delle Provvigioni: quella mostra solo i
+// dati reali degli estratti conto e la loro proiezione sui ricorrenti (eventiProiettatiDaStorico),
+// per evitare qualunque doppio conteggio — le due fonti restano sempre scisse, mai sommate.
 export function calcolaTuttiEventi(contacts) {
   const eventi = [];
   (contacts || []).forEach(c => {
@@ -320,24 +323,50 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
   const oggi = new Date().toISOString().slice(0, 10);
   const [offset, setOffset] = useState(0); // 0 = mese di competenza corrente (default) — l'incasso vero arriva ~45 giorni dopo
 
-  // ── Storico reale dagli estratti conto — ha sempre la precedenza sulla proiezione calcolata ──
+  // ── Due dashboard scisse, mai sommate tra loro ──────────────────────────────────────────
+  // "Ufficiale": solo i dati reali degli estratti conto, più la proiezione sui ricorrenti
+  // calcolata da quegli stessi dati (eventiProiettatiDaStorico) — fa fede, copre tutti i mesi.
+  // "Previsionale": una stima basata sui contratti inseriti a mano, utile solo per il mese in
+  // corso e quello appena concluso, in attesa che arrivi l'estratto conto reale il 15. Non
+  // genera mai proiezioni sugli anni successivi: quelle restano di competenza esclusiva
+  // dell'ufficiale, altrimenti le due dashboard si sovrapporrebbero sullo stesso incasso.
+  const [vista, setVista] = useState('ufficiale'); // 'ufficiale' | 'previsionale'
+
+  // ── Storico reale dagli estratti conto — unica fonte della dashboard ufficiale ──
   const [storico, setStorico] = useState(null); // null = ancora in caricamento
   const ricaricaStorico = () => dbLoadStoricoProvvigioni().then(setStorico);
   useEffect(() => { ricaricaStorico(); }, []);
 
-  // Proiezioni future generate dai dati reali già importati (clienti che potrebbero non essere
-  // mai stati inseriti a mano come contratto nel CRM) — si somma a quelle dei contratti inseriti
-  // a mano. Attenzione: se lo stesso contratto esiste sia come storico importato sia come
-  // contratto CRM inserito a mano, gli anni futuri verrebbero proiettati due volte — va evitato
-  // inserendo a mano solo i contratti davvero non ancora presenti in nessun estratto conto.
+  // Proiezione dei ricorrenti futuri, generata solo dai dati reali già importati — questa è
+  // l'UNICA fonte di "tuttiEventi" qui sotto: i contratti inseriti a mano non entrano più nella
+  // dashboard ufficiale, per evitare qualunque doppio conteggio con gli estratti conto.
   const eventiStoricoProiettati = useMemo(() => eventiProiettatiDaStorico(storico), [storico]);
-  const tuttiEventi = useMemo(() => [...calcolaTuttiEventi(contacts), ...eventiStoricoProiettati], [contacts, eventiStoricoProiettati]);
+  const tuttiEventi = eventiStoricoProiettati;
 
   const meseSelezionato = useMemo(() => meseStr(new Date(addMesi(oggi.slice(0,7)+'-01', offset) + 'T12:00:00')), [oggi, offset]);
   const etichettaMese = useMemo(() => {
     const d = new Date(meseSelezionato + '-01T12:00:00');
     return d.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
   }, [meseSelezionato]);
+
+  // ── Dashboard "previsionale": solo mese in corso e mese appena concluso, dai contratti a mano ──
+  const eventiCalcolatiDaContratti = useMemo(() => calcolaTuttiEventi(contacts), [contacts]);
+  const mesePrevisionaleCorrente = useMemo(() => meseStr(new Date(oggi.slice(0,7) + '-01T12:00:00')), [oggi]);
+  const mesePrevisionalePrecedente = useMemo(() => addMesi(mesePrevisionaleCorrente + '-01', -1).slice(0,7), [mesePrevisionaleCorrente]);
+  const calcolaRiepilogoPrevisionale = (mese) => {
+    const ev = eventiCalcolatiDaContratti.filter(e => e.data.startsWith(mese)).sort((a,b)=>a.data.localeCompare(b.data));
+    return {
+      mese, eventi: ev,
+      totale: ev.reduce((s,e)=>s+e.provvigione,0),
+      nuovo: ev.filter(e=>e.primoAnno && e.tipo==='nuovo').reduce((s,e)=>s+e.provvigione,0),
+      rinnovo: ev.filter(e=>e.primoAnno && e.tipo==='rinnovo').reduce((s,e)=>s+e.provvigione,0),
+      ricorrenti: ev.filter(e=>!e.primoAnno).reduce((s,e)=>s+e.provvigione,0),
+    };
+  };
+  const riepilogoPrevisionale = useMemo(() => ([
+    calcolaRiepilogoPrevisionale(mesePrevisionaleCorrente),
+    calcolaRiepilogoPrevisionale(mesePrevisionalePrecedente),
+  ]), [eventiCalcolatiDaContratti, mesePrevisionaleCorrente, mesePrevisionalePrecedente]);
 
   const mesiConStorico = useMemo(() => new Set((storico||[]).map(r=>r.mese_competenza)), [storico]);
   const haStoricoMeseSelezionato = mesiConStorico.has(meseSelezionato);
@@ -467,20 +496,68 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
       <div className="topbar">
         <span className="page-title">Provvigioni</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="btn btn-sm" onClick={()=>setOffset(o=>o-1)}>← Prec.</button>
-          <button className="btn btn-sm" onClick={()=>setOffset(0)}>Oggi</button>
-          <button className="btn btn-sm" onClick={()=>setOffset(o=>o+1)}>Succ. →</button>
-          <button className="btn btn-sm btn-primary" onClick={()=>fileRef.current?.click()}>📁 Carica estratto conto</button>
-          <input ref={fileRef} type="file" accept=".xls,.XLS,.txt" style={{ display: 'none' }} onChange={selezionaFile} />
+          <div style={{ display: 'flex', borderRadius: 'var(--r)', overflow: 'hidden', border: '1px solid var(--border)' }}>
+            <button className="btn btn-sm" style={{ border: 'none', borderRadius: 0, background: vista==='ufficiale' ? 'var(--bg3)' : 'transparent', fontWeight: vista==='ufficiale'?700:400 }} onClick={()=>setVista('ufficiale')}>📄 Ufficiale</button>
+            <button className="btn btn-sm" style={{ border: 'none', borderRadius: 0, background: vista==='previsionale' ? 'var(--bg3)' : 'transparent', fontWeight: vista==='previsionale'?700:400 }} onClick={()=>setVista('previsionale')}>🧮 Previsionale</button>
+          </div>
+          {vista === 'ufficiale' && (<>
+            <button className="btn btn-sm" onClick={()=>setOffset(o=>o-1)}>← Prec.</button>
+            <button className="btn btn-sm" onClick={()=>setOffset(0)}>Oggi</button>
+            <button className="btn btn-sm" onClick={()=>setOffset(o=>o+1)}>Succ. →</button>
+            <button className="btn btn-sm btn-primary" onClick={()=>fileRef.current?.click()}>📁 Carica estratto conto</button>
+            <input ref={fileRef} type="file" accept=".xls,.XLS,.txt" style={{ display: 'none' }} onChange={selezionaFile} />
+          </>)}
         </div>
       </div>
       <div className="content">
 
+      {vista === 'previsionale' ? (
+        <>
+          <div className="info-box amber" style={{ marginBottom: 16 }}>
+            🧮 Stima provvigionale calcolata dai contratti inseriti a mano — utile solo per capire quanto hai ipoteticamente maturato nel mese in corso e in quello appena concluso, in attesa dell'estratto conto reale del 15. Non è collegata ai dati ufficiali e non proietta anni futuri: quella parte resta solo nella dashboard "Ufficiale".
+          </div>
+          <div className="charts-grid" style={{ marginBottom: 16 }}>
+            {riepilogoPrevisionale.map((r, idx) => (
+              <div className="card" key={r.mese} style={{ marginBottom: 0 }}>
+                <div className="card-title" style={{ marginBottom: 10, textTransform: 'capitalize' }}>
+                  {idx === 0 ? 'Mese in corso — ' : 'Mese appena concluso — '}
+                  {new Date(r.mese+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}
+                </div>
+                <div className="metric-grid" style={{ marginBottom: 10 }}>
+                  <div className="metric-card"><div className="metric-label">Totale</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{fmtEur(r.totale)}</div></div>
+                  <div className="metric-card"><div className="metric-label">Nuovo</div><div className="metric-value" style={{ color: '#0050A0' }}>{fmtEur(r.nuovo)}</div></div>
+                  <div className="metric-card"><div className="metric-label">Rinnovo</div><div className="metric-value">{fmtEur(r.rinnovo)}</div></div>
+                  <div className="metric-card"><div className="metric-label">Ricorrenti</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(r.ricorrenti)}</div></div>
+                </div>
+                <div className="table-wrap">
+                  <table className="crm-table">
+                    <thead><tr><th>Cliente</th><th>Prodotto</th><th>Anno</th><th>Aliquota</th><th>Provvigione</th></tr></thead>
+                    <tbody>
+                      {r.eventi.length === 0 ? <tr><td colSpan={5} className="empty">Nessun contratto manuale per questo mese</td></tr> : r.eventi.map((e,i) => (
+                        <tr key={i}>
+                          <td className="fw-600 fs-12">{e.nome || <span className="text-muted">(nome non disponibile)</span>}</td>
+                          <td className="fs-12">{e.prodottoNome}</td>
+                          <td className="fs-12">{e.primoAnno ? (e.tipo==='nuovo'?'Nuovo':'Rinnovo') : `Anno ${e.anno}`}</td>
+                          <td className="fs-12">{e.pct}%</td>
+                          <td className="fw-600 fs-12" style={{ color: '#1B7A3E' }}>{fmtEur(e.provvigione)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
         <div className="info-box blue" style={{ marginBottom: 16 }}>
           📅 Competenza <strong style={{ textTransform: 'capitalize' }}>{etichettaMese}</strong> — pre-fattura il <strong>{prefatturaStr}</strong>, incasso previsto entro il <strong>{incassoStr}</strong>.{' '}
           {haStoricoMeseSelezionato
             ? <strong>📄 Dato reale, importato dall'estratto conto.</strong>
-            : <>Stima calcolata da ogni contratto inserito, proiettando un incasso per ciascun anno della sua durata — verifica sempre i casi segnalati come "non riconosciuto".</>}
+            : eventiMese.length > 0
+              ? <>Proiezione sui ricorrenti calcolata dai dati reali già importati per questi contratti — verifica sempre i casi segnalati come "categoria non riconosciuta".</>
+              : <>Nessun dato reale importato per questo mese. La stima dai contratti inseriti a mano è nella dashboard "Previsionale".</>}
         </div>
 
         <div className="metric-grid" style={{ marginBottom: 8 }}>
@@ -599,6 +676,8 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
             Mesi con dato reale già importato: {[...mesiConStorico].sort().reverse().map(m => new Date(m+'-01T12:00:00').toLocaleDateString('it-IT',{month:'short',year:'numeric'})).join(', ')}
           </div>
         )}
+        </>
+      )}
       </div>
 
       {/* ── Anteprima prima di confermare l'import ── */}
