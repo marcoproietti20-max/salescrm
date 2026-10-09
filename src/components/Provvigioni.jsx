@@ -175,7 +175,11 @@ function parseTSV(testo) {
 }
 function numIta(s) {
   if (!s) return 0;
-  const n = parseFloat(String(s).trim().replace(/\./g, '').replace(',', '.'));
+  // Il gestionale allinea le colonne con spazi, anche TRA il segno meno e le cifre di un
+  // importo negativo (es. storni/insoluti: "-              684,00") — .trim() toglie solo gli
+  // spazi ai bordi, quindi va rimosso ogni spazio, ovunque sia, prima di interpretare il numero.
+  // Senza questo, parseFloat si ferma sul segno isolato e il valore negativo sparisce (diventa 0).
+  const n = parseFloat(String(s).replace(/\s/g, '').replace(/\./g, '').replace(',', '.'));
   return isNaN(n) ? 0 : n;
 }
 function dataIta(s) {
@@ -244,6 +248,17 @@ function chiaveRiga(r) {
 }
 // Traduce una riga di storico reale nella stessa identica forma di un "evento" calcolato,
 // così la tabella e le metriche della pagina funzionano senza distinguere la provenienza.
+// Riconosce lo stato di una riga storno/ripreso dalla sua nota reale, solo per segnalarlo bene
+// in tabella — non cambia mai il calcolo: l'importo (positivo o negativo) resta quello reale,
+// sommato così com'è al totale del mese. Marco vuole vedere questi casi a colpo d'occhio, non
+// una logica diversa: se poi arriva un ripreso, si somma e il totale si corregge da solo.
+function statoDaNota(note) {
+  const n = (note || '').toUpperCase();
+  if (n.includes('ANNULLAT')) return { label: 'Annullato', bg: '#FBE3E3', color: '#A32D2D' };
+  if (n.includes('INSOLUT')) return { label: 'Insoluto', bg: '#FFF3DB', color: '#A8710A' };
+  if (n.includes('RIPRES')) return { label: 'Ripreso', bg: '#E6F4EA', color: '#1B7A3E' };
+  return null;
+}
 function storicoComeEvento(r) {
   const annoNum = r.annualita || 1;
   // Durata del contratto in anni, così come l'ha fatturata l'azienda — serve per vedere a
@@ -256,7 +271,7 @@ function storicoComeEvento(r) {
     prodottoNome: r.descrizione_prodotto || '(senza nome)', categoria: null,
     etichettaRegola: r.sostituzione === 'U' ? 'Upgrade' : r.sostituzione === 'S' ? 'Standard' : '—',
     anno: annoNum, anniTotali, primoAnno: annoNum === 1, tipo: r.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo',
-    maggiorata: false, data: r.data_fattura || (r.mese_competenza + '-15'),
+    maggiorata: false, data: r.data_fattura || (r.mese_competenza + '-15'), note: r.note,
     importo: r.imponibile, pct: r.aliquota, provvigione: r.importo_provvigioni,
   };
 }
@@ -289,6 +304,12 @@ export function eventiProiettatiDaStorico(storico) {
     const maxAnnualita = Math.max(...righe.map(r => Number(r.annualita) || 1));
     if (anniTotali <= maxAnnualita) return; // nessun anno futuro ancora da proiettare
     const ultime = righe.filter(r => Number(r.annualita) === maxAnnualita);
+    // Se l'azienda ha già segnalato "ANNULLATO" sull'ultimo anno conosciuto, il contratto è
+    // chiuso per davvero — niente proiezione sugli anni successivi. È un segnale che arriva
+    // dai dati reali stessi, quindi non richiede nessun intervento manuale di Marco su questo
+    // lato "ufficiale": eliminare il contratto nel CRM ferma solo la stima "Previsionale",
+    // che legge i contratti inseriti a mano, non questa proiezione basata sullo storico.
+    if (ultime.some(r => (r.note || '').toUpperCase().includes('ANNULLAT'))) return;
     const base = ultime[0];
     // Base imponibile e provvigione dell'ultimo anno conosciuto: somma le eventuali righe U/S
     // dello stesso anno. L'aliquota futura è quella effettiva (provvigione/imponibile), non
@@ -635,6 +656,9 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                       ? <span className="badge" style={{ background: e.tipo==='nuovo'?'#EBF4FC':'#EEF1F5', color: e.tipo==='nuovo'?'#0050A0':'#5A6B7E' }}>{e.tipo==='nuovo'?'Nuovo':'Rinnovo'}{e.maggiorata && ' 🔥'}</span>
                       : <span className="badge" style={{ background: e.storicoProiettato ? '#FDEEDC' : '#F1EDFC', color: e.storicoProiettato ? '#B5651D' : '#7B68EE' }} title={e.storicoProiettato ? 'Proiettato dai dati reali già importati per questo contratto (non da un contratto inserito a mano nel CRM)' : undefined}>{e.storico ? `Anno ${e.anno}` : e.storicoProiettato ? `Proiezione anno ${e.anno} (da storico)` : `Proiezione anno ${e.anno}`}</span>}
                     {e.rettificata && <span className="badge" style={{ background: '#FFF3DB', color: '#A8710A', marginLeft: 4 }} title="Aliquota modificata manualmente per questo anno">✎</span>}
+                    {e.storico && statoDaNota(e.note) && (
+                      <span className="badge" style={{ background: statoDaNota(e.note).bg, color: statoDaNota(e.note).color, marginLeft: 4 }} title={e.note}>{statoDaNota(e.note).label}</span>
+                    )}
                   </td>
                   <td className="fs-12">
                     {e.anniTotali
