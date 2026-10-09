@@ -5,10 +5,13 @@ import CallButton, { PhoneLink } from './CallButton';
 import EmailButton from './EmailButton';
 
 // Rettifiche future su un singolo prodotto: per un anno specifico, "escludi" (es. nota di
-// credito, cliente che smette di pagare — l'anno teoricamente dura ma non verrà più fatturato)
-// oppure "aliquota" (un'aliquota manuale diversa dalla tabella, es. cliente fuori zona con
-// provvigione ridotta dal secondo anno). Caso raro, per questo resta un pannello richiudibile
-// che non intasa la riga del prodotto. Non tocca il contratto: resta sempre reversibile.
+// credito, cliente che smette di pagare — l'anno teoricamente dura ma non verrà più fatturato),
+// "aliquota" (un'aliquota manuale diversa dalla tabella, es. cliente fuori zona con provvigione
+// ridotta dal secondo anno), oppure "importo" (un imponibile manuale diverso da quello del
+// contratto per quell'anno — es. un contratto che fattura meno dal secondo anno in poi, come un
+// costo di avviamento/formazione già conteggiato a parte nel primo anno che non si ripete).
+// Caso raro, per questo resta un pannello richiudibile che non intasa la riga del prodotto.
+// Non tocca il contratto: resta sempre reversibile.
 function RettificheProdotto({ prodotto, onChange }) {
   const [aperto, setAperto] = useState(false);
   const rett = prodotto.rettifiche || [];
@@ -29,13 +32,18 @@ function RettificheProdotto({ prodotto, onChange }) {
               <span className="fs-11">Anno</span>
               <input className="form-control" style={{ width: 54 }} type="number" min="1" value={r.anno}
                 onChange={e => modifica(idx, 'anno', Number(e.target.value) || 1)} />
-              <select className="form-control" style={{ width: 110 }} value={r.tipo}
+              <select className="form-control" style={{ width: 130 }} value={r.tipo}
                 onChange={e => modifica(idx, 'tipo', e.target.value)}>
                 <option value="escluso">Escludi</option>
                 <option value="aliquota">Aliquota manuale</option>
+                <option value="importo">Importo manuale</option>
               </select>
               {r.tipo === 'aliquota' && (
                 <input className="form-control" style={{ width: 64 }} type="number" placeholder="%" value={r.valore}
+                  onChange={e => modifica(idx, 'valore', e.target.value)} />
+              )}
+              {r.tipo === 'importo' && (
+                <input className="form-control" style={{ width: 90 }} type="number" placeholder="€" value={r.valore}
                   onChange={e => modifica(idx, 'valore', e.target.value)} />
               )}
               <button type="button" className="btn btn-sm btn-danger" onClick={() => rimuovi(idx)}>×</button>

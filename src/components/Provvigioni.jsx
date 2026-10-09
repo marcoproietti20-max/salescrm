@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { fmtEur, fmt, getContratti } from '../constants';
+import { fmtEur, fmt, getContratti, CATALOGO_PRODOTTI } from '../constants';
 import { nomeCorrisponde } from './Canvass';
 import { dbLoadStoricoProvvigioni, dbEliminaStoricoFile, dbSalvaStoricoBatch, dbEliminaStoricoRiga, dbLoadExtraProvvigioni, dbSalvaExtraProvvigioni, dbEliminaExtraProvvigioni } from '../supabase';
 
@@ -103,15 +103,22 @@ export function eventiProdotto(p, ct, contatto) {
       pct = 45; maggiorata = true;
     }
     let rettificata = false;
+    let importoAnno = importo;
     if (rettifica && rettifica.tipo === 'aliquota' && rettifica.valore !== '' && rettifica.valore != null) {
       pct = Number(rettifica.valore) || 0; maggiorata = false; rettificata = true;
+    }
+    // "importo" manuale: per contratti il cui prezzo cambia negli anni successivi (es. un
+    // costo di avviamento/formazione conteggiato solo il primo anno, tramite importoAvviamento
+    // separato) — senza questo, ogni anno ripeterebbe lo stesso importo del contratto.
+    if (rettifica && rettifica.tipo === 'importo' && rettifica.valore !== '' && rettifica.valore != null) {
+      importoAnno = Number(rettifica.valore) || 0; rettificata = true;
     }
     eventi.push({
       contattoId: contatto.id, nome: contatto.nome, azienda: contatto.azienda,
       prodottoNome: p.nome || '(senza nome)', categoria: p.categoria, etichettaRegola: regola.etichetta,
       anno, anniTotali: anni, primoAnno: anno === 1, tipo: tipoKey, maggiorata, rettificata,
       data: anno === 1 ? ct.dataInizio : addMesi(ct.dataInizio, (anno - 1) * 12),
-      importo, pct, provvigione: importo * pct / 100,
+      importo: importoAnno, pct, provvigione: importoAnno * pct / 100,
     });
   }
   return eventi;
@@ -245,22 +252,92 @@ function storicoComeEvento(r) {
   };
 }
 
+// ── Proiezione futura dai dati reali importati ─────────────────────────────
+// Un cliente conosciuto SOLO tramite l'estratto conto importato (mai inserito a mano come
+// contratto nel CRM) non esisterebbe altrimenti per il motore di proiezione: calcolaTuttiEventi
+// legge solo i contratti inseriti a mano, quindi quel cliente non mostrerebbe mai un "Ricorrente"
+// nei mesi futuri finché non arriva il vero estratto conto di quell'anno. Questa funzione proietta
+// invece gli anni ancora non fatturati (durata/12 > ultima annualità vista) direttamente dalle
+// righe storiche già importate.
+// Indice inverso nome prodotto → categoria, dal catalogo usato nel form contratti — lo storico
+// non registra la categoria, solo la descrizione del prodotto fatturato.
+const NOME_A_CATEGORIA = {};
+Object.entries(CATALOGO_PRODOTTI).forEach(([cat, nomi]) => {
+  (nomi || []).forEach(n => { NOME_A_CATEGORIA[n.toLowerCase().trim()] = cat; });
+});
+function indovinaCategoria(descrizione) {
+  if (!descrizione) return null;
+  const d = descrizione.toLowerCase().trim();
+  if (NOME_A_CATEGORIA[d]) return NOME_A_CATEGORIA[d];
+  // Le descrizioni dell'estratto conto a volte hanno un suffisso/prefisso diverso dal nome a
+  // catalogo (es. varianti promo) — provo un confronto per inclusione in entrambi i sensi.
+  const trovato = Object.keys(NOME_A_CATEGORIA).find(n => d.includes(n) || n.includes(d));
+  return trovato ? NOME_A_CATEGORIA[trovato] : null;
+}
+export function eventiProiettatiDaStorico(storico) {
+  // Raggruppo le righe storiche per contratto reale: stesso ordine + stesso prodotto (ignoro la
+  // sostituzione U/S, che è solo la ripartizione upgrade/standard dello stesso importo).
+  const gruppi = {};
+  (storico || []).forEach(r => {
+    if (!r.numero_ordine || !r.codice_prodotto || !r.decorrenza) return;
+    const chiave = `${r.numero_ordine}|${r.codice_prodotto}`;
+    (gruppi[chiave] = gruppi[chiave] || []).push(r);
+  });
+  const eventi = [];
+  Object.values(gruppi).forEach(righe => {
+    const durataM = Math.max(...righe.map(r => Number(r.durata) || 0));
+    const anniTotali = durataM ? Math.max(1, Math.round(durataM / 12)) : 1;
+    const maxAnnualita = Math.max(...righe.map(r => Number(r.annualita) || 1));
+    if (anniTotali <= maxAnnualita) return; // nessun anno futuro ancora da proiettare
+    const ultime = righe.filter(r => Number(r.annualita) === maxAnnualita);
+    const base = ultime[0];
+    // Base imponibile dell'ultimo anno conosciuto: somma le eventuali righe U/S dello stesso anno.
+    const importoBase = ultime.reduce((s, r) => s + (Number(r.imponibile) || 0), 0);
+    const categoria = indovinaCategoria(base.descrizione_prodotto);
+    const regola = categoria ? trovaRegola(categoria, base.descrizione_prodotto) : null;
+    const bucket = bucketDurata(durataM);
+    const tipoKey = base.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo';
+    for (let anno = maxAnnualita + 1; anno <= anniTotali; anno++) {
+      // Categoria non riconosciuta dal catalogo: niente aliquota indovinata a caso — resta 0%
+      // con un'etichetta ben visibile, da verificare a mano.
+      const pct = regola ? regola[tipoKey][bucket] : 0;
+      eventi.push({
+        storicoProiettato: true,
+        contattoId: base.codice_cliente, nome: base.ragione_sociale, azienda: null,
+        codiceCliente: base.codice_cliente, numeroOrdine: base.numero_ordine, numeroFattura: null,
+        prodottoNome: base.descrizione_prodotto || '(senza nome)', categoria,
+        etichettaRegola: regola ? regola.etichetta : 'Categoria non riconosciuta — verifica aliquota',
+        anno, anniTotali, primoAnno: false, tipo: tipoKey, maggiorata: false,
+        data: mesiCompetenzaDaDecorrenza(base.decorrenza, anno) + '-15',
+        importo: importoBase, pct, provvigione: importoBase * pct / 100,
+      });
+    }
+  });
+  return eventi;
+}
+
 export default function Provvigioni({ contacts, navigateTo, showToast }) {
   const oggi = new Date().toISOString().slice(0, 10);
   const [offset, setOffset] = useState(0); // 0 = mese di competenza corrente (default) — l'incasso vero arriva ~45 giorni dopo
 
-  const tuttiEventi = useMemo(() => calcolaTuttiEventi(contacts), [contacts]);
+  // ── Storico reale dagli estratti conto — ha sempre la precedenza sulla proiezione calcolata ──
+  const [storico, setStorico] = useState(null); // null = ancora in caricamento
+  const ricaricaStorico = () => dbLoadStoricoProvvigioni().then(setStorico);
+  useEffect(() => { ricaricaStorico(); }, []);
+
+  // Proiezioni future generate dai dati reali già importati (clienti che potrebbero non essere
+  // mai stati inseriti a mano come contratto nel CRM) — si somma a quelle dei contratti inseriti
+  // a mano. Attenzione: se lo stesso contratto esiste sia come storico importato sia come
+  // contratto CRM inserito a mano, gli anni futuri verrebbero proiettati due volte — va evitato
+  // inserendo a mano solo i contratti davvero non ancora presenti in nessun estratto conto.
+  const eventiStoricoProiettati = useMemo(() => eventiProiettatiDaStorico(storico), [storico]);
+  const tuttiEventi = useMemo(() => [...calcolaTuttiEventi(contacts), ...eventiStoricoProiettati], [contacts, eventiStoricoProiettati]);
 
   const meseSelezionato = useMemo(() => meseStr(new Date(addMesi(oggi.slice(0,7)+'-01', offset) + 'T12:00:00')), [oggi, offset]);
   const etichettaMese = useMemo(() => {
     const d = new Date(meseSelezionato + '-01T12:00:00');
     return d.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
   }, [meseSelezionato]);
-
-  // ── Storico reale dagli estratti conto — ha sempre la precedenza sulla proiezione calcolata ──
-  const [storico, setStorico] = useState(null); // null = ancora in caricamento
-  const ricaricaStorico = () => dbLoadStoricoProvvigioni().then(setStorico);
-  useEffect(() => { ricaricaStorico(); }, []);
 
   const mesiConStorico = useMemo(() => new Set((storico||[]).map(r=>r.mese_competenza)), [storico]);
   const haStoricoMeseSelezionato = mesiConStorico.has(meseSelezionato);
@@ -356,26 +433,27 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     };
   }, [meseSelezionato]);
 
-  // Tre categorie, non quattro: "Nuovo" è solo l'acquisizione — primo anno di un contratto nato
-  // come Nuovo. Tutto il resto è "Ricorrente": sia il rinnovo fatturato quest'anno su un cliente
-  // già acquisito, sia la rata di un anno successivo di un contratto pluriennale, nuovo o rinnovo
-  // che sia alla firma — quell'anno 2 o 3 non è mai un "nuovo rinnovo", è lo stesso incasso che
-  // si ripete, come confermato più volte: va tenuto separato dal dato di rinnovo vero e proprio.
+  // Tre categorie distinte: Nuovo (primo anno, cliente nuovo), Rinnovo (primo anno, cliente già
+  // in portafoglio) e Ricorrenti (le rate degli anni successivi dovute alla durata del contratto,
+  // indipendentemente dal fatto che sia nato Nuovo o Rinnovo — 12 mesi zero, 24 mesi uno, ecc.).
   const totMese = eventiMese.reduce((s,e)=>s+e.provvigione, 0) + totExtra;
   const totPrimoAnno = eventiMese.filter(e=>e.primoAnno).reduce((s,e)=>s+e.provvigione, 0);
   const totProiezione = eventiMese.filter(e=>!e.primoAnno).reduce((s,e)=>s+e.provvigione, 0);
   const totNuovo = eventiMese.filter(e=>e.primoAnno && e.tipo==='nuovo').reduce((s,e)=>s+e.provvigione, 0);
   const totRinnovo = eventiMese.filter(e=>e.primoAnno && e.tipo==='rinnovo').reduce((s,e)=>s+e.provvigione, 0);
-  const totRicorrente = totRinnovo + totProiezione;
 
   // Proiezione dei prossimi 12 mesi (da oggi), per vedere a colpo d'occhio il ricorrente in arrivo
   const prossimi12 = useMemo(() => {
     return Array.from({length:12}, (_,i) => {
       const m = meseStr(new Date(addMesi(oggi.slice(0,7)+'-01', i) + 'T12:00:00'));
-      const tot = tuttiEventi.filter(e=>e.data.startsWith(m)).reduce((s,e)=>s+e.provvigione,0);
+      // Per i mesi già coperti da un estratto conto reale uso quel dato, non la proiezione
+      // calcolata — stessa regola di priorità usata per il dettaglio del mese selezionato.
+      const tot = mesiConStorico.has(m)
+        ? (storico||[]).filter(r=>r.mese_competenza===m).reduce((s,r)=>s+(r.importo_provvigioni||0), 0)
+        : tuttiEventi.filter(e=>e.data.startsWith(m)).reduce((s,e)=>s+e.provvigione,0);
       return { mese: m, tot };
     });
-  }, [tuttiEventi, oggi]);
+  }, [tuttiEventi, oggi, storico, mesiConStorico]);
   const maxProiezione = Math.max(1, ...prossimi12.map(p=>p.tot));
 
   const perCategoria = useMemo(() => {
@@ -467,14 +545,14 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                   <td className="fw-600">
                     {e.nome || <span className="text-muted">(nome non disponibile)</span>}
                     {e.azienda ? <div className="fs-11 text-muted">{e.azienda}</div> : null}
-                    {e.storico && <div className="fs-11 text-muted">{e.codiceCliente ? `cod. ${e.codiceCliente}` : ''}{e.codiceCliente && (e.numeroOrdine||e.numeroFattura) ? ' · ' : ''}{e.numeroOrdine ? `ordine ${e.numeroOrdine}` : ''}{e.numeroOrdine && e.numeroFattura ? ' · ' : ''}{e.numeroFattura ? `fatt. ${e.numeroFattura}` : ''}</div>}
+                    {(e.storico || e.storicoProiettato) && <div className="fs-11 text-muted">{e.codiceCliente ? `cod. ${e.codiceCliente}` : ''}{e.codiceCliente && (e.numeroOrdine||e.numeroFattura) ? ' · ' : ''}{e.numeroOrdine ? `ordine ${e.numeroOrdine}` : ''}{e.numeroOrdine && e.numeroFattura ? ' · ' : ''}{e.numeroFattura ? `fatt. ${e.numeroFattura}` : ''}</div>}
                   </td>
                   <td className="fs-12">{e.prodottoNome}</td>
                   <td className="fs-12">{e.etichettaRegola}</td>
                   <td className="fs-12">
                     {e.primoAnno
                       ? <span className="badge" style={{ background: e.tipo==='nuovo'?'#EBF4FC':'#EEF1F5', color: e.tipo==='nuovo'?'#0050A0':'#5A6B7E' }}>{e.tipo==='nuovo'?'Nuovo':'Rinnovo'}{e.maggiorata && ' 🔥'}</span>
-                      : <span className="badge" style={{ background: '#F1EDFC', color: '#7B68EE' }}>{e.storico ? `Anno ${e.anno}` : `Proiezione anno ${e.anno}`}</span>}
+                      : <span className="badge" style={{ background: e.storicoProiettato ? '#FDEEDC' : '#F1EDFC', color: e.storicoProiettato ? '#B5651D' : '#7B68EE' }} title={e.storicoProiettato ? 'Proiettato dai dati reali già importati per questo contratto (non da un contratto inserito a mano nel CRM)' : undefined}>{e.storico ? `Anno ${e.anno}` : e.storicoProiettato ? `Proiezione anno ${e.anno} (da storico)` : `Proiezione anno ${e.anno}`}</span>}
                     {e.rettificata && <span className="badge" style={{ background: '#FFF3DB', color: '#A8710A', marginLeft: 4 }} title="Aliquota modificata manualmente per questo anno">✎</span>}
                   </td>
                   <td className="fs-12">
