@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { fmtEur, fmt, getContratti, CATALOGO_PRODOTTI } from '../constants';
+import { fmtEur, fmt, getContratti } from '../constants';
 import { nomeCorrisponde } from './Canvass';
 import { dbLoadStoricoProvvigioni, dbEliminaStoricoFile, dbSalvaStoricoBatch, dbEliminaStoricoRiga, dbLoadExtraProvvigioni, dbSalvaExtraProvvigioni, dbEliminaExtraProvvigioni } from '../supabase';
 
@@ -262,21 +262,11 @@ function storicoComeEvento(r) {
 // nei mesi futuri finché non arriva il vero estratto conto di quell'anno. Questa funzione proietta
 // invece gli anni ancora non fatturati (durata/12 > ultima annualità vista) direttamente dalle
 // righe storiche già importate.
-// Indice inverso nome prodotto → categoria, dal catalogo usato nel form contratti — lo storico
-// non registra la categoria, solo la descrizione del prodotto fatturato.
-const NOME_A_CATEGORIA = {};
-Object.entries(CATALOGO_PRODOTTI).forEach(([cat, nomi]) => {
-  (nomi || []).forEach(n => { NOME_A_CATEGORIA[n.toLowerCase().trim()] = cat; });
-});
-function indovinaCategoria(descrizione) {
-  if (!descrizione) return null;
-  const d = descrizione.toLowerCase().trim();
-  if (NOME_A_CATEGORIA[d]) return NOME_A_CATEGORIA[d];
-  // Le descrizioni dell'estratto conto a volte hanno un suffisso/prefisso diverso dal nome a
-  // catalogo (es. varianti promo) — provo un confronto per inclusione in entrambi i sensi.
-  const trovato = Object.keys(NOME_A_CATEGORIA).find(n => d.includes(n) || n.includes(d));
-  return trovato ? NOME_A_CATEGORIA[trovato] : null;
-}
+// L'estratto conto fa fede al 100%: l'aliquota da usare per l'anno futuro è quella REALE già
+// applicata dall'azienda nell'ultimo anno fatturato dello stesso contratto (ricavata dalle sue
+// stesse colonne ALIQUOTA PROVVIGIONE / IMPORTO PROVVIGIONI), mai ricalcolata dalla tabella
+// interna — niente riconoscimento di categoria dal nome prodotto, che serviva solo a indovinare
+// un'aliquota che qui è già nota con certezza.
 export function eventiProiettatiDaStorico(storico) {
   // Raggruppo le righe storiche per contratto reale: stesso ordine + stesso prodotto (ignoro la
   // sostituzione U/S, che è solo la ripartizione upgrade/standard dello stesso importo).
@@ -294,22 +284,21 @@ export function eventiProiettatiDaStorico(storico) {
     if (anniTotali <= maxAnnualita) return; // nessun anno futuro ancora da proiettare
     const ultime = righe.filter(r => Number(r.annualita) === maxAnnualita);
     const base = ultime[0];
-    // Base imponibile dell'ultimo anno conosciuto: somma le eventuali righe U/S dello stesso anno.
+    // Base imponibile e provvigione dell'ultimo anno conosciuto: somma le eventuali righe U/S
+    // dello stesso anno. L'aliquota futura è quella effettiva (provvigione/imponibile), non
+    // la singola ALIQUOTA PROVVIGIONE di una riga — così resta corretta anche quando U e S
+    // dello stesso anno hanno aliquote diverse tra loro.
     const importoBase = ultime.reduce((s, r) => s + (Number(r.imponibile) || 0), 0);
-    const categoria = indovinaCategoria(base.descrizione_prodotto);
-    const regola = categoria ? trovaRegola(categoria, base.descrizione_prodotto) : null;
-    const bucket = bucketDurata(durataM);
+    const provvigioneBase = ultime.reduce((s, r) => s + (Number(r.importo_provvigioni) || 0), 0);
+    const pct = importoBase > 0 ? Math.round((provvigioneBase / importoBase) * 10000) / 100 : (Number(base.aliquota) || 0);
     const tipoKey = base.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo';
     for (let anno = maxAnnualita + 1; anno <= anniTotali; anno++) {
-      // Categoria non riconosciuta dal catalogo: niente aliquota indovinata a caso — resta 0%
-      // con un'etichetta ben visibile, da verificare a mano.
-      const pct = regola ? regola[tipoKey][bucket] : 0;
       eventi.push({
         storicoProiettato: true,
         contattoId: base.codice_cliente, nome: base.ragione_sociale, azienda: null,
         codiceCliente: base.codice_cliente, numeroOrdine: base.numero_ordine, numeroFattura: null,
-        prodottoNome: base.descrizione_prodotto || '(senza nome)', categoria,
-        etichettaRegola: regola ? regola.etichetta : 'Categoria non riconosciuta — verifica aliquota',
+        prodottoNome: base.descrizione_prodotto || '(senza nome)', categoria: null,
+        etichettaRegola: base.sostituzione === 'U' ? 'Upgrade' : base.sostituzione === 'S' ? 'Standard' : '—',
         anno, anniTotali, primoAnno: false, tipo: tipoKey, maggiorata: false,
         data: mesiCompetenzaDaDecorrenza(base.decorrenza, anno) + '-15',
         importo: importoBase, pct, provvigione: importoBase * pct / 100,
@@ -348,6 +337,14 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     const d = new Date(meseSelezionato + '-01T12:00:00');
     return d.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
   }, [meseSelezionato]);
+  // Selettore mese/anno diretto (es. "2025-06") — calcola l'offset in mesi interi rispetto a
+  // oggi, senza passare per le frecce avanti/indietro una alla volta.
+  const vaiAMese = (valoreYYYYMM) => {
+    if (!valoreYYYYMM) return;
+    const [ySel, mSel] = valoreYYYYMM.split('-').map(Number);
+    const [yOggi, mOggi] = oggi.slice(0,7).split('-').map(Number);
+    setOffset((ySel - yOggi) * 12 + (mSel - mOggi));
+  };
 
   // ── Dashboard "previsionale": solo mese in corso e mese appena concluso, dai contratti a mano ──
   const eventiCalcolatiDaContratti = useMemo(() => calcolaTuttiEventi(contacts), [contacts]);
@@ -504,6 +501,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
             <button className="btn btn-sm" onClick={()=>setOffset(o=>o-1)}>← Prec.</button>
             <button className="btn btn-sm" onClick={()=>setOffset(0)}>Oggi</button>
             <button className="btn btn-sm" onClick={()=>setOffset(o=>o+1)}>Succ. →</button>
+            <input className="form-control" type="month" style={{ width: 150 }} value={meseSelezionato} onChange={e=>vaiAMese(e.target.value)} title="Vai direttamente a un mese/anno" />
             <button className="btn btn-sm btn-primary" onClick={()=>fileRef.current?.click()}>📁 Carica estratto conto</button>
             <input ref={fileRef} type="file" accept=".xls,.XLS,.txt" style={{ display: 'none' }} onChange={selezionaFile} />
           </>)}
@@ -556,7 +554,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
           {haStoricoMeseSelezionato
             ? <strong>📄 Dato reale, importato dall'estratto conto.</strong>
             : eventiMese.length > 0
-              ? <>Proiezione sui ricorrenti calcolata dai dati reali già importati per questi contratti — verifica sempre i casi segnalati come "categoria non riconosciuta".</>
+              ? <>Proiezione sui ricorrenti calcolata dai dati reali già importati per questi contratti, stessa aliquota dell'ultimo anno fatturato.</>
               : <>Nessun dato reale importato per questo mese. La stima dai contratti inseriti a mano è nella dashboard "Previsionale".</>}
         </div>
 
@@ -672,8 +670,13 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
         </div>
 
         {mesiConStorico.size > 0 && (
-          <div className="fs-11 text-muted" style={{ marginTop: 10 }}>
-            Mesi con dato reale già importato: {[...mesiConStorico].sort().reverse().map(m => new Date(m+'-01T12:00:00').toLocaleDateString('it-IT',{month:'short',year:'numeric'})).join(', ')}
+          <div className="fs-11 text-muted" style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            <span>Mesi con dato reale già importato:</span>
+            {[...mesiConStorico].sort().reverse().map(m => (
+              <button key={m} className="btn btn-sm" style={{ padding: '2px 8px', fontSize: 11, background: m===meseSelezionato?'var(--bg3)':'transparent', fontWeight: m===meseSelezionato?700:400 }} onClick={()=>vaiAMese(m)}>
+                {new Date(m+'-01T12:00:00').toLocaleDateString('it-IT',{month:'short',year:'numeric'})}
+              </button>
+            ))}
           </div>
         )}
         </>
