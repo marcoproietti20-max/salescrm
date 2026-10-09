@@ -197,9 +197,12 @@ function meseRicevutoDaFilename(filename) {
   if (!m || !MESI_IT[m[1]]) return null;
   return `${m[2]}-${String(MESI_IT[m[1]]).padStart(2, '0')}`;
 }
-// La competenza si calcola da decorrenza+annualità (stessa logica del motore di proiezione:
-// l'anno N di un contratto cade N-1 anni dopo la sua decorrenza), non dalla data fattura —
-// un rinnovo inserito in anticipo può avere decorrenza mesi dopo la fattura che lo genera.
+// Stima solo per anni futuri NON ancora fatturati (usata da eventiProiettatiDaStorico): decorrenza
+// + annualità, cioè "l'anno N di un contratto cade N-1 anni dopo la sua decorrenza". Per le righe
+// già fatturate, invece, il mese di competenza si prende direttamente dalla vera DATA FATTURA
+// (sotto, in mappaRigaStorico) — mai da questa stima: un contratto può decorrere settimane prima
+// di essere effettivamente inserito e fatturato insieme al resto del lotto di quel mese, quindi
+// calcolarlo dalla decorrenza sposterebbe l'importo su un mese in cui non è mai stato pagato.
 function mesiCompetenzaDaDecorrenza(decorrenzaIso, annualita) {
   if (!decorrenzaIso) return null;
   const n = (Number(annualita)||1) - 1;
@@ -209,7 +212,10 @@ function mappaRigaStorico(obj, meseRicevuto, nomeFile) {
   const dataFattura = dataIta(obj['DATA FATTURA']);
   const decorrenza = dataIta(obj['DECORRENZA']);
   return {
-    mese_competenza: mesiCompetenzaDaDecorrenza(decorrenza, obj['ANNUALITA']),
+    // Competenza reale = mese della DATA FATTURA, il dato che l'azienda ha davvero usato per
+    // pagare questa riga — fa fede al 100%, come tutto il resto dell'estratto conto. La stima da
+    // decorrenza resta solo un ripiego per le rarissime righe import senza data fattura.
+    mese_competenza: dataFattura ? dataFattura.slice(0,7) : mesiCompetenzaDaDecorrenza(decorrenza, obj['ANNUALITA']),
     mese_ricevuto: meseRicevuto,
     numero_ordine: obj['NUMERO ORDINE'] || null, posizione: obj['POSIZIONE'] || null, codice_cliente: obj['CODICE CLIENTE'] || null,
     // "RAGIONE SOCIALE CLIENTE" è quasi sempre vuota nei file reali (1232 righe su 1258 nel
@@ -695,7 +701,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
               <div style={{ fontSize: 13, marginBottom: anteprima.mesiTrovati.length ? 10 : 0 }}>Totale provvigioni nel file: <strong style={{ color: '#1B7A3E' }}>{fmtEur(anteprima.totale)}</strong></div>
               {anteprima.mesiTrovati.length > 0 && (
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                  <div className="fs-11 text-muted" style={{ marginBottom: 4 }}>Ripartizione per mese di competenza (decorrenza + annualità):</div>
+                  <div className="fs-11 text-muted" style={{ marginBottom: 4 }}>Ripartizione per mese di competenza (data fattura reale):</div>
                   {anteprima.mesiTrovati.map(([mese, tot]) => (
                     <div key={mese} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 3 }}>
                       <span>{new Date(mese+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}{mesiConStorico.has(mese) && ' ⚠️'}</span>
@@ -716,7 +722,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
               </div>
             )}
 
-            <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Il mese di competenza di ogni riga è dedotto da decorrenza e annualità, non dal nome del file: un file può contenere righe di mesi diversi, come sopra.</div>
+            <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Il mese di competenza di ogni riga è la sua vera data fattura, non il nome del file: un file può contenere comunque righe di mesi diversi (rettifiche, ripresi), come sopra.</div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button className="btn" onClick={()=>setAnteprima(null)} disabled={caricando}>Annulla</button>
