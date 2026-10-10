@@ -352,14 +352,17 @@ export function eventiProiettatiDaStorico(storico, esclusioni) {
     // Oltre 35% non esiste aliquota "ordinaria" in tabella per nessuna categoria: è quasi sempre
     // il bonus/maggiorata riconosciuto solo il primo anno. Se riconosco la categoria del prodotto
     // e quella categoria prevede davvero la maggiorata45, correggo in automatico l'aliquota degli
-    // anni successivi con la riga "rinnovo" di tabella, sulla durata di questo contratto.
+    // anni successivi con la riga di tabella giusta per il TIPO REALE di questo contratto —
+    // "nuovo" se è nato come contratto Nuovo (resta nuovo per tutta la sua vita, il bonus 45%
+    // riguarda solo il primo anno, non declassa il contratto a rinnovo), "rinnovo" solo se è
+    // nato davvero come Rinnovo di un cliente già in portafoglio.
     const categoria = indovinaCategoriaStorico(base.descrizione_prodotto);
     const tipoKey = base.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo';
     let pctAutocorretta = null;
     if (pctReale >= 40 && categoria) {
       const regola = trovaRegola(categoria, base.descrizione_prodotto);
       if (regola && regola.maggiorata45) {
-        pctAutocorretta = regola.rinnovo[bucketDurata(durataM)];
+        pctAutocorretta = regola[tipoKey][bucketDurata(durataM)];
       }
     }
     // Resta un ⚠️ manuale solo per i casi che NON si riescono a correggere da soli (categoria
