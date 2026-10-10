@@ -107,6 +107,7 @@ const CSS = `
   .opv-weekbtn2 { padding: 6px 13px; font-size: 12.5px; }
   .opv-select-sm { font-size: 12px; padding: 5px 8px; }
   .opv-archivio-mobile { display: none; }
+  .opv-day-items-mobile { display: none; }
   /* minmax(0,1fr): stesso fix del blowout spiegato sopra per .opv-grid2 — qui è ancora più
      facile da innescare, con 5 colonne invece di 2. overflow-x:auto resta come rete di
      sicurezza: se anche con le colonne elastiche 5 giorni non ci stanno comodi (es. laptop
@@ -201,6 +202,12 @@ const CSS = `
     /* Nasconde i giorni senza richiami/appuntamenti nell'agenda settimanale: su schermo
        stretto 3 box vuoti di fila sono solo scroll sprecato prima del primo giorno utile. */
     .opv-day.empty { display: none; }
+    /* Nell'agenda richiami, su mobile si mostra la stessa card grande "Riga" usata altrove
+       (Richiami di oggi, Coda, Archivio) invece della versione mini compatta pensata per le
+       5 colonne strette del desktop — così l'agenda si vede esattamente come le altre sezioni. */
+    .opv-day-items-desktop { display: none; }
+    .opv-day-items-mobile { display: block; }
+    .opv-day .opv-row { margin-bottom: 8px; }
   }
   .opv-empty-mobile-week { display: none; }
   @media (max-width: 900px) {
@@ -576,6 +583,14 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     </div>
   );};
 
+  // Icona cornetta in SVG bianco: usata nei pulsanti "solo icona" su sfondo blu, dove
+  // l'emoji 📞 (non ricolorabile) risultava scura e poco leggibile sul blu di sfondo.
+  const IconPhone = () => (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2.5 2l3-1 1.8 3.6-2 1.6a10.5 10.5 0 004.5 4.5l1.6-2L15 10.5l-1 3C8 14.5 1.5 8 2.5 2z" />
+    </svg>
+  );
+
   // ── Riga compatta per le due box "Svolti" / "Da recuperare" in Dashboard ──
   // Nome + data + stato a sinistra (apre la scheda del lead collegato), tasto telefono a destra
   // per chiamare subito senza passare dall'elenco completo.
@@ -587,7 +602,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
           <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.azienda || c.nome || '—'}</div>
           <div style={{ fontSize: 11.5, color: '#8A97A6' }}>{fmtDT(c.appt_date)} · <span style={{ color: bc, fontWeight: 700 }}>{c.appt_stato}</span></div>
         </div>
-        {c.telefono && <a className="opv-call" style={{ padding: '6px 11px', fontSize: 12.5, flexShrink: 0 }} href={'tel:' + c.telefono.replace(/\s/g, '')} onClick={e => e.stopPropagation()}>📞</a>}
+        {c.telefono && <a className="opv-call" style={{ padding: '7px 12px', flexShrink: 0 }} href={'tel:' + c.telefono.replace(/\s/g, '')} onClick={e => e.stopPropagation()}><IconPhone /></a>}
       </div>
     );
   };
@@ -694,14 +709,26 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                 <span>{d.toLocaleDateString('it-IT', { weekday: 'short' })}</span>
                 <span className="num" style={scaduto ? { color: '#B35F0E' } : {}}>{d.getDate()}</span>
               </div>
-              {items.length === 0
-                ? <div style={{ fontSize: 11.5, color: '#B0BCC9', textAlign: 'center', paddingTop: 8 }}>—</div>
-                : items.map(l => (
-                  <div key={l.id} className="opv-mini" style={scaduto ? { borderLeftColor: '#E07B1A' } : {}} onClick={() => apriLead(l, 'esito')}>
-                    <div className="n">{l.azienda || l.nome || '—'}</div>
-                    <div className="t">{l.telefono || ''}</div>
+              {items.length === 0 ? (
+                <div style={{ fontSize: 11.5, color: '#B0BCC9', textAlign: 'center', paddingTop: 8 }}>—</div>
+              ) : (
+                <>
+                  {/* Desktop: card compatta (5 colonne affiancate, poco spazio). Mobile: stessa
+                      identica card "Riga" usata in Richiami di oggi/Coda/Archivio — niente più
+                      un formato a parte più piccolo, vedi .opv-day-items-desktop/mobile nel CSS. */}
+                  <div className="opv-day-items-desktop">
+                    {items.map(l => (
+                      <div key={l.id} className="opv-mini" style={scaduto ? { borderLeftColor: '#E07B1A' } : {}} onClick={() => apriLead(l, 'esito')}>
+                        <div className="n">{l.azienda || l.nome || '—'}</div>
+                        <div className="t">{l.telefono || ''}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                  <div className="opv-day-items-mobile">
+                    {items.map(l => <Riga key={l.id} l={l} hot coda={items} />)}
+                  </div>
+                </>
+              )}
             </div>
           );
         })}
