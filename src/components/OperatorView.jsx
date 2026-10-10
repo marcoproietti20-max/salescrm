@@ -100,10 +100,13 @@ const CSS = `
   .opv-grid2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; margin-top: 16px; }
   .opv-grid2 .opv-card { margin-top: 0; min-width: 0; }
   .opv-row .who .nota { font-size: 12px; color: #8A97A6; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-  .opv-weeknav { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+  .opv-weeknav { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-wrap: wrap; }
   .opv-weeknav .lbl { font-size: 12.5px; font-weight: 700; color: #33475B; text-transform: none; letter-spacing: 0; }
   .opv-weekbtn { border: 1.5px solid #D4DEE9; background: white; border-radius: 8px; width: 30px; height: 30px; font-size: 15px; font-weight: 700; cursor: pointer; color: #33475B; font-family: inherit; }
   .opv-weekbtn:hover { border-color: ${BLU}; color: ${BLU}; }
+  .opv-weekbtn2 { padding: 6px 13px; font-size: 12.5px; }
+  .opv-select-sm { font-size: 12px; padding: 5px 8px; }
+  .opv-archivio-mobile { display: none; }
   /* minmax(0,1fr): stesso fix del blowout spiegato sopra per .opv-grid2 — qui è ancora più
      facile da innescare, con 5 colonne invece di 2. overflow-x:auto resta come rete di
      sicurezza: se anche con le colonne elastiche 5 giorni non ci stanno comodi (es. laptop
@@ -185,6 +188,16 @@ const CSS = `
     .opv-mini .t { font-size: 13px; }
     .opv-preview-banner { font-size: 12.5px; padding: 8px 11px; margin: 56px 0 -4px; line-height: 1.4; }
     .opv-modal { padding: 20px; }
+    .opv-weekbtn2 { padding: 10px 16px; font-size: 14px; min-height: 42px; }
+    .opv-select-sm { font-size: 14px; padding: 9px 12px; }
+    .opv-togglebtn { font-size: 14px; padding: 10px 20px; min-height: 42px; }
+    .opv-weeknav { width: 100%; }
+    .opv-weeknav .lbl { width: 100%; margin-top: 2px; font-size: 13px; }
+    /* Su mobile la tabella Archivio lead è illeggibile (8 colonne compresse): si mostra
+       invece l'elenco a card, identico a quello usato in Coda/Richiami, già ottimizzato
+       per schermi piccoli. Il desktop continua a usare la tabella, più adatta a schermi larghi. */
+    .opv-archivio-desktop { display: none; }
+    .opv-archivio-mobile { display: block; }
   }
   @media (max-width: 480px) {
     .opv-metrics { grid-template-columns: 1fr 1fr; }
@@ -643,9 +656,9 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
       <div className="opv-card-title">
         🗓 Agenda richiami
         <div className="opv-weeknav">
-          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5 }} onClick={() => setWeekOffset(w => w - 1)}>← Prec.</button>
-          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5, ...(weekOffset === 0 ? { borderColor: '#0078D4', color: '#0078D4' } : {}) }} onClick={() => setWeekOffset(0)}>Oggi</button>
-          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5 }} onClick={() => setWeekOffset(w => w + 1)}>Succ. →</button>
+          <button className="opv-btn opv-weekbtn2" onClick={() => setWeekOffset(w => w - 1)}>← Prec.</button>
+          <button className="opv-btn opv-weekbtn2" style={weekOffset === 0 ? { borderColor: '#0078D4', color: '#0078D4' } : undefined} onClick={() => setWeekOffset(0)}>Oggi</button>
+          <button className="opv-btn opv-weekbtn2" onClick={() => setWeekOffset(w => w + 1)}>Succ. →</button>
           <span className="lbl">{labelSett}</span>
         </div>
       </div>
@@ -691,9 +704,9 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
       <div className="opv-card-title">
         📅 Agenda appuntamenti
         <div className="opv-weeknav">
-          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5 }} onClick={() => setWeekOffsetAppt(w => w - 1)}>← Prec.</button>
-          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5, ...(weekOffsetAppt === 0 ? { borderColor: '#0078D4', color: '#0078D4' } : {}) }} onClick={() => setWeekOffsetAppt(0)}>Oggi</button>
-          <button className="opv-btn" style={{ padding: '6px 13px', fontSize: 12.5 }} onClick={() => setWeekOffsetAppt(w => w + 1)}>Succ. →</button>
+          <button className="opv-btn opv-weekbtn2" onClick={() => setWeekOffsetAppt(w => w - 1)}>← Prec.</button>
+          <button className="opv-btn opv-weekbtn2" style={weekOffsetAppt === 0 ? { borderColor: '#0078D4', color: '#0078D4' } : undefined} onClick={() => setWeekOffsetAppt(0)}>Oggi</button>
+          <button className="opv-btn opv-weekbtn2" onClick={() => setWeekOffsetAppt(w => w + 1)}>Succ. →</button>
           <span className="lbl">{labelSettAppt}</span>
         </div>
       </div>
@@ -961,7 +974,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
               vuoto={leads.length === 0 ? 'Nessuna lista caricata: appena Marco importa i lead, li troverai qui.' : 'Tutto lavorato con questi filtri 🎉'}
               visCount={visCoda} setVisCount={setVisCoda}
               extra={
-                <select className="opv-select" style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => { setOrdinaCoda(e.target.value); setVisCoda(50); }}>
+                <select className="opv-select opv-select-sm" style={{ marginLeft: 'auto' }} value={ordinaCoda} onChange={e => { setOrdinaCoda(e.target.value); setVisCoda(50); }}>
                   {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
               }
@@ -988,7 +1001,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                     vuoto="Arretrato smaltito, ottimo lavoro 🎉"
                     visCount={visArretrato} setVisCount={setVisArretrato}
                     extra={
-                      <select className="opv-select" style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => setOrdinaCoda(e.target.value)}>
+                      <select className="opv-select opv-select-sm" style={{ marginLeft: 'auto' }} value={ordinaCoda} onChange={e => setOrdinaCoda(e.target.value)}>
                         {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                       </select>
                     }
@@ -1000,7 +1013,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
               <>
                 <div className="opv-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className="fs-12" style={{ fontWeight: 700, color: '#33475B' }}>Ordina richiami fissati:</span>
-                  <select className="opv-select" style={{ fontSize: 12, padding: '5px 8px' }} value={ordinaRichiami} onChange={e => setOrdinaRichiami(e.target.value)}>
+                  <select className="opv-select opv-select-sm" value={ordinaRichiami} onChange={e => setOrdinaRichiami(e.target.value)}>
                     {OPZIONI_ORDINE_RICHIAMI.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                   </select>
                 </div>
@@ -1009,7 +1022,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
 
                 <div className="opv-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className="fs-12" style={{ fontWeight: 700, color: '#33475B' }}>Ordina arretrato:</span>
-                  <select className="opv-select" style={{ fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => setOrdinaCoda(e.target.value)}>
+                  <select className="opv-select opv-select-sm" value={ordinaCoda} onChange={e => setOrdinaCoda(e.target.value)}>
                     {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                   </select>
                 </div>
@@ -1062,37 +1075,46 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
             <div className="opv-card">
               <div className="opv-card-title" style={{ flexWrap: 'wrap' }}>
                 🗂 Tutti i lead <span style={{ color: '#0078D4' }}>({archivioLeads.length})</span>
-                <select className="opv-select" style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 8px' }} value={ordinaCoda} onChange={e => { setOrdinaCoda(e.target.value); setVisArchivio(50); }}>
+                <select className="opv-select opv-select-sm" style={{ marginLeft: 'auto' }} value={ordinaCoda} onChange={e => { setOrdinaCoda(e.target.value); setVisArchivio(50); }}>
                   {OPZIONI_ORDINE_CODA.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
               </div>
               {archivioLeads.length === 0 ? <div className="opv-empty">Nessun lead con questi filtri</div> : (
-                <div style={{ overflowX: 'auto' }}>
-                  <table className="opv-table">
-                    <thead><tr><th>Azienda / Referente</th><th>Categoria</th><th>Telefono</th><th>Lista</th><th>Stato</th><th style={{ textAlign: 'right' }}>Tent.</th><th>Ultima nota</th><th>Ultimo contatto</th></tr></thead>
-                    <tbody>
-                      {applicaOrdine(archivioLeads, ordinaCoda).slice(0, visArchivio).map(l => {
-                        const un = (l.note_storia || []).filter(h => h.testo).slice(-1)[0]?.testo;
-                        const si = statoInfo(l.stato);
-                        return (
-                          <tr key={l.id} onClick={() => apriLead(l, 'scheda')}>
-                            <td><strong>{l.azienda || l.nome || '—'}</strong>{l.azienda && l.nome ? <div style={{ fontSize: 11.5, color: '#6B7A8C' }}>{l.nome}</div> : null}</td>
-                            <td>{l.categoria || '—'}</td>
-                            <td style={{ whiteSpace: 'nowrap' }}>{l.telefono || '—'}</td>
-                            <td>{l.lista || '—'}</td>
-                            <td><span className="opv-statochip" style={{ background: si.color + '18', color: si.color }}>{si.icon} {l.stato}</span>{l.portafoglio_uscito && <span className="opv-statochip" style={{ background: '#88888818', color: '#666', marginLeft: 4 }} title="Non più nel Portafoglio Formale">📤 Uscito</span>}</td>
-                            <td style={{ textAlign: 'right' }}>{l.tentativi || 0}</td>
-                            <td style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontStyle: un ? 'italic' : 'normal', color: un ? '#5A6B7E' : '#B0BCC9' }}>{un || '—'}</td>
-                            <td style={{ whiteSpace: 'nowrap' }}>{l.ultimo_contatto ? fmtDT(l.ultimo_contatto) : '—'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <>
+                  {/* Desktop: tabella compatta, comoda con mouse e schermo largo.
+                      Mobile: stesse card con testo grande usate in Coda/Richiami — vedi .opv-archivio-desktop/.opv-archivio-mobile nel CSS. */}
+                  <div className="opv-archivio-desktop" style={{ overflowX: 'auto' }}>
+                    <table className="opv-table">
+                      <thead><tr><th>Azienda / Referente</th><th>Categoria</th><th>Telefono</th><th>Lista</th><th>Stato</th><th style={{ textAlign: 'right' }}>Tent.</th><th>Ultima nota</th><th>Ultimo contatto</th></tr></thead>
+                      <tbody>
+                        {applicaOrdine(archivioLeads, ordinaCoda).slice(0, visArchivio).map(l => {
+                          const un = (l.note_storia || []).filter(h => h.testo).slice(-1)[0]?.testo;
+                          const si = statoInfo(l.stato);
+                          return (
+                            <tr key={l.id} onClick={() => apriLead(l, 'scheda')}>
+                              <td><strong>{l.azienda || l.nome || '—'}</strong>{l.azienda && l.nome ? <div style={{ fontSize: 11.5, color: '#6B7A8C' }}>{l.nome}</div> : null}</td>
+                              <td>{l.categoria || '—'}</td>
+                              <td style={{ whiteSpace: 'nowrap' }}>{l.telefono || '—'}</td>
+                              <td>{l.lista || '—'}</td>
+                              <td><span className="opv-statochip" style={{ background: si.color + '18', color: si.color }}>{si.icon} {l.stato}</span>{l.portafoglio_uscito && <span className="opv-statochip" style={{ background: '#88888818', color: '#666', marginLeft: 4 }} title="Non più nel Portafoglio Formale">📤 Uscito</span>}</td>
+                              <td style={{ textAlign: 'right' }}>{l.tentativi || 0}</td>
+                              <td style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontStyle: un ? 'italic' : 'normal', color: un ? '#5A6B7E' : '#B0BCC9' }}>{un || '—'}</td>
+                              <td style={{ whiteSpace: 'nowrap' }}>{l.ultimo_contatto ? fmtDT(l.ultimo_contatto) : '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="opv-archivio-mobile">
+                    {applicaOrdine(archivioLeads, ordinaCoda).slice(0, visArchivio).map(l => (
+                      <Riga key={l.id} l={l} mostraStato coda={applicaOrdine(archivioLeads, ordinaCoda).slice(0, visArchivio)} />
+                    ))}
+                  </div>
                   {archivioLeads.length > visArchivio && (
                     <button className="opv-btn" style={{ width: '100%', marginTop: 10 }} onClick={() => setVisArchivio(v => v + 50)}>Mostra altri 50 (di {archivioLeads.length - visArchivio} rimanenti)</button>
                   )}
-                </div>
+                </>
               )}
             </div>
           </>
