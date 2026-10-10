@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { fmtEur, fmt, getContratti } from '../constants';
 import { nomeCorrisponde } from './Canvass';
-import { dbLoadStoricoProvvigioni, dbEliminaStoricoFile, dbSalvaStoricoBatch, dbEliminaStoricoRiga, dbLoadExtraProvvigioni, dbSalvaExtraProvvigioni, dbEliminaExtraProvvigioni } from '../supabase';
+import { dbLoadStoricoProvvigioni, dbEliminaStoricoFile, dbSalvaStoricoBatch, dbEliminaStoricoRiga, dbLoadExtraProvvigioni, dbSalvaExtraProvvigioni, dbEliminaExtraProvvigioni, dbLoadEsclusioniStorico, dbAggiungiEsclusioneStorico, dbRimuoviEsclusioneStorico } from '../supabase';
 
 // ── Tabella aliquote ──────────────────────────────────────────────────────
 // Ogni riga: categoria (deve corrispondere a PRODOTTI), parola chiave facoltativa nel nome
@@ -223,8 +223,11 @@ function mappaRigaStorico(obj, meseRicevuto, nomeFile) {
     mese_ricevuto: meseRicevuto,
     numero_ordine: obj['NUMERO ORDINE'] || null, posizione: obj['POSIZIONE'] || null, codice_cliente: obj['CODICE CLIENTE'] || null,
     // "RAGIONE SOCIALE CLIENTE" è quasi sempre vuota nei file reali (1232 righe su 1258 nel
-    // campione verificato) — il nome compilato davvero è "RAGIONE SOCIALE FATTURAZIONE".
-    ragione_sociale: obj['RAGIONE SOCIALE FATTURAZIONE'] || obj['RAGIONE SOCIALE CLIENTE'] || null, tipo_contratto: obj['TIPO CONTRATTO'] || null,
+    // campione verificato) — il nome compilato davvero è "RAGIONE SOCIALE FATTURAZIONE". Da
+    // settembre 2026 l'azienda ha però cambiato il tracciato di esportazione: niente più colonne
+    // separate "FATTURAZIONE"/"CLIENTE", un'unica colonna "RAGIONE SOCIALE" — senza questo terzo
+    // fallback, tutte le righe di quel nuovo formato risultavano senza anagrafica.
+    ragione_sociale: obj['RAGIONE SOCIALE FATTURAZIONE'] || obj['RAGIONE SOCIALE CLIENTE'] || obj['RAGIONE SOCIALE'] || null, tipo_contratto: obj['TIPO CONTRATTO'] || null,
     sostituzione: obj['SOSTITUZIONE'] || null, codice_prodotto: obj['CODICE PRODOTTO'] || null,
     descrizione_prodotto: obj['DESCRIZIONE PRODOTTO'] || null,
     numero_fattura: obj['NUMERO FATTURA'] || null,
@@ -288,9 +291,10 @@ function storicoComeEvento(r) {
 // stesse colonne ALIQUOTA PROVVIGIONE / IMPORTO PROVVIGIONI), mai ricalcolata dalla tabella
 // interna — niente riconoscimento di categoria dal nome prodotto, che serviva solo a indovinare
 // un'aliquota che qui è già nota con certezza.
-export function eventiProiettatiDaStorico(storico) {
+export function eventiProiettatiDaStorico(storico, esclusioni) {
   // Raggruppo le righe storiche per contratto reale: stesso ordine + stesso prodotto (ignoro la
   // sostituzione U/S, che è solo la ripartizione upgrade/standard dello stesso importo).
+  const chiaviEscluse = new Set((esclusioni || []).map(e => `${e.numero_ordine}|${e.codice_prodotto}`));
   const gruppi = {};
   (storico || []).forEach(r => {
     if (!r.numero_ordine || !r.codice_prodotto || !r.decorrenza) return;
@@ -298,7 +302,11 @@ export function eventiProiettatiDaStorico(storico) {
     (gruppi[chiave] = gruppi[chiave] || []).push(r);
   });
   const eventi = [];
-  Object.values(gruppi).forEach(righe => {
+  Object.entries(gruppi).forEach(([chiave, righe]) => {
+    // Esclusione manuale: contratto pluriennale saldato in un'unica soluzione (tutte le
+    // annualità già incassate subito, es. caso Saint Thomas) — Marco la imposta a mano dalla
+    // tabella, perché dallo storico non c'è modo di distinguerla da un vero ricorrente futuro.
+    if (chiaviEscluse.has(chiave)) return;
     const durataM = Math.max(...righe.map(r => Number(r.durata) || 0));
     const anniTotali = durataM ? Math.max(1, Math.round(durataM / 12)) : 1;
     const maxAnnualita = Math.max(...righe.map(r => Number(r.annualita) || 1));
@@ -324,6 +332,7 @@ export function eventiProiettatiDaStorico(storico) {
         storicoProiettato: true,
         contattoId: base.codice_cliente, nome: base.ragione_sociale, azienda: null,
         codiceCliente: base.codice_cliente, numeroOrdine: base.numero_ordine, numeroFattura: null,
+        codiceProdotto: base.codice_prodotto,
         prodottoNome: base.descrizione_prodotto || '(senza nome)', categoria: null,
         etichettaRegola: base.sostituzione === 'U' ? 'Upgrade' : base.sostituzione === 'S' ? 'Standard' : '—',
         anno, anniTotali, primoAnno: false, tipo: tipoKey, maggiorata: false,
@@ -353,10 +362,29 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
   const ricaricaStorico = () => dbLoadStoricoProvvigioni().then(setStorico);
   useEffect(() => { ricaricaStorico(); }, []);
 
+  // Contratti esclusi manualmente dalla proiezione sui ricorrenti (es. saldati in un'unica
+  // soluzione, caso Saint Thomas — tutte le annualità già incassate, nessun rateo futuro).
+  const [esclusioni, setEsclusioni] = useState([]);
+  const ricaricaEsclusioni = () => dbLoadEsclusioniStorico().then(setEsclusioni);
+  useEffect(() => { ricaricaEsclusioni(); }, []);
+  const escludiDallaProiezione = async (numeroOrdine, codiceProdotto, nomeCliente) => {
+    const motivo = window.prompt(`Escludere "${nomeCliente||''}" dalla proiezione dei ricorrenti futuri? Usalo quando il cliente ha già saldato tutte le annualità in un'unica soluzione.\n\nMotivo (facoltativo):`, 'Saldato in un\'unica soluzione');
+    if (motivo === null) return; // annullato
+    const ok = await dbAggiungiEsclusioneStorico(numeroOrdine, codiceProdotto, motivo);
+    if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
+    showToast('Contratto escluso dalla proiezione', '');
+    ricaricaEsclusioni();
+  };
+  const rimuoviEsclusione = async (id) => {
+    const ok = await dbRimuoviEsclusioneStorico(id);
+    if (!ok) { showToast('Errore durante la rimozione', '', 'info'); return; }
+    ricaricaEsclusioni();
+  };
+
   // Proiezione dei ricorrenti futuri, generata solo dai dati reali già importati — questa è
   // l'UNICA fonte di "tuttiEventi" qui sotto: i contratti inseriti a mano non entrano più nella
   // dashboard ufficiale, per evitare qualunque doppio conteggio con gli estratti conto.
-  const eventiStoricoProiettati = useMemo(() => eventiProiettatiDaStorico(storico), [storico]);
+  const eventiStoricoProiettati = useMemo(() => eventiProiettatiDaStorico(storico, esclusioni), [storico, esclusioni]);
   const tuttiEventi = eventiStoricoProiettati;
 
   const meseSelezionato = useMemo(() => meseStr(new Date(addMesi(oggi.slice(0,7)+'-01', offset) + 'T12:00:00')), [oggi, offset]);
@@ -542,6 +570,42 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     return Object.entries(m).sort((a,b)=>b[1]-a[1]);
   }, [eventiMese]);
 
+  // ── Dettaglio del mese: sotto-tab Nuovo/Rinnovo/Ricorrenti, ordinamento colonne, selezione con somma ──
+  const [filtroTipo, setFiltroTipo] = useState('tutti'); // 'tutti' | 'nuovo' | 'rinnovo' | 'ricorrenti'
+  const [ordinamento, setOrdinamento] = useState({ campo: null, dir: 1 });
+  const [selezionati, setSelezionati] = useState(() => new Set());
+  useEffect(() => { setSelezionati(new Set()); setFiltroTipo('tutti'); }, [meseSelezionato, vista]);
+
+  const eventiMeseConIdx = useMemo(() => eventiMese.map((e, i) => ({ ...e, _idx: i })), [eventiMese]);
+  const conteggiTipo = useMemo(() => ({
+    tutti: eventiMeseConIdx.length,
+    nuovo: eventiMeseConIdx.filter(e => e.primoAnno && e.tipo === 'nuovo').length,
+    rinnovo: eventiMeseConIdx.filter(e => e.primoAnno && e.tipo === 'rinnovo').length,
+    ricorrenti: eventiMeseConIdx.filter(e => !e.primoAnno).length,
+  }), [eventiMeseConIdx]);
+  const eventiMeseFiltrati = useMemo(() => {
+    let righe = eventiMeseConIdx;
+    if (filtroTipo === 'nuovo') righe = righe.filter(e => e.primoAnno && e.tipo === 'nuovo');
+    else if (filtroTipo === 'rinnovo') righe = righe.filter(e => e.primoAnno && e.tipo === 'rinnovo');
+    else if (filtroTipo === 'ricorrenti') righe = righe.filter(e => !e.primoAnno);
+    if (ordinamento.campo) {
+      const campo = ordinamento.campo;
+      righe = [...righe].sort((a, b) => {
+        let va = a[campo], vb = b[campo];
+        if (typeof va === 'string' || typeof vb === 'string') { va = (va||'').toString().toLowerCase(); vb = (vb||'').toString().toLowerCase(); }
+        if (va < vb) return -1 * ordinamento.dir;
+        if (va > vb) return 1 * ordinamento.dir;
+        return 0;
+      });
+    }
+    return righe;
+  }, [eventiMeseConIdx, filtroTipo, ordinamento]);
+  const ordinaPer = (campo) => setOrdinamento(o => o.campo === campo ? { campo, dir: -o.dir } : { campo, dir: 1 });
+  const iconaOrdinamento = (campo) => ordinamento.campo !== campo ? '' : (ordinamento.dir === 1 ? ' ▲' : ' ▼');
+  const toggleSelezione = (idx) => setSelezionati(s => { const n = new Set(s); n.has(idx) ? n.delete(idx) : n.add(idx); return n; });
+  const toggleSelezionaTutti = () => setSelezionati(s => s.size === eventiMeseFiltrati.length ? new Set() : new Set(eventiMeseFiltrati.map(e => e._idx)));
+  const totSelezionati = useMemo(() => eventiMeseConIdx.filter(e => selezionati.has(e._idx)).reduce((s,e)=>s+e.provvigione, 0), [eventiMeseConIdx, selezionati]);
+
   return (
     <>
       <div className="topbar">
@@ -665,13 +729,43 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
           </div>
         </div>
 
-        <div className="card-title" style={{ marginBottom: 10 }}>Dettaglio — {eventiMese.length} contratti/prodotti in questo mese</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>Dettaglio — {eventiMeseFiltrati.length} di {eventiMese.length} contratti/prodotti in questo mese</div>
+          <div style={{ display: 'flex', borderRadius: 'var(--r)', overflow: 'hidden', border: '1px solid var(--border)' }}>
+            {[['tutti','Tutti'],['nuovo','Nuovo'],['rinnovo','Rinnovo'],['ricorrenti','Ricorrenti']].map(([k,label]) => (
+              <button key={k} className="btn btn-sm" style={{ border: 'none', borderRadius: 0, background: filtroTipo===k ? 'var(--bg3)' : 'transparent', fontWeight: filtroTipo===k?700:400 }} onClick={()=>setFiltroTipo(k)}>
+                {label} <span className="text-muted">({conteggiTipo[k]})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {selezionati.size > 0 && (
+          <div className="info-box blue" style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>{selezionati.size} rig{selezionati.size===1?'a selezionata':'he selezionate'}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <strong style={{ fontSize: 15 }}>{fmtEur(totSelezionati)}</strong>
+              <button className="btn btn-sm" onClick={()=>setSelezionati(new Set())}>Deseleziona tutto</button>
+            </span>
+          </div>
+        )}
         <div className="table-wrap">
           <table className="crm-table">
-            <thead><tr><th>Cliente</th><th>Prodotto</th><th>Linea/livello</th><th>Anno</th><th>Durata contratto</th><th>Aliquota</th><th>Imponibile</th><th>Provvigione</th><th></th></tr></thead>
+            <thead><tr>
+              <th style={{ width: 28 }}><input type="checkbox" checked={eventiMeseFiltrati.length>0 && selezionati.size===eventiMeseFiltrati.length} onChange={toggleSelezionaTutti} /></th>
+              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('nome')}>Cliente{iconaOrdinamento('nome')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('prodottoNome')}>Prodotto{iconaOrdinamento('prodottoNome')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('etichettaRegola')}>Linea/livello{iconaOrdinamento('etichettaRegola')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('anno')}>Anno{iconaOrdinamento('anno')}</th>
+              <th>Durata contratto</th>
+              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('pct')}>Aliquota{iconaOrdinamento('pct')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('importo')}>Imponibile{iconaOrdinamento('importo')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('provvigione')}>Provvigione{iconaOrdinamento('provvigione')}</th>
+              <th></th>
+            </tr></thead>
             <tbody>
-              {eventiMese.length === 0 ? <tr><td colSpan={9} className="empty">Nessun incasso previsto in questo mese</td></tr> : eventiMese.map((e,i) => (
-                <tr key={i}>
+              {eventiMeseFiltrati.length === 0 ? <tr><td colSpan={10} className="empty">Nessun incasso previsto in questo mese</td></tr> : eventiMeseFiltrati.map((e) => (
+                <tr key={e._idx} style={selezionati.has(e._idx) ? { background: 'var(--bg3)' } : undefined}>
+                  <td><input type="checkbox" checked={selezionati.has(e._idx)} onChange={()=>toggleSelezione(e._idx)} /></td>
                   <td className="fw-600">
                     {e.nome || <span className="text-muted">(nome non disponibile)</span>}
                     {e.azienda ? <div className="fs-11 text-muted">{e.azienda}</div> : null}
@@ -699,6 +793,9 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                   <td>
                     {e.storico && (
                       <button className="btn btn-sm" title="Elimina questa riga dello storico" onClick={()=>eliminaRigaStorico(e)} style={{ color: '#C0392B' }}>🗑</button>
+                    )}
+                    {e.storicoProiettato && (
+                      <button className="btn btn-sm" title="Escludi questo contratto dalla proiezione dei ricorrenti futuri (es. saldato in un'unica soluzione)" onClick={()=>escludiDallaProiezione(e.numeroOrdine, e.codiceProdotto, e.nome)} style={{ color: '#B5651D' }}>🚫</button>
                     )}
                   </td>
                 </tr>
@@ -762,6 +859,18 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                 </div>
               ))}
             </div>
+            {esclusioni.length > 0 && (<>
+              <div className="fw-600 fs-13" style={{ marginTop: 18, marginBottom: 6 }}>Contratti esclusi dalla proiezione ricorrenti</div>
+              {esclusioni.map(x => (
+                <div key={x.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div className="fs-12">
+                    <span className="fw-600">ordine {x.numero_ordine}</span> · {x.codice_prodotto}
+                    {x.motivo && <div className="fs-11 text-muted">{x.motivo}</div>}
+                  </div>
+                  <button className="btn btn-sm" title="Rimetti in proiezione" onClick={()=>rimuoviEsclusione(x.id)} style={{ color: '#C0392B' }}>🗑</button>
+                </div>
+              ))}
+            </>)}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
               <button className="btn" onClick={()=>setGestioneFile(false)}>Chiudi</button>
             </div>

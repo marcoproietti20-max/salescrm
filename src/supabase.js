@@ -158,6 +158,27 @@ export async function dbEliminaStoricoRiga(id) {
   return true;
 }
 
+// Esclusioni manuali dalla proiezione sui ricorrenti (eventiProiettatiDaStorico): per un
+// contratto pluriennale saldato in un'unica soluzione (tutte le annualità incassate subito,
+// es. caso Saint Thomas), le annualità future non vanno più proiettate — non è un dato
+// sbagliato nello storico, è solo che la proiezione non può saperlo da sola. Chiave = stesso
+// ordine+prodotto usato da eventiProiettatiDaStorico per raggruppare le righe.
+export async function dbLoadEsclusioniStorico() {
+  const {data,error}=await supabase.from('provvigioni_esclusioni_storico').select('*');
+  if(error){console.error('dbLoadEsclusioniStorico:',error);return [];}
+  return data||[];
+}
+export async function dbAggiungiEsclusioneStorico(numeroOrdine, codiceProdotto, motivo) {
+  const {error}=await supabase.from('provvigioni_esclusioni_storico').insert({ numero_ordine: numeroOrdine, codice_prodotto: codiceProdotto, motivo: motivo||null });
+  if(error){console.error('dbAggiungiEsclusioneStorico:',error);return false;}
+  return true;
+}
+export async function dbRimuoviEsclusioneStorico(id) {
+  const {error}=await supabase.from('provvigioni_esclusioni_storico').delete().eq('id',id);
+  if(error){console.error('dbRimuoviEsclusioneStorico:',error);return false;}
+  return true;
+}
+
 export async function dbLoadExtraProvvigioni() {
   const {data,error}=await supabase.from('provvigioni_extra').select('*').order('mese',{ascending:false});
   if(error){console.error('dbLoadExtraProvvigioni:',error);return [];}
