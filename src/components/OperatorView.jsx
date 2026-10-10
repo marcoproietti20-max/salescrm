@@ -158,7 +158,7 @@ const CSS = `
     .opv-metric .val { font-size: 28px; }
     .opv-metric .sub { font-size: 12.5px; }
     .opv-card { padding: 18px; }
-    .opv-card-title { font-size: 14px; }
+    .opv-card-title { font-size: 15.5px; }
     .opv-input, .opv-select, .opv-textarea { font-size: 16px; padding: 12px 13px; }
     /* font-size 16px sugli input evita lo zoom automatico di iOS Safari al focus */
     .opv-row { flex-wrap: wrap; gap: 9px; padding: 15px 15px; }
@@ -180,19 +180,19 @@ const CSS = `
     .opv-table th { font-size: 11px; }
     .opv-grid2 { grid-template-columns: 1fr; }
     .opv-week { grid-template-columns: 1fr; }
-    .opv-day { min-height: auto; }
-    .opv-day-h { font-size: 12.5px; }
-    .opv-day-h .num { font-size: 17px; }
-    .opv-mini { padding: 9px 11px; }
-    .opv-mini .n { font-size: 14px; }
-    .opv-mini .t { font-size: 13px; }
+    .opv-day { min-height: auto; padding: 12px; }
+    .opv-day-h { font-size: 15px; margin-bottom: 10px; }
+    .opv-day-h .num { font-size: 20px; }
+    .opv-mini { padding: 11px 13px; margin-bottom: 9px; }
+    .opv-mini .n { font-size: 15.5px; }
+    .opv-mini .t { font-size: 14.5px; }
     .opv-preview-banner { font-size: 12.5px; padding: 8px 11px; margin: 56px 0 -4px; line-height: 1.4; }
     .opv-modal { padding: 20px; }
-    .opv-weekbtn2 { padding: 10px 16px; font-size: 14px; min-height: 42px; }
+    .opv-weekbtn2 { padding: 11px 18px; font-size: 15.5px; min-height: 44px; }
     .opv-select-sm { font-size: 14px; padding: 9px 12px; }
-    .opv-togglebtn { font-size: 14px; padding: 10px 20px; min-height: 42px; }
+    .opv-togglebtn { font-size: 15.5px; padding: 11px 22px; min-height: 44px; }
     .opv-weeknav { width: 100%; }
-    .opv-weeknav .lbl { width: 100%; margin-top: 2px; font-size: 13px; }
+    .opv-weeknav .lbl { width: 100%; margin-top: 2px; font-size: 14.5px; font-weight: 700; }
     /* Su mobile la tabella Archivio lead è illeggibile (8 colonne compresse): si mostra
        invece l'elenco a card, identico a quello usato in Coda/Richiami, già ottimizzato
        per schermi piccoli. Il desktop continua a usare la tabella, più adatta a schermi larghi. */
@@ -201,8 +201,6 @@ const CSS = `
     /* Nasconde i giorni senza richiami/appuntamenti nell'agenda settimanale: su schermo
        stretto 3 box vuoti di fila sono solo scroll sprecato prima del primo giorno utile. */
     .opv-day.empty { display: none; }
-    .opv-day-h { font-size: 13.5px; }
-    .opv-day-h .num { font-size: 18px; }
   }
   .opv-empty-mobile-week { display: none; }
   @media (max-width: 900px) {
@@ -398,6 +396,12 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     return { agg: aggVerificati, totVerificati, nonVerificati, totComplessivo: totVerificati + nonVerificati, pctSvolti: totVerificati > 0 ? Math.round(svolti / totVerificati * 100) : null };
   })();
 
+  // Le stesse liste della "Qualità appuntamenti" (sopra), ma pronte da mostrare direttamente
+  // in due box affiancati nella Dashboard, con chiamata immediata — non solo dietro un clic sul grafico.
+  const STATI_NON_SVOLTI = ['Non effettuato', 'Non si è presentato', 'Da rifissare'];
+  const apptSvolti = (appuntamentiList || []).filter(c => c.appt_stato === 'Svolto').sort((a, b) => (b.appt_date || '').localeCompare(a.appt_date || ''));
+  const apptDaRecuperare = (appuntamentiList || []).filter(c => STATI_NON_SVOLTI.includes(c.appt_stato)).sort((a, b) => (b.appt_date || '').localeCompare(a.appt_date || ''));
+
   // ── Grafico settimana (pagina home) ────────────────────────
   const giorni = []; { const d = new Date(); while (giorni.length < 5) { if (d.getDay() !== 0 && d.getDay() !== 6) giorni.unshift(d.toISOString().slice(0, 10)); d.setDate(d.getDate() - 1); } }
   const chiamateGiorni = giorni.map(g => leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === g).length, 0));
@@ -582,6 +586,22 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
       <button className="opv-open" onClick={e => { e.stopPropagation(); apriLead(l, 'esito', coda); }}>Registra esito</button>
     </div>
   );};
+
+  // ── Riga compatta per le due box "Svolti" / "Da recuperare" in Dashboard ──
+  // Nome + data + stato a sinistra (apre la scheda del lead collegato), tasto telefono a destra
+  // per chiamare subito senza passare dall'elenco completo.
+  const ApptMiniRow = ({ c }) => {
+    const bc = { Svolto: '#1B7A3E', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D', Programmato: BLU }[c.appt_stato] || BLU;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 2px', borderBottom: '1px solid #EEF2F6' }}>
+        <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => apriContattoAppuntamento(c)}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.azienda || c.nome || '—'}</div>
+          <div style={{ fontSize: 11.5, color: '#8A97A6' }}>{fmtDT(c.appt_date)} · <span style={{ color: bc, fontWeight: 700 }}>{c.appt_stato}</span></div>
+        </div>
+        {c.telefono && <a className="opv-call" style={{ padding: '6px 11px', fontSize: 12.5, flexShrink: 0 }} href={'tel:' + c.telefono.replace(/\s/g, '')} onClick={e => e.stopPropagation()}>📞</a>}
+      </div>
+    );
+  };
 
   // ── Elenco cliccabile di appuntamenti (riusato in più punti) ──
   const ListaAppuntamentiModal = () => {
@@ -874,6 +894,28 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                     ⏳ {qualitaAppt.nonVerificati} appuntament{qualitaAppt.nonVerificati === 1 ? 'o' : 'i'} in attesa di verifica da parte di Marco — non {qualitaAppt.nonVerificati === 1 ? 'è incluso' : 'sono inclusi'} nella percentuale.
                   </div>
                 )}
+              </div>
+            )}
+
+            {(apptSvolti.length > 0 || apptDaRecuperare.length > 0) && (
+              <div className="opv-grid2">
+                <div className="opv-card">
+                  <div className="opv-card-title">✅ Appuntamenti svolti <span style={{ color: '#1B7A3E' }}>({apptSvolti.length})</span></div>
+                  {apptSvolti.length === 0 ? <div className="opv-empty">Nessuno finora</div> : apptSvolti.slice(0, 5).map(c => <ApptMiniRow key={c.appt_id} c={c} />)}
+                  {apptSvolti.length > 5 && (
+                    <button className="opv-btn" style={{ width: '100%', marginTop: 10 }} onClick={() => setListaModale({ titolo: 'Appuntamenti svolti', items: apptSvolti })}>Vedi elenco completo ({apptSvolti.length}) →</button>
+                  )}
+                </div>
+                <div className="opv-card">
+                  <div className="opv-card-title">⚠ Da recuperare <span style={{ color: '#A32D2D' }}>({apptDaRecuperare.length})</span></div>
+                  {/* "Da recuperare" raggruppa chi non ha svolto l'appuntamento per qualunque motivo
+                      verificato da Marco (non presentato, non effettuato, da rifissare): sono i nominativi
+                      su cui ha senso richiamare per fissare una nuova data. */}
+                  {apptDaRecuperare.length === 0 ? <div className="opv-empty">Nessuno al momento 🎉</div> : apptDaRecuperare.slice(0, 5).map(c => <ApptMiniRow key={c.appt_id} c={c} />)}
+                  {apptDaRecuperare.length > 5 && (
+                    <button className="opv-btn" style={{ width: '100%', marginTop: 10 }} onClick={() => setListaModale({ titolo: 'Da recuperare', items: apptDaRecuperare })}>Vedi elenco completo ({apptDaRecuperare.length}) →</button>
+                  )}
+                </div>
               </div>
             )}
 
