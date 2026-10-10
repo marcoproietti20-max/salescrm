@@ -727,17 +727,16 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                   {new Date(r.mese+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}
                 </div>
                 <div className="metric-grid" style={{ marginBottom: 10 }}>
-                  <div className="metric-card"><div className="metric-label">Totale (manuale)</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{fmtEur(r.totale)}</div></div>
+                  <div className="metric-card" title="Contratti inseriti a mano + ricorrenti attesi dallo storico per questo mese">
+                    <div className="metric-label">Potenziale prefattura</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{fmtEur(r.totalePotenziale)}</div>
+                  </div>
                   <div className="metric-card"><div className="metric-label">Nuovo</div><div className="metric-value" style={{ color: '#0050A0' }}>{fmtEur(r.nuovo)}</div></div>
                   <div className="metric-card"><div className="metric-label">Rinnovo</div><div className="metric-value">{fmtEur(r.rinnovo)}</div></div>
-                  <div className="metric-card"><div className="metric-label">Ricorrenti (manuale)</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(r.ricorrenti)}</div></div>
+                  <div className="metric-card" title={r.haStoricoReale ? 'Dato reale, già importato dall\'estratto conto' : 'Proiettato dallo storico degli anni scorsi su questo stesso mese — non ancora un dato certo'}>
+                    <div className="metric-label">Ricorrenti{!r.haStoricoReale && ' (stimati)'}</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(r.ricorrentiStorico)}</div>
+                  </div>
                 </div>
-                <div className="info-box blue" style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                  <span style={{ fontSize: 12.5 }}>
-                    + <strong>{fmtEur(r.ricorrentiStorico)}</strong> ricorrenti {r.haStoricoReale ? 'reali (già importati dall\'estratto conto)' : 'attesi, proiettati dallo storico degli anni scorsi su questo stesso mese'}
-                  </span>
-                  <span style={{ fontSize: 13.5 }}>Potenziale prefattura: <strong style={{ color: '#1B7A3E' }}>{fmtEur(r.totalePotenziale)}</strong></span>
-                </div>
+                <div className="fs-11 text-muted" style={{ marginBottom: 10 }}>Di cui <strong>{fmtEur(r.totale)}</strong> da contratti inseriti a mano nel CRM.</div>
                 <div className="table-wrap">
                   <table className="crm-table">
                     <thead><tr><th>Cliente</th><th>Prodotto</th><th>Anno</th><th>Aliquota</th><th>Provvigione</th></tr></thead>
