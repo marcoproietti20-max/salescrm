@@ -458,6 +458,27 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     ricaricaStorico();
   };
 
+  // ── Gestione estratti conto importati: elenco file con righe/totale, eliminabili da qui ──
+  const [gestioneFile, setGestioneFile] = useState(false);
+  const fileImportati = useMemo(() => {
+    const m = {};
+    (storico||[]).forEach(r => {
+      const key = r.file_origine || '(sconosciuto)';
+      (m[key] = m[key] || { file: key, righe: 0, totale: 0, mesi: new Set() });
+      m[key].righe += 1;
+      m[key].totale += (r.importo_provvigioni || 0);
+      m[key].mesi.add(r.mese_competenza);
+    });
+    return Object.values(m).sort((a,b) => a.file.localeCompare(b.file));
+  }, [storico]);
+  const eliminaFileStorico = async (nomeFile, righe) => {
+    if (!window.confirm(`Eliminare definitivamente tutte le ${righe} righe importate dal file "${nomeFile}"? L'operazione non è reversibile (puoi solo ricaricare il file).`)) return;
+    const ok = await dbEliminaStoricoFile(nomeFile);
+    if (!ok) { showToast('Errore durante l\'eliminazione', '', 'info'); return; }
+    showToast('File eliminato', `${righe} righe rimosse`);
+    ricaricaStorico();
+  };
+
   // ── Premi/rimborsi manuali, per mese — una riga distinta nel totale, non legata a nessun contratto ──
   const [extra, setExtra] = useState([]);
   const ricaricaExtra = () => dbLoadExtraProvvigioni().then(setExtra);
@@ -535,6 +556,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
             <button className="btn btn-sm" onClick={()=>setOffset(0)}>Oggi</button>
             <button className="btn btn-sm" onClick={()=>setOffset(o=>o+1)}>Succ. →</button>
             <input className="form-control" type="month" style={{ width: 150 }} value={meseSelezionato} onChange={e=>vaiAMese(e.target.value)} title="Vai direttamente a un mese/anno" />
+            <button className="btn btn-sm" onClick={()=>setGestioneFile(true)} title="Vedi ed elimina gli estratti conto già importati">🗂 Gestisci estratti</button>
             <button className="btn btn-sm btn-primary" onClick={()=>fileRef.current?.click()}>📁 Carica estratto conto</button>
             <input ref={fileRef} type="file" accept=".xls,.XLS,.txt" style={{ display: 'none' }} onChange={selezionaFile} />
           </>)}
@@ -718,6 +740,34 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
         </>
       )}
       </div>
+
+      {/* ── Gestione estratti conto importati: elenco file, eliminabili uno per uno ── */}
+      {gestioneFile && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,30,40,.45)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={()=>setGestioneFile(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: 22 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Estratti conto importati</div>
+            <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>{fileImportati.length} file, {storico?.length || 0} righe totali nello storico ufficiale.</div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {fileImportati.length === 0 && <div className="fs-12 text-muted">Nessun estratto conto importato.</div>}
+              {fileImportati.map(f => (
+                <div key={f.file} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <div className="fw-600 fs-13">{f.file}</div>
+                    <div className="fs-11 text-muted">{f.righe} righe · {[...f.mesi].sort().join(', ')}</div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span className="fw-600" style={{ color: f.totale >= 0 ? '#1B7A3E' : '#C0392B' }}>{fmtEur(f.totale)}</span>
+                    <button className="btn btn-sm" title="Elimina questo file dallo storico" onClick={()=>eliminaFileStorico(f.file, f.righe)} style={{ color: '#C0392B' }}>🗑</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button className="btn" onClick={()=>setGestioneFile(false)}>Chiudi</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Anteprima prima di confermare l'import ── */}
       {anteprima && (
