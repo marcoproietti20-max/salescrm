@@ -168,8 +168,11 @@ export async function dbLoadEsclusioniStorico() {
   if(error){console.error('dbLoadEsclusioniStorico:',error);return [];}
   return data||[];
 }
-export async function dbAggiungiEsclusioneStorico(numeroOrdine, codiceProdotto, motivo) {
-  const {error}=await supabase.from('provvigioni_esclusioni_storico').insert({ numero_ordine: numeroOrdine, codice_prodotto: codiceProdotto, motivo: motivo||null });
+// aliquotaOverride: se valorizzata, il contratto NON viene escluso dalla proiezione — continua a
+// proiettare gli anni futuri, ma con questa aliquota al posto di quella (spesso gonfiata da un
+// bonus/maggiorata riconosciuto solo il primo anno) ricavata dall'ultimo anno reale importato.
+export async function dbAggiungiEsclusioneStorico(numeroOrdine, codiceProdotto, motivo, aliquotaOverride) {
+  const {error}=await supabase.from('provvigioni_esclusioni_storico').insert({ numero_ordine: numeroOrdine, codice_prodotto: codiceProdotto, motivo: motivo||null, aliquota_override: (aliquotaOverride===undefined||aliquotaOverride===null||aliquotaOverride==='') ? null : Number(aliquotaOverride) });
   if(error){console.error('dbAggiungiEsclusioneStorico:',error);return false;}
   return true;
 }

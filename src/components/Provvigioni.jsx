@@ -294,7 +294,11 @@ function storicoComeEvento(r) {
 export function eventiProiettatiDaStorico(storico, esclusioni) {
   // Raggruppo le righe storiche per contratto reale: stesso ordine + stesso prodotto (ignoro la
   // sostituzione U/S, che è solo la ripartizione upgrade/standard dello stesso importo).
-  const chiaviEscluse = new Set((esclusioni || []).map(e => `${e.numero_ordine}|${e.codice_prodotto}`));
+  // Un'esclusione senza aliquota_override ferma la proiezione (es. Saint Thomas, saldato in
+  // un'unica soluzione); con aliquota_override invece la proiezione continua ma con quella
+  // aliquota al posto di quella ricavata dall'ultimo anno reale (spesso gonfiata da un bonus/
+  // maggiorata riconosciuto solo il primo anno, che altrimenti si ripeterebbe anche dopo).
+  const mappaEsclusioni = new Map((esclusioni || []).map(e => [`${e.numero_ordine}|${e.codice_prodotto}`, e]));
   const gruppi = {};
   (storico || []).forEach(r => {
     if (!r.numero_ordine || !r.codice_prodotto || !r.decorrenza) return;
@@ -306,7 +310,8 @@ export function eventiProiettatiDaStorico(storico, esclusioni) {
     // Esclusione manuale: contratto pluriennale saldato in un'unica soluzione (tutte le
     // annualità già incassate subito, es. caso Saint Thomas) — Marco la imposta a mano dalla
     // tabella, perché dallo storico non c'è modo di distinguerla da un vero ricorrente futuro.
-    if (chiaviEscluse.has(chiave)) return;
+    const esclusione = mappaEsclusioni.get(chiave);
+    if (esclusione && esclusione.aliquota_override == null) return; // escluso del tutto
     const durataM = Math.max(...righe.map(r => Number(r.durata) || 0));
     const anniTotali = durataM ? Math.max(1, Math.round(durataM / 12)) : 1;
     const maxAnnualita = Math.max(...righe.map(r => Number(r.annualita) || 1));
@@ -325,7 +330,13 @@ export function eventiProiettatiDaStorico(storico, esclusioni) {
     // dello stesso anno hanno aliquote diverse tra loro.
     const importoBase = ultime.reduce((s, r) => s + (Number(r.imponibile) || 0), 0);
     const provvigioneBase = ultime.reduce((s, r) => s + (Number(r.importo_provvigioni) || 0), 0);
-    const pct = importoBase > 0 ? Math.round((provvigioneBase / importoBase) * 10000) / 100 : (Number(base.aliquota) || 0);
+    const pctCalcolata = importoBase > 0 ? Math.round((provvigioneBase / importoBase) * 10000) / 100 : (Number(base.aliquota) || 0);
+    // Oltre 35% non esiste aliquota "ordinaria" in tabella: un valore così alto sull'ultimo anno
+    // noto è quasi sempre il bonus/maggiorata riconosciuto solo al primo anno, che non si ripete
+    // — lo segnalo (sospettaMaggiorata) perché Marco lo veda subito, anche quando non ha ancora
+    // corretto l'aliquota a mano con l'override.
+    const sospettaMaggiorata = pctCalcolata >= 40 && !(esclusione && esclusione.aliquota_override != null);
+    const pct = (esclusione && esclusione.aliquota_override != null) ? Number(esclusione.aliquota_override) : pctCalcolata;
     const tipoKey = base.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo';
     for (let anno = maxAnnualita + 1; anno <= anniTotali; anno++) {
       eventi.push({
@@ -335,7 +346,7 @@ export function eventiProiettatiDaStorico(storico, esclusioni) {
         codiceProdotto: base.codice_prodotto,
         prodottoNome: base.descrizione_prodotto || '(senza nome)', categoria: null,
         etichettaRegola: base.sostituzione === 'U' ? 'Upgrade' : base.sostituzione === 'S' ? 'Standard' : '—',
-        anno, anniTotali, primoAnno: false, tipo: tipoKey, maggiorata: false,
+        anno, anniTotali, primoAnno: false, tipo: tipoKey, maggiorata: false, sospettaMaggiorata,
         data: mesiCompetenzaDaDecorrenza(base.decorrenza, anno) + '-15',
         importo: importoBase, pct, provvigione: importoBase * pct / 100,
       });
@@ -370,9 +381,22 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
   const escludiDallaProiezione = async (numeroOrdine, codiceProdotto, nomeCliente) => {
     const motivo = window.prompt(`Escludere "${nomeCliente||''}" dalla proiezione dei ricorrenti futuri? Usalo quando il cliente ha già saldato tutte le annualità in un'unica soluzione.\n\nMotivo (facoltativo):`, 'Saldato in un\'unica soluzione');
     if (motivo === null) return; // annullato
-    const ok = await dbAggiungiEsclusioneStorico(numeroOrdine, codiceProdotto, motivo);
+    const ok = await dbAggiungiEsclusioneStorico(numeroOrdine, codiceProdotto, motivo, null);
     if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
     showToast('Contratto escluso dalla proiezione', '');
+    ricaricaEsclusioni();
+  };
+  // Corregge solo l'aliquota usata per gli anni futuri di questo contratto (non lo esclude) —
+  // serve quando l'ultimo anno reale importato portava un bonus/maggiorata riconosciuto solo
+  // quell'anno, che altrimenti continuerebbe a ripetersi identico su tutti gli anni successivi.
+  const correggiAliquotaProiezione = async (numeroOrdine, codiceProdotto, nomeCliente, pctAttuale) => {
+    const input = window.prompt(`Aliquota da usare per gli anni futuri di "${nomeCliente||''}" (attualmente proiettata al ${pctAttuale}%, probabilmente comprende un bonus riconosciuto solo il primo anno).\n\nNuova aliquota %:`, '');
+    if (input === null) return;
+    const valore = parseFloat(input.replace(',', '.'));
+    if (isNaN(valore)) { showToast('Aliquota non valida', '', 'info'); return; }
+    const ok = await dbAggiungiEsclusioneStorico(numeroOrdine, codiceProdotto, `Aliquota corretta manualmente da ${pctAttuale}% a ${valore}%`, valore);
+    if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
+    showToast('Aliquota corretta', `${valore}% per gli anni futuri`);
     ricaricaEsclusioni();
   };
   const rimuoviEsclusione = async (id) => {
@@ -787,16 +811,20 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                       ? <>anno {e.anno} di {e.anniTotali}{e.anniTotali - e.anno > 0 && <div className="fs-11 text-muted">restano {e.anniTotali - e.anno}</div>}</>
                       : <span className="text-muted">—</span>}
                   </td>
-                  <td className="fs-12 fw-600">{e.pct}%</td>
+                  <td className="fs-12 fw-600">
+                    {e.pct}%
+                    {e.sospettaMaggiorata && <span title="Sopra il 35% non esiste aliquota ordinaria in tabella: è probabile che l'ultimo anno reale includesse un bonus riconosciuto solo quell'anno, che qui si sta ripetendo per errore. Usa ✎ per correggerla." style={{ marginLeft: 4, cursor: 'help' }}>⚠️</span>}
+                  </td>
                   <td className="fs-12">{fmtEur(e.importo)}</td>
                   <td className="fw-600" style={{ color: '#1B7A3E' }}>{fmtEur(e.provvigione)}</td>
                   <td>
                     {e.storico && (
                       <button className="btn btn-sm" title="Elimina questa riga dello storico" onClick={()=>eliminaRigaStorico(e)} style={{ color: '#C0392B' }}>🗑</button>
                     )}
-                    {e.storicoProiettato && (
+                    {e.storicoProiettato && (<>
+                      <button className="btn btn-sm" title="Correggi l'aliquota usata per gli anni futuri di questo contratto" onClick={()=>correggiAliquotaProiezione(e.numeroOrdine, e.codiceProdotto, e.nome, e.pct)} style={{ color: '#0050A0' }}>✎</button>
                       <button className="btn btn-sm" title="Escludi questo contratto dalla proiezione dei ricorrenti futuri (es. saldato in un'unica soluzione)" onClick={()=>escludiDallaProiezione(e.numeroOrdine, e.codiceProdotto, e.nome)} style={{ color: '#B5651D' }}>🚫</button>
-                    )}
+                    </>)}
                   </td>
                 </tr>
               ))}
@@ -860,14 +888,15 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
               ))}
             </div>
             {esclusioni.length > 0 && (<>
-              <div className="fw-600 fs-13" style={{ marginTop: 18, marginBottom: 6 }}>Contratti esclusi dalla proiezione ricorrenti</div>
+              <div className="fw-600 fs-13" style={{ marginTop: 18, marginBottom: 6 }}>Correzioni manuali sulla proiezione ricorrenti</div>
               {esclusioni.map(x => (
                 <div key={x.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
                   <div className="fs-12">
                     <span className="fw-600">ordine {x.numero_ordine}</span> · {x.codice_prodotto}
+                    {' · '}{x.aliquota_override != null ? <span style={{ color: '#0050A0' }}>aliquota corretta a {x.aliquota_override}%</span> : <span style={{ color: '#B5651D' }}>escluso dalla proiezione</span>}
                     {x.motivo && <div className="fs-11 text-muted">{x.motivo}</div>}
                   </div>
-                  <button className="btn btn-sm" title="Rimetti in proiezione" onClick={()=>rimuoviEsclusione(x.id)} style={{ color: '#C0392B' }}>🗑</button>
+                  <button className="btn btn-sm" title="Rimuovi questa correzione" onClick={()=>rimuoviEsclusione(x.id)} style={{ color: '#C0392B' }}>🗑</button>
                 </div>
               ))}
             </>)}
