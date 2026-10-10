@@ -158,7 +158,7 @@ const CSS = `
     .opv-metric .val { font-size: 28px; }
     .opv-metric .sub { font-size: 12.5px; }
     .opv-card { padding: 18px; }
-    .opv-card-title { font-size: 15.5px; }
+    .opv-card-title { font-size: 17px; }
     .opv-input, .opv-select, .opv-textarea { font-size: 16px; padding: 12px 13px; }
     /* font-size 16px sugli input evita lo zoom automatico di iOS Safari al focus */
     .opv-row { flex-wrap: wrap; gap: 9px; padding: 15px 15px; }
@@ -180,19 +180,19 @@ const CSS = `
     .opv-table th { font-size: 11px; }
     .opv-grid2 { grid-template-columns: 1fr; }
     .opv-week { grid-template-columns: 1fr; }
-    .opv-day { min-height: auto; padding: 12px; }
-    .opv-day-h { font-size: 15px; margin-bottom: 10px; }
-    .opv-day-h .num { font-size: 20px; }
-    .opv-mini { padding: 11px 13px; margin-bottom: 9px; }
-    .opv-mini .n { font-size: 15.5px; }
-    .opv-mini .t { font-size: 14.5px; }
+    .opv-day { min-height: auto; padding: 13px; }
+    .opv-day-h { font-size: 17px; margin-bottom: 10px; }
+    .opv-day-h .num { font-size: 23px; }
+    .opv-mini { padding: 12px 14px; margin-bottom: 10px; }
+    .opv-mini .n { font-size: 17px; }
+    .opv-mini .t { font-size: 15.5px; }
     .opv-preview-banner { font-size: 12.5px; padding: 8px 11px; margin: 56px 0 -4px; line-height: 1.4; }
     .opv-modal { padding: 20px; }
-    .opv-weekbtn2 { padding: 11px 18px; font-size: 15.5px; min-height: 44px; }
+    .opv-weekbtn2 { padding: 12px 20px; font-size: 17px; min-height: 46px; }
     .opv-select-sm { font-size: 14px; padding: 9px 12px; }
-    .opv-togglebtn { font-size: 15.5px; padding: 11px 22px; min-height: 44px; }
+    .opv-togglebtn { font-size: 17px; padding: 12px 24px; min-height: 46px; }
     .opv-weeknav { width: 100%; }
-    .opv-weeknav .lbl { width: 100%; margin-top: 2px; font-size: 14.5px; font-weight: 700; }
+    .opv-weeknav .lbl { width: 100%; margin-top: 4px; font-size: 15.5px; font-weight: 700; }
     /* Su mobile la tabella Archivio lead è illeggibile (8 colonne compresse): si mostra
        invece l'elenco a card, identico a quello usato in Coda/Richiami, già ottimizzato
        per schermi piccoli. Il desktop continua a usare la tabella, più adatta a schermi larghi. */
@@ -256,7 +256,6 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const chartRef = useRef(); const chartC = useRef();
   const esitiChartRef = useRef(); const esitiChartC = useRef();
   const catChartRef = useRef(); const catChartC = useRef();
-  const qualChartRef = useRef(); const qualChartC = useRef();
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -442,19 +441,9 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     return () => catChartC.current?.destroy();
   }, [pageOp, leads]);
 
-  // ── Qualità appuntamenti (Svolto / Non presentato / Da rifissare...) ──
-  useEffect(() => {
-    if (pageOp !== 'home' || !qualChartRef.current || !qualitaAppt || !qualitaAppt.totVerificati) { qualChartC.current?.destroy(); qualChartC.current = null; return; }
-    const ordine = ['Svolto', 'Non si è presentato', 'Da rifissare', 'Non effettuato'];
-    const colori = { 'Svolto': '#1B7A3E', 'Non si è presentato': '#A32D2D', 'Da rifissare': '#E07B1A', 'Non effettuato': '#888888' };
-    const labels = ordine.filter(s => qualitaAppt.agg[s]);
-    qualChartC.current?.destroy();
-    qualChartC.current = new Chart(qualChartRef.current, { type: 'bar', data: {
-      labels,
-      datasets: [{ data: labels.map(s => qualitaAppt.agg[s]), backgroundColor: labels.map(s => colori[s]), borderRadius: 5 }],
-    }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { ticks: { stepSize: 1 }, grid: { color: 'rgba(0,120,212,0.06)' } } } } });
-    return () => qualChartC.current?.destroy();
-  }, [pageOp, apptStats]);
+  // Nota: "Qualità appuntamenti" non usa più un canvas Chart.js — una barra impilata inline
+  // (vedi JSX più sotto) basta per 2-4 categorie e non lascia il riquadro vuoto in caso di
+  // ritardo/mancato render del canvas.
 
   // ── Registrazione esito ────────────────────────────────────
   // apriLead: se richiamato da una riga di una coda (coda=array), memorizza la coda per il pulsante "Prossimo →"
@@ -870,15 +859,27 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
                       <span style={{ fontSize: 30, fontWeight: 800, color: '#1B7A3E' }}>{qualitaAppt.pctSvolti}%</span>
                       <span style={{ fontSize: 13, color: '#6B7A8C' }}>si sono effettivamente svolti (su {qualitaAppt.totVerificati} verificati)</span>
                     </div>
-                    <div style={{ height: 160, position: 'relative', marginTop: 10 }}><canvas ref={qualChartRef} /></div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 12 }}>
+                    {/* Barra impilata al posto del grafico a canvas: con solo 2-4 categorie un canvas
+                        riservava 160px che spesso restavano vuoti (ritardo di render/dati). Questa
+                        si disegna sempre, subito, ed è comunque leggibile a colpo d'occhio. */}
+                    <div style={{ display: 'flex', height: 22, borderRadius: 8, overflow: 'hidden', marginTop: 14, marginBottom: 14 }}>
+                      {Object.entries(qualitaAppt.agg).sort((a, b) => b[1] - a[1]).map(([stato, n]) => {
+                        const bc = { Svolto: '#1B7A3E', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D' }[stato] || BLU;
+                        const pct = Math.round(n / qualitaAppt.totVerificati * 100);
+                        return (
+                          <div key={stato} title={`${stato}: ${n} (${pct}%)`} onClick={() => setListaModale({ titolo: stato, items: (appuntamentiList || []).filter(c => c.appt_stato === stato) })}
+                            style={{ width: pct + '%', background: bc, cursor: 'pointer', minWidth: n > 0 ? 3 : 0 }} />
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {Object.entries(qualitaAppt.agg).sort((a, b) => b[1] - a[1]).map(([stato, n]) => {
                         const bc = { Svolto: '#1B7A3E', 'Da rifissare': '#E07B1A', 'Non effettuato': '#A32D2D', 'Non si è presentato': '#A32D2D' }[stato] || BLU;
                         return (
                           <div key={stato} onClick={() => setListaModale({ titolo: stato, items: (appuntamentiList || []).filter(c => c.appt_stato === stato) })}
                             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 12.5 }}
                             onMouseEnter={e => e.currentTarget.style.background = '#F5F8FB'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                            <span style={{ color: bc, fontWeight: 700 }}>{stato}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: bc, fontWeight: 700 }}><span style={{ width: 9, height: 9, borderRadius: 3, background: bc, flexShrink: 0 }} />{stato}</span>
                             <span style={{ color: '#33475B', fontWeight: 700 }}>{n} →</span>
                           </div>
                         );
