@@ -440,6 +440,12 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     if (!ok) { showToast('Errore durante il salvataggio', '', 'info'); return; }
     const extra = anteprima.righeDuplicate.length ? `, ${anteprima.righeDuplicate.length} duplicate scartate` : '';
     showToast('Estratto importato', `${anteprima.righe.length} righe su ${anteprima.mesiTrovati.length} mes${anteprima.mesiTrovati.length===1?'e':'i'}${extra}`);
+    // Il mese di competenza reale (data fattura) quasi sempre NON coincide col nome del file
+    // (es. "Agosto 2025.XLS" è lo statement ricevuto ad agosto, ma copre quasi sempre le fatture
+    // di luglio) — senza questo salto, Marco resta a guardare il mese che aveva aperto prima di
+    // importare e lo vede vuoto, pensando che l'import non abbia funzionato. mesiTrovati è già
+    // ordinato dal più recente al più vecchio: ci si sposta sul più recente dei mesi appena importati.
+    if (anteprima.mesiTrovati.length) vaiAMese(anteprima.mesiTrovati[0][0]);
     setAnteprima(null);
     ricaricaStorico();
   };
