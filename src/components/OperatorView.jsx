@@ -198,6 +198,15 @@ const CSS = `
        per schermi piccoli. Il desktop continua a usare la tabella, più adatta a schermi larghi. */
     .opv-archivio-desktop { display: none; }
     .opv-archivio-mobile { display: block; }
+    /* Nasconde i giorni senza richiami/appuntamenti nell'agenda settimanale: su schermo
+       stretto 3 box vuoti di fila sono solo scroll sprecato prima del primo giorno utile. */
+    .opv-day.empty { display: none; }
+    .opv-day-h { font-size: 13.5px; }
+    .opv-day-h .num { font-size: 18px; }
+  }
+  .opv-empty-mobile-week { display: none; }
+  @media (max-width: 900px) {
+    .opv-empty-mobile-week { display: block; }
   }
   @media (max-width: 480px) {
     .opv-metrics { grid-template-columns: 1fr 1fr; }
@@ -662,13 +671,16 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
           <span className="lbl">{labelSett}</span>
         </div>
       </div>
+      {/* Su mobile i giorni senza richiami (classe "empty") vengono nascosti via CSS: altrimenti
+          3 box vuoti di fila costringono a scorrere parecchio prima di arrivare al primo giorno
+          utile. Su desktop restano visibili tutti e 5, c'è spazio. */}
       <div className="opv-week">
         {giorniSett.map(g => {
           const items = richiamiGiorno(g);
           const d = new Date(g + 'T12:00');
           const scaduto = g < today;
           return (
-            <div key={g} className={'opv-day' + (g === today ? ' today' : '')}>
+            <div key={g} className={'opv-day' + (g === today ? ' today' : '') + (items.length === 0 ? ' empty' : '')}>
               <div className="opv-day-h">
                 <span>{d.toLocaleDateString('it-IT', { weekday: 'short' })}</span>
                 <span className="num" style={scaduto ? { color: '#B35F0E' } : {}}>{d.getDate()}</span>
@@ -685,6 +697,9 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
           );
         })}
       </div>
+      {giorniSett.every(g => richiamiGiorno(g).length === 0) && (
+        <div className="opv-empty-mobile-week" style={{ fontSize: 12.5, color: '#8A97A6', textAlign: 'center', padding: '4px 0 2px' }}>Nessun richiamo in questa settimana</div>
+      )}
       {richiamiSenzaData.length > 0 && (
         <div style={{ marginTop: 12, fontSize: 12.5, color: '#6B7A8C' }}>
           ⚠ {richiamiSenzaData.length} richiam{richiamiSenzaData.length === 1 ? 'o' : 'i'} senza data: {richiamiSenzaData.map(l => l.azienda || l.nome).join(', ')}
@@ -715,7 +730,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
           const items = appuntamentiGiorno(g);
           const d = new Date(g + 'T12:00');
           return (
-            <div key={g} className={'opv-day' + (g === today ? ' today' : '')}>
+            <div key={g} className={'opv-day' + (g === today ? ' today' : '') + (items.length === 0 ? ' empty' : '')}>
               <div className="opv-day-h">
                 <span>{d.toLocaleDateString('it-IT', { weekday: 'short' })}</span>
                 <span className="num">{d.getDate()}</span>
@@ -735,6 +750,9 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
           );
         })}
       </div>
+      {giorniSettAppt.every(g => appuntamentiGiorno(g).length === 0) && (
+        <div className="opv-empty-mobile-week" style={{ fontSize: 12.5, color: '#8A97A6', textAlign: 'center', padding: '4px 0 2px' }}>Nessun appuntamento in questa settimana</div>
+      )}
     </div>
   );
 
