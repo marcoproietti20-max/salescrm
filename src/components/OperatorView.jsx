@@ -94,15 +94,22 @@ const CSS = `
   .opv-btn.primary { background: ${BLU}; border-color: ${BLU}; color: white; }
   .opv-btn.primary:disabled { opacity: .6; }
   .opv-hist { border-left: 3px solid ${BLU}; padding: 5px 12px; margin-bottom: 10px; }
-  .opv-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-  .opv-grid2 .opv-card { margin-top: 0; }
+  /* minmax(0,1fr) invece di 1fr: senza questo, una colonna con contenuto largo (un nome
+     azienda lungo, un orario) si allarga oltre lo spazio disponibile e spinge il resto della
+     griglia fuori schermo — succede anche su desktop, non solo su mobile. */
+  .opv-grid2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; margin-top: 16px; }
+  .opv-grid2 .opv-card { margin-top: 0; min-width: 0; }
   .opv-row .who .nota { font-size: 12px; color: #8A97A6; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
   .opv-weeknav { display: flex; align-items: center; gap: 10px; margin-left: auto; }
   .opv-weeknav .lbl { font-size: 12.5px; font-weight: 700; color: #33475B; text-transform: none; letter-spacing: 0; }
   .opv-weekbtn { border: 1.5px solid #D4DEE9; background: white; border-radius: 8px; width: 30px; height: 30px; font-size: 15px; font-weight: 700; cursor: pointer; color: #33475B; font-family: inherit; }
   .opv-weekbtn:hover { border-color: ${BLU}; color: ${BLU}; }
-  .opv-week { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-  .opv-day { background: #F6F9FC; border: 1px solid #E2E9F1; border-radius: 12px; padding: 10px; min-height: 130px; }
+  /* minmax(0,1fr): stesso fix del blowout spiegato sopra per .opv-grid2 — qui è ancora più
+     facile da innescare, con 5 colonne invece di 2. overflow-x:auto resta come rete di
+     sicurezza: se anche con le colonne elastiche 5 giorni non ci stanno comodi (es. laptop
+     13"), scorre solo l'agenda, mai l'intera pagina. */
+  .opv-week { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 10px; overflow-x: auto; }
+  .opv-day { background: #F6F9FC; border: 1px solid #E2E9F1; border-radius: 12px; padding: 10px; min-height: 130px; min-width: 0; }
   .opv-day.today { border-color: ${BLU}; background: rgba(0,120,212,.05); }
   .opv-day-h { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #33475B; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
   .opv-day-h .num { font-size: 15px; color: ${BLU}; }
