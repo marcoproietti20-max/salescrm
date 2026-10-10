@@ -144,21 +144,54 @@ const CSS = `
     .opv-side { transform: translateX(-100%); transition: transform .18s; }
     .opv-side.open { transform: translateX(0); }
     .opv-overlay.show { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 44; }
-    .opv-burger { display: block; }
-    .opv-main { margin-left: 0; padding: 0 12px 60px; }
-    .opv-topbar { padding-top: 60px; }
-    .opv-metrics { grid-template-columns: repeat(2, 1fr); gap: 9px; }
-    .opv-metric .val { font-size: 26px; }
-    .opv-row { flex-wrap: wrap; gap: 8px; }
+    .opv-burger { display: block; width: 46px; height: 46px; font-size: 20px; }
+    .opv-main { margin-left: 0; padding: 0 14px 60px; }
+    .opv-topbar { padding-top: 64px; }
+    .opv-title { font-size: 22px; }
+    .opv-date { font-size: 13.5px; }
+    .opv-metrics { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .opv-metric { padding: 16px 16px; }
+    .opv-metric .lbl { font-size: 11.5px; }
+    .opv-metric .val { font-size: 28px; }
+    .opv-metric .sub { font-size: 12.5px; }
+    .opv-card { padding: 18px; }
+    .opv-card-title { font-size: 14px; }
+    .opv-input, .opv-select, .opv-textarea { font-size: 16px; padding: 12px 13px; }
+    /* font-size 16px sugli input evita lo zoom automatico di iOS Safari al focus */
+    .opv-row { flex-wrap: wrap; gap: 9px; padding: 15px 15px; }
     .opv-row .who { flex-basis: 100%; }
-    .opv-call { flex: 1; justify-content: center; }
-    .opv-open { flex: 1; }
+    .opv-row .who .az { font-size: 17.5px; }
+    .opv-row .who .det { font-size: 14px; }
+    .opv-row .who .nota { font-size: 13px; white-space: normal; }
+    .opv-tag, .opv-statochip { font-size: 12.5px; padding: 4px 11px; }
+    .opv-call { flex: 1; justify-content: center; font-size: 16px; padding: 12px 15px; min-height: 46px; }
+    .opv-open { flex: 1; font-size: 14px; padding: 11px 13px; min-height: 46px; }
     .opv-esiti { grid-template-columns: 1fr 1fr; }
-    .opv-bigcall { font-size: 21px; }
+    .opv-esito-btn { font-size: 15px; padding: 16px 10px; }
+    .opv-bigcall { font-size: 23px; padding: 17px; }
+    .opv-bigcall.small { font-size: 17px; padding: 12px; }
+    .opv-dl { grid-template-columns: 112px 1fr; font-size: 15.5px; }
+    .opv-tab { font-size: 15px; padding: 12px 8px; }
+    .opv-btn { font-size: 15px; padding: 11px 18px; }
+    .opv-table { font-size: 14px; }
+    .opv-table th { font-size: 11px; }
     .opv-grid2 { grid-template-columns: 1fr; }
     .opv-week { grid-template-columns: 1fr; }
     .opv-day { min-height: auto; }
-    .opv-preview-banner { font-size: 11.5px; padding: 7px 10px; margin: 52px 0 -4px; line-height: 1.4; }
+    .opv-day-h { font-size: 12.5px; }
+    .opv-day-h .num { font-size: 17px; }
+    .opv-mini { padding: 9px 11px; }
+    .opv-mini .n { font-size: 14px; }
+    .opv-mini .t { font-size: 13px; }
+    .opv-preview-banner { font-size: 12.5px; padding: 8px 11px; margin: 56px 0 -4px; line-height: 1.4; }
+    .opv-modal { padding: 20px; }
+  }
+  @media (max-width: 480px) {
+    .opv-metrics { grid-template-columns: 1fr 1fr; }
+    .opv-metric .val { font-size: 25px; }
+    .opv-row .who .az { font-size: 16.5px; }
+    .opv-esiti { grid-template-columns: 1fr; }
+    .opv-dl { grid-template-columns: 100px 1fr; font-size: 15px; }
   }
 `;
 
