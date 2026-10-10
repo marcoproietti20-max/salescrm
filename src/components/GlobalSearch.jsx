@@ -72,15 +72,18 @@ export default function GlobalSearch({ contacts, stages, setModal, navigateTo })
 
   return (
     <>
-      {/* Search trigger button */}
+      {/* Search trigger: solo icona, rotonda — niente testo "Cerca..." che allarga la zona e va a
+          scontrarsi con i pulsanti della topbar di pagine come Provvigioni. Resta raggiungibile
+          anche da tastiera con ⌘K/Ctrl+K (vedi tooltip), senza occupare spazio visivo finché non
+          la si usa. */}
       <button
         onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-        style={{ display:'flex', alignItems:'center', gap:7, padding:'6px 12px', background:'var(--bg3)', border:'1px solid var(--border)', borderRadius:'var(--r)', cursor:'pointer', fontSize:12, color:'var(--text2)', fontFamily:'var(--font)' }}>
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        title="Cerca (⌘K)"
+        aria-label="Cerca"
+        style={{ display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36, background:'var(--bg2)', border:'1px solid var(--border2)', borderRadius:'50%', cursor:'pointer', color:'var(--text2)', boxShadow:'0 2px 8px rgba(0,120,212,0.15)' }}>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
           <circle cx="6.5" cy="6.5" r="4.5"/><path d="M10 10l3 3"/>
         </svg>
-        Cerca...
-        <span style={{marginLeft:4,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:3,padding:'1px 5px',fontSize:10}}>⌘K</span>
       </button>
 
       {/* Modal overlay */}

@@ -176,9 +176,11 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
 .hamburger { display: none; position: fixed; top: 10px; left: 10px; z-index: 51; background: var(--accent); border: none; border-radius: var(--r); padding: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,120,212,0.3); }
 .hamburger svg { stroke: white; }
 
-/* Ricerca globale (ancorata in alto) e pulsante Esci (ancorato in basso a destra) â€”
-   su schermi stretti sono le regole qui sotto, non quelle inline nei componenti, a spostarle */
-.global-search-wrap { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 30; max-width: 320px; width: 100%; }
+/* Ricerca globale e pulsante Esci: entrambi ancorati in basso a destra, impilati â€” angolo libero
+   su ogni pagina, non entra mai in conflitto con i pulsanti della topbar (che possono essere
+   tanti e variare da pagina a pagina, es. Provvigioni). Stessa posizione su desktop e mobile,
+   cosÃ¬ il comportamento resta identico passando da un dispositivo all'altro. */
+.global-search-wrap { position: fixed; bottom: 60px; right: 16px; z-index: 30; }
 .logout-btn { position: fixed; bottom: 16px; right: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text2); z-index: 20; }
 
 /* Griglie a colonne fisse (kanban Pipeline, calendario settimanale Appuntamenti/Follow-up) â€”
@@ -208,10 +210,9 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
   .info-grid { grid-template-columns: 1fr; }
   .modal-box { width: 100%; max-height: 100vh; border-radius: 0; }
   .modal-overlay { padding: 0; align-items: flex-end; }
-  /* La ricerca globale scende sotto l'hamburger: resta "fixed" (mai "static", che la
-     farebbe entrare nel flex layout di .app insieme a sidebar e contenuto, rompendolo) */
-  .global-search-wrap { top: 56px; left: 8px; right: 8px; transform: none; max-width: none; width: auto; }
-  /* Il pulsante Esci resta "fixed" ma piÃ¹ piccolo e meno invadente su schermo stretto */
+  /* Il pulsante Esci resta "fixed" ma piÃ¹ piccolo e meno invadente su schermo stretto â€”
+     la ricerca (solo icona, angolo in basso a destra) non ha bisogno di correzioni qui:
+     resta identica a desktop e mobile. */
   .logout-btn { padding: 5px 10px; font-size: 11px; }
 
   .kanban-grid, .week-grid { grid-template-columns: 1fr !important; }
