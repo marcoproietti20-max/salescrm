@@ -279,6 +279,35 @@ function statoDaNota(note) {
   if (n.includes('RIPRES')) return { label: 'Ripreso', bg: '#E6F4EA', color: '#1B7A3E' };
   return null;
 }
+// Stessa "transazione" reale (originale + eventuale insoluto + eventuale ripreso): condividono
+// ordine, posizione, prodotto, sostituzione e numero fattura — cambiano solo nota e importo.
+// Serve per capire se un insoluto è già stato recuperato (esiste un ripreso nello stesso gruppo,
+// anche in un file importato più tardi) o se il cliente non ha ancora pagato.
+function chiaveTransazione(r) {
+  return [r.numero_ordine, r.posizione, r.codice_prodotto, r.sostituzione, r.numero_fattura].join('|');
+}
+// Elenco di ciò che richiede un sollecito al cliente: insoluti per cui NON esiste ancora, in
+// nessun file importato, la riga "RIPRESO" che li recupera, più tutte le righe "ANNULLATO" (un
+// contratto annullato prima di essere incassato — da verificare con il cliente comunque).
+export function clientiDaSollecitare(storico) {
+  const gruppi = {};
+  (storico || []).forEach(r => {
+    const chiave = chiaveTransazione(r);
+    (gruppi[chiave] = gruppi[chiave] || []).push(r);
+  });
+  const insoluti = [];
+  const annullati = [];
+  (storico || []).forEach(r => {
+    const n = (r.note || '').toUpperCase();
+    if (n.includes('ANNULLAT')) { annullati.push(r); return; }
+    if (n.includes('INSOLUT')) {
+      const gruppo = gruppi[chiaveTransazione(r)] || [];
+      const recuperato = gruppo.some(g => (g.note || '').toUpperCase().includes('RIPRES'));
+      if (!recuperato) insoluti.push(r);
+    }
+  });
+  return { insoluti, annullati };
+}
 function storicoComeEvento(r) {
   const annoNum = r.annualita || 1;
   // Durata del contratto in anni, così come l'ha fatturata l'azienda — serve per vedere a
@@ -288,7 +317,7 @@ function storicoComeEvento(r) {
     id: r.id, storico: true,
     contattoId: r.codice_cliente, nome: r.ragione_sociale, azienda: null,
     codiceCliente: r.codice_cliente, numeroOrdine: r.numero_ordine, numeroFattura: r.numero_fattura,
-    prodottoNome: r.descrizione_prodotto || '(senza nome)', categoria: null,
+    prodottoNome: r.descrizione_prodotto || '(senza nome)', categoria: indovinaCategoriaStorico(r.descrizione_prodotto),
     etichettaRegola: r.sostituzione === 'U' ? 'Upgrade' : r.sostituzione === 'S' ? 'Standard' : '—',
     anno: annoNum, anniTotali, primoAnno: annoNum === 1, tipo: r.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo',
     maggiorata: false, data: r.data_fattura || (r.mese_competenza + '-15'), note: r.note,
@@ -593,6 +622,10 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     ricaricaStorico();
   };
 
+  // ── Clienti da sollecitare: insoluti ancora aperti + annullati, su tutto lo storico (non solo il mese) ──
+  const [daSollecitare, setDaSollecitare] = useState(false);
+  const { insoluti: insolutiAperti, annullati } = useMemo(() => clientiDaSollecitare(storico), [storico]);
+
   // ── Premi/rimborsi manuali, per mese — una riga distinta nel totale, non legata a nessun contratto ──
   const [extra, setExtra] = useState([]);
   const ricaricaExtra = () => dbLoadExtraProvvigioni().then(setExtra);
@@ -650,9 +683,18 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
   }, [tuttiEventi, oggi, storico, mesiConStorico]);
   const maxProiezione = Math.max(1, ...prossimi12.map(p=>p.tot));
 
-  const perCategoria = useMemo(() => {
+  // "Tipo" = Upgrade/Standard/— (dal campo SOSTITUZIONE della riga reale — spesso vuoto, l'azienda
+  // lo compila solo su alcune variazioni, non è un dato sempre presente). "Servizio" invece è la
+  // categoria di prodotto riconosciuta dal nome (TOP24/SMART24/... → Editoria elettronica, ecc.) —
+  // due informazioni diverse, prima erano mescolate sotto un'unica etichetta fuorviante.
+  const perTipo = useMemo(() => {
     const m = {};
     eventiMese.forEach(e => { m[e.etichettaRegola] = (m[e.etichettaRegola]||0) + e.provvigione; });
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  }, [eventiMese]);
+  const perServizio = useMemo(() => {
+    const m = {};
+    eventiMese.forEach(e => { const k = e.categoria || 'Non riconosciuto'; m[k] = (m[k]||0) + e.provvigione; });
     return Object.entries(m).sort((a,b)=>b[1]-a[1]);
   }, [eventiMese]);
 
@@ -694,9 +736,21 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
 
   return (
     <>
-      <div className="topbar">
+      <style>{`
+        .provvigioni-topbar-azioni { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
+        @media (max-width: 900px) {
+          .provvigioni-topbar-azioni { justify-content: flex-start; }
+        }
+        @media (max-width: 640px) {
+          .provvigioni-metric-grid-resp { grid-template-columns: repeat(2, 1fr) !important; }
+          .provvigioni-charts-grid-resp { grid-template-columns: 1fr !important; }
+          .provvigioni-topbar-azioni .btn-sm { font-size: 12px; padding: 5px 8px; }
+          .table-wrap { overflow-x: auto; }
+        }
+      `}</style>
+      <div className="topbar" style={{ flexWrap: 'wrap', rowGap: 8 }}>
         <span className="page-title">Provvigioni</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="provvigioni-topbar-azioni">
           <div style={{ display: 'flex', borderRadius: 'var(--r)', overflow: 'hidden', border: '1px solid var(--border)' }}>
             <button className="btn btn-sm" style={{ border: 'none', borderRadius: 0, background: vista==='ufficiale' ? 'var(--bg3)' : 'transparent', fontWeight: vista==='ufficiale'?700:400 }} onClick={()=>setVista('ufficiale')}>📄 Ufficiale</button>
             <button className="btn btn-sm" style={{ border: 'none', borderRadius: 0, background: vista==='previsionale' ? 'var(--bg3)' : 'transparent', fontWeight: vista==='previsionale'?700:400 }} onClick={()=>setVista('previsionale')}>🧮 Previsionale</button>
@@ -706,6 +760,9 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
             <button className="btn btn-sm" onClick={()=>setOffset(0)}>Oggi</button>
             <button className="btn btn-sm" onClick={()=>setOffset(o=>o+1)}>Succ. →</button>
             <input className="form-control" type="month" style={{ width: 150 }} value={meseSelezionato} onChange={e=>vaiAMese(e.target.value)} title="Vai direttamente a un mese/anno" />
+            <button className="btn btn-sm" onClick={()=>setDaSollecitare(true)} title="Insoluti ancora aperti e annullati, su tutto lo storico" style={{ color: (insolutiAperti.length+annullati.length) > 0 ? '#A8710A' : undefined }}>
+              ⚠️ Da sollecitare{(insolutiAperti.length+annullati.length) > 0 && ` (${insolutiAperti.length+annullati.length})`}
+            </button>
             <button className="btn btn-sm" onClick={()=>setGestioneFile(true)} title="Vedi ed elimina gli estratti conto già importati">🗂 Gestisci estratti</button>
             <button className="btn btn-sm btn-primary" onClick={()=>fileRef.current?.click()}>📁 Carica estratto conto</button>
             <input ref={fileRef} type="file" accept=".xls,.XLS,.txt" style={{ display: 'none' }} onChange={selezionaFile} />
@@ -719,14 +776,14 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
           <div className="info-box amber" style={{ marginBottom: 16 }}>
             🧮 Stima provvigionale calcolata dai contratti inseriti a mano — utile solo per capire quanto hai ipoteticamente maturato nel mese in corso e in quello appena concluso, in attesa dell'estratto conto reale del 15. Non è collegata ai dati ufficiali e non proietta anni futuri: quella parte resta solo nella dashboard "Ufficiale".
           </div>
-          <div className="charts-grid" style={{ marginBottom: 16 }}>
+          <div className="charts-grid provvigioni-charts-grid-resp" style={{ marginBottom: 16 }}>
             {riepilogoPrevisionale.map((r, idx) => (
               <div className="card" key={r.mese} style={{ marginBottom: 0 }}>
                 <div className="card-title" style={{ marginBottom: 10, textTransform: 'capitalize' }}>
                   {idx === 0 ? 'Mese in corso — ' : 'Mese appena concluso — '}
                   {new Date(r.mese+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}
                 </div>
-                <div className="metric-grid" style={{ marginBottom: 10 }}>
+                <div className="metric-grid provvigioni-metric-grid-resp" style={{ marginBottom: 10 }}>
                   <div className="metric-card" title="Contratti inseriti a mano + ricorrenti attesi dallo storico per questo mese">
                     <div className="metric-label">Potenziale prefattura</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{fmtEur(r.totalePotenziale)}</div>
                   </div>
@@ -768,7 +825,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
               : <>Nessun dato reale importato per questo mese. La stima dai contratti inseriti a mano è nella dashboard "Previsionale".</>}
         </div>
 
-        <div className="metric-grid" style={{ marginBottom: 8 }}>
+        <div className="metric-grid provvigioni-metric-grid-resp" style={{ marginBottom: 8 }}>
           <div className="metric-card"><div className="metric-label">Totale del mese</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{fmtEur(totMese)}</div></div>
           <div className="metric-card" title="Primo anno di un contratto con un cliente nuovo.">
             <div className="metric-label">Nuovo</div><div className="metric-value" style={{ color: '#0050A0' }}>{fmtEur(totNuovo)}</div>
@@ -784,7 +841,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
           <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Di cui <strong>{fmtEur(totExtra)}</strong> inserito manualmente come premio/rimborso per questo mese.</div>
         )}
 
-        <div className="charts-grid" style={{ marginBottom: 16 }}>
+        <div className="charts-grid provvigioni-charts-grid-resp" style={{ marginBottom: 16 }}>
           <div className="card" style={{ marginBottom: 0 }}>
             <div className="card-title" style={{ marginBottom: 14 }}>Prossimi 12 mesi</div>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 120 }}>
@@ -809,9 +866,22 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
           </div>
 
           <div className="card" style={{ marginBottom: 0 }}>
-            <div className="card-title" style={{ marginBottom: 14 }}>Per linea/livello — questo mese</div>
-            {perCategoria.length === 0 && <div className="fs-12 text-muted">Nessun incasso previsto questo mese</div>}
-            {perCategoria.map(([et, tot]) => (
+            <div className="card-title" style={{ marginBottom: 14 }}>Tipo — questo mese</div>
+            <div className="fs-11 text-muted" style={{ marginTop: -10, marginBottom: 10 }}>Upgrade/Standard dalla riga reale — spesso vuoto, l'azienda non lo compila su tutti i prodotti.</div>
+            {perTipo.length === 0 && <div className="fs-12 text-muted">Nessun incasso previsto questo mese</div>}
+            {perTipo.map(([et, tot]) => (
+              <div key={et} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 8 }}>
+                <span>{et}</span>
+                <span style={{ fontWeight: 700 }}>{fmtEur(tot)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="card" style={{ marginBottom: 0 }}>
+            <div className="card-title" style={{ marginBottom: 14 }}>Servizio — questo mese</div>
+            <div className="fs-11 text-muted" style={{ marginTop: -10, marginBottom: 10 }}>Categoria di prodotto riconosciuta dal nome — "Non riconosciuto" non è un errore, solo una famiglia non ancora mappata.</div>
+            {perServizio.length === 0 && <div className="fs-12 text-muted">Nessun incasso previsto questo mese</div>}
+            {perServizio.map(([et, tot]) => (
               <div key={et} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, marginBottom: 8 }}>
                 <span>{et}</span>
                 <span style={{ fontWeight: 700 }}>{fmtEur(tot)}</span>
@@ -845,7 +915,8 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
               <th style={{ width: 28 }}><input type="checkbox" checked={eventiMeseFiltrati.length>0 && selezionati.size===eventiMeseFiltrati.length} onChange={toggleSelezionaTutti} /></th>
               <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('nome')}>Cliente{iconaOrdinamento('nome')}</th>
               <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('prodottoNome')}>Prodotto{iconaOrdinamento('prodottoNome')}</th>
-              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('etichettaRegola')}>Linea/livello{iconaOrdinamento('etichettaRegola')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('etichettaRegola')}>Tipo{iconaOrdinamento('etichettaRegola')}</th>
+              <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('categoria')}>Servizio{iconaOrdinamento('categoria')}</th>
               <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('anno')}>Anno{iconaOrdinamento('anno')}</th>
               <th>Durata contratto</th>
               <th style={{ cursor: 'pointer' }} onClick={()=>ordinaPer('pct')}>Aliquota{iconaOrdinamento('pct')}</th>
@@ -854,7 +925,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
               <th></th>
             </tr></thead>
             <tbody>
-              {eventiMeseFiltrati.length === 0 ? <tr><td colSpan={10} className="empty">Nessun incasso previsto in questo mese</td></tr> : eventiMeseFiltrati.map((e) => (
+              {eventiMeseFiltrati.length === 0 ? <tr><td colSpan={11} className="empty">Nessun incasso previsto in questo mese</td></tr> : eventiMeseFiltrati.map((e) => (
                 <tr key={e._idx} style={selezionati.has(e._idx) ? { background: 'var(--bg3)' } : undefined}>
                   <td><input type="checkbox" checked={selezionati.has(e._idx)} onChange={()=>toggleSelezione(e._idx)} /></td>
                   <td className="fw-600">
@@ -864,6 +935,7 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                   </td>
                   <td className="fs-12">{e.prodottoNome}</td>
                   <td className="fs-12">{e.etichettaRegola}</td>
+                  <td className="fs-12">{e.categoria || <span className="text-muted">non riconosciuto</span>}</td>
                   <td className="fs-12">
                     {e.primoAnno
                       ? <span className="badge" style={{ background: e.tipo==='nuovo'?'#EBF4FC':'#EEF1F5', color: e.tipo==='nuovo'?'#0050A0':'#5A6B7E' }}>{e.tipo==='nuovo'?'Nuovo':'Rinnovo'}{e.maggiorata && ' 🔥'}</span>
@@ -970,6 +1042,43 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
             </>)}
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
               <button className="btn" onClick={()=>setGestioneFile(false)}>Chiudi</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Clienti da sollecitare: insoluti ancora aperti (senza ripreso) + annullati ── */}
+      {daSollecitare && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(20,30,40,.45)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={()=>setDaSollecitare(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: 22 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Clienti da sollecitare</div>
+            <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Su tutto lo storico importato, non solo il mese selezionato.</div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              <div className="fw-600 fs-13" style={{ marginBottom: 6 }}>Insoluti non ancora recuperati ({insolutiAperti.length})</div>
+              {insolutiAperti.length === 0 && <div className="fs-12 text-muted" style={{ marginBottom: 16 }}>Nessuno — tutti gli insoluti importati risultano già recuperati da un ripreso.</div>}
+              {insolutiAperti.sort((a,b)=>(b.data_fattura||'').localeCompare(a.data_fattura||'')).map(r => (
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <div className="fw-600 fs-13">{r.ragione_sociale || <span className="text-muted">(nome non disponibile)</span>}</div>
+                    <div className="fs-11 text-muted">{r.descrizione_prodotto || ''} · ordine {r.numero_ordine}{r.numero_fattura ? ` · fatt. ${r.numero_fattura}` : ''} · {r.data_fattura ? new Date(r.data_fattura+'T12:00:00').toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'}) : r.mese_competenza}</div>
+                  </div>
+                  <span className="fw-600" style={{ color: '#A8710A' }}>{fmtEur(r.importo_provvigioni)}</span>
+                </div>
+              ))}
+              <div className="fw-600 fs-13" style={{ marginTop: 18, marginBottom: 6 }}>Annullati ({annullati.length})</div>
+              {annullati.length === 0 && <div className="fs-12 text-muted">Nessuno.</div>}
+              {annullati.sort((a,b)=>(b.data_fattura||'').localeCompare(a.data_fattura||'')).map(r => (
+                <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div>
+                    <div className="fw-600 fs-13">{r.ragione_sociale || <span className="text-muted">(nome non disponibile)</span>}</div>
+                    <div className="fs-11 text-muted">{r.descrizione_prodotto || ''} · ordine {r.numero_ordine}{r.numero_fattura ? ` · fatt. ${r.numero_fattura}` : ''} · {r.data_fattura ? new Date(r.data_fattura+'T12:00:00').toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'}) : r.mese_competenza}</div>
+                  </div>
+                  <span className="fw-600" style={{ color: '#A32D2D' }}>{fmtEur(r.importo_provvigioni)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <button className="btn" onClick={()=>setDaSollecitare(false)}>Chiudi</button>
             </div>
           </div>
         </div>
