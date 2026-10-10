@@ -202,6 +202,7 @@ export default function ChiusoPerMese({ contacts, stages }) {
               </div>
             </div>
             {openM[m.month] && (
+              <div style={{overflowX:'auto'}}>
               <table className="crm-table">
                 <thead>
                   <tr>
@@ -254,6 +255,7 @@ export default function ChiusoPerMese({ contacts, stages }) {
                   </tr>
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         ))}

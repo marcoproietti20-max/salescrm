@@ -105,7 +105,7 @@ export default function FollowUps({ contacts, setModal, showToast, updateContact
     <>
       <div className="topbar">
         <span className="page-title">Follow-up</span>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button className={`btn btn-sm${view === 'list' ? ' btn-primary' : ''}`} onClick={() => setView('list')}>Lista</button>
           <button className={`btn btn-sm${view === 'calendar' ? ' btn-primary' : ''}`} onClick={() => setView('calendar')}>Calendario</button>
         </div>

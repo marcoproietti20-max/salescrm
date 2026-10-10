@@ -45,7 +45,7 @@ const CSS = `
   .opv-esci { margin-top: 10px; width: 100%; background: rgba(255,255,255,.14); color: white; border: 1px solid rgba(255,255,255,.4); border-radius: 9px; padding: 7px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; }
   .opv-esci:hover { background: rgba(255,255,255,.25); }
   .opv-main { flex: 1; margin-left: 230px; padding: 0 26px 60px; }
-  .opv-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0 6px; }
+  .opv-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0 6px; flex-wrap: wrap; row-gap: 6px; }
   .opv-preview-banner { background: #E07B1A; color: white; font-size: 12.5px; font-weight: 700; text-align: center; padding: 8px 14px; border-radius: 10px; margin: 16px 0 -4px; }
   .opv-title { font-size: 20px; font-weight: 800; }
   .opv-date { font-size: 12.5px; color: #6B7A8C; text-transform: capitalize; }
