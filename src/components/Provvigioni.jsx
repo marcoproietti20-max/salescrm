@@ -55,10 +55,14 @@ export function trovaRegola(categoria, nome) {
 // noto ha un'aliquota da bonus (≥40%), quale riga di TABELLA_PROVVIGIONI applicare agli anni
 // successivi — mai per calcolare l'aliquota stessa, che resta sempre quella reale della riga.
 function indovinaCategoriaStorico(descrizioneProdotto) {
-  const d = (descrizioneProdotto || '').toUpperCase();
+  // Il gestionale non è coerente con gli spazi nei nomi prodotto — a volte "SMART24", a volte
+  // "SMART 24" — quindi confronto sempre la versione SENZA spazi, sia del nome che delle parole
+  // cercate, altrimenti un prodotto reale come "SMART 24 LEX" non viene riconosciuto e resta
+  // senza correzione automatica anche quando la categoria sarebbe ovvia.
+  const d = (descrizioneProdotto || '').toUpperCase().replace(/\s+/g, '');
   if (d.startsWith('TOP24') || d.startsWith('SMART24') || d.startsWith('MODULO24') || d.startsWith('BOOK24')
-    || d.includes('ARCH. ESPERTO') || d.includes('ARCH.ESPERTO')) return 'Editoria elettronica';
-  if (d.includes('PARTNER 24 ORE') || d.includes('PARTNER24 ORE') || d.includes('KIT INGRESSO')) return 'Partner24 Ore';
+    || d.includes('ARCH.ESPERTO')) return 'Editoria elettronica';
+  if (d.includes('PARTNER24ORE') || d.includes('KITINGRESSO')) return 'Partner24 Ore';
   return null;
 }
 
@@ -465,27 +469,45 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
     setOffset((ySel - yOggi) * 12 + (mSel - mOggi));
   };
 
+  const mesiConStorico = useMemo(() => new Set((storico||[]).map(r=>r.mese_competenza)), [storico]);
+  const haStoricoMeseSelezionato = mesiConStorico.has(meseSelezionato);
+
   // ── Dashboard "previsionale": solo mese in corso e mese appena concluso, dai contratti a mano ──
   const eventiCalcolatiDaContratti = useMemo(() => calcolaTuttiEventi(contacts), [contacts]);
   const mesePrevisionaleCorrente = useMemo(() => meseStr(new Date(oggi.slice(0,7) + '-01T12:00:00')), [oggi]);
   const mesePrevisionalePrecedente = useMemo(() => addMesi(mesePrevisionaleCorrente + '-01', -1).slice(0,7), [mesePrevisionaleCorrente]);
+  // Oltre alla stima dai contratti inseriti a mano, aggiungo quanto di "ricorrente" risulta già
+  // noto per lo stesso mese dallo storico reale degli anni scorsi — es. un cliente che un anno fa
+  // ha pagato a ottobre, con ogni probabilità paga di nuovo a ottobre di quest'anno. Se per quel
+  // mese esiste già un estratto conto reale importato, uso quello (è un dato certo, non più una
+  // proiezione); altrimenti uso la proiezione dallo storico (eventiStoricoProiettati), la stessa
+  // usata in "Ufficiale". Resta comunque un'IPOTESI, non un dato confermato come i contratti
+  // manuali — per questo è mostrata a parte, mai mescolata dentro gli stessi totali Nuovo/Rinnovo.
+  const ricorrentiStoricoPerMese = (mese) => {
+    if (mesiConStorico.has(mese)) {
+      return (storico||[]).filter(r=>r.mese_competenza===mese).reduce((s,r)=>s+(r.importo_provvigioni||0), 0);
+    }
+    return eventiStoricoProiettati.filter(e=>e.data.startsWith(mese)).reduce((s,e)=>s+e.provvigione, 0);
+  };
   const calcolaRiepilogoPrevisionale = (mese) => {
     const ev = eventiCalcolatiDaContratti.filter(e => e.data.startsWith(mese)).sort((a,b)=>a.data.localeCompare(b.data));
+    const totale = ev.reduce((s,e)=>s+e.provvigione,0);
+    const ricorrentiStorico = ricorrentiStoricoPerMese(mese);
     return {
       mese, eventi: ev,
-      totale: ev.reduce((s,e)=>s+e.provvigione,0),
+      totale,
       nuovo: ev.filter(e=>e.primoAnno && e.tipo==='nuovo').reduce((s,e)=>s+e.provvigione,0),
       rinnovo: ev.filter(e=>e.primoAnno && e.tipo==='rinnovo').reduce((s,e)=>s+e.provvigione,0),
       ricorrenti: ev.filter(e=>!e.primoAnno).reduce((s,e)=>s+e.provvigione,0),
+      ricorrentiStorico,
+      haStoricoReale: mesiConStorico.has(mese),
+      totalePotenziale: totale + ricorrentiStorico,
     };
   };
   const riepilogoPrevisionale = useMemo(() => ([
     calcolaRiepilogoPrevisionale(mesePrevisionaleCorrente),
     calcolaRiepilogoPrevisionale(mesePrevisionalePrecedente),
-  ]), [eventiCalcolatiDaContratti, mesePrevisionaleCorrente, mesePrevisionalePrecedente]);
-
-  const mesiConStorico = useMemo(() => new Set((storico||[]).map(r=>r.mese_competenza)), [storico]);
-  const haStoricoMeseSelezionato = mesiConStorico.has(meseSelezionato);
+  ]), [eventiCalcolatiDaContratti, eventiStoricoProiettati, storico, mesiConStorico, mesePrevisionaleCorrente, mesePrevisionalePrecedente]);
 
   const eventiMese = useMemo(() => {
     if (haStoricoMeseSelezionato) {
@@ -705,10 +727,16 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                   {new Date(r.mese+'-01T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'})}
                 </div>
                 <div className="metric-grid" style={{ marginBottom: 10 }}>
-                  <div className="metric-card"><div className="metric-label">Totale</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{fmtEur(r.totale)}</div></div>
+                  <div className="metric-card"><div className="metric-label">Totale (manuale)</div><div className="metric-value" style={{ color: '#1B7A3E' }}>{fmtEur(r.totale)}</div></div>
                   <div className="metric-card"><div className="metric-label">Nuovo</div><div className="metric-value" style={{ color: '#0050A0' }}>{fmtEur(r.nuovo)}</div></div>
                   <div className="metric-card"><div className="metric-label">Rinnovo</div><div className="metric-value">{fmtEur(r.rinnovo)}</div></div>
-                  <div className="metric-card"><div className="metric-label">Ricorrenti</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(r.ricorrenti)}</div></div>
+                  <div className="metric-card"><div className="metric-label">Ricorrenti (manuale)</div><div className="metric-value" style={{ color: '#7B68EE' }}>{fmtEur(r.ricorrenti)}</div></div>
+                </div>
+                <div className="info-box blue" style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  <span style={{ fontSize: 12.5 }}>
+                    + <strong>{fmtEur(r.ricorrentiStorico)}</strong> ricorrenti {r.haStoricoReale ? 'reali (già importati dall\'estratto conto)' : 'attesi, proiettati dallo storico degli anni scorsi su questo stesso mese'}
+                  </span>
+                  <span style={{ fontSize: 13.5 }}>Potenziale prefattura: <strong style={{ color: '#1B7A3E' }}>{fmtEur(r.totalePotenziale)}</strong></span>
                 </div>
                 <div className="table-wrap">
                   <table className="crm-table">
