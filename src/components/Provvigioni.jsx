@@ -49,6 +49,19 @@ export function trovaRegola(categoria, nome) {
   return righe.find(r => !r.parola) || null;
 }
 
+// Riconoscimento automatico della categoria di un prodotto REALE dello storico (estratti conto),
+// confermato riga per riga da Marco su un elenco di tutte le famiglie di prodotto osservate con
+// aliquota ≥40% nei 20 estratti reali analizzati. Usato SOLO per sapere, quando l'ultimo anno
+// noto ha un'aliquota da bonus (≥40%), quale riga di TABELLA_PROVVIGIONI applicare agli anni
+// successivi — mai per calcolare l'aliquota stessa, che resta sempre quella reale della riga.
+function indovinaCategoriaStorico(descrizioneProdotto) {
+  const d = (descrizioneProdotto || '').toUpperCase();
+  if (d.startsWith('TOP24') || d.startsWith('SMART24') || d.startsWith('MODULO24') || d.startsWith('BOOK24')
+    || d.includes('ARCH. ESPERTO') || d.includes('ARCH.ESPERTO')) return 'Editoria elettronica';
+  if (d.includes('PARTNER 24 ORE') || d.includes('PARTNER24 ORE') || d.includes('KIT INGRESSO')) return 'Partner24 Ore';
+  return null;
+}
+
 function addMesi(dataIso, n) {
   const d = new Date(dataIso + 'T12:00:00');
   d.setMonth(d.getMonth() + n);
@@ -288,29 +301,35 @@ function storicoComeEvento(r) {
 // righe storiche già importate.
 // L'estratto conto fa fede al 100%: l'aliquota da usare per l'anno futuro è quella REALE già
 // applicata dall'azienda nell'ultimo anno fatturato dello stesso contratto (ricavata dalle sue
-// stesse colonne ALIQUOTA PROVVIGIONE / IMPORTO PROVVIGIONI), mai ricalcolata dalla tabella
-// interna — niente riconoscimento di categoria dal nome prodotto, che serviva solo a indovinare
-// un'aliquota che qui è già nota con certezza.
+// stesse colonne ALIQUOTA PROVVIGIONE / IMPORTO PROVVIGIONI). Ogni voce (ordine + prodotto +
+// sostituzione U/S) viene proiettata SEPARATAMENTE con la propria aliquota reale — mai unita ad
+// altre voci dello stesso ordine in una media: un Upgrade e uno Standard sullo stesso prodotto
+// sono due righe di fatturazione indipendenti, spesso con aliquote molto diverse tra loro (es.
+// 45% e 13%), e unirle produceva un'aliquota "intermedia" (18,98%, 14,67%...) che non corrisponde
+// a nessuna voce reale e che Marco non vuole più vedere.
+// L'unico caso in cui l'aliquota reale dell'ultimo anno NON va ripetuta tale e quale è il bonus
+// "maggiorata" del 45% riconosciuto solo al primo anno (mai da un anno 2+ in su): se la categoria
+// del prodotto si riconosce dal nome (indovinaCategoriaStorico) ed è una categoria che prevede
+// davvero quel bonus, l'aliquota degli anni successivi si corregge IN AUTOMATICO con la riga
+// "rinnovo" di TABELLA_PROVVIGIONI sulla durata di questo contratto. Se la categoria non si
+// riconosce, resta solo il segnale manuale (⚠️ + ✎) per Marco.
 export function eventiProiettatiDaStorico(storico, esclusioni) {
-  // Raggruppo le righe storiche per contratto reale: stesso ordine + stesso prodotto (ignoro la
-  // sostituzione U/S, che è solo la ripartizione upgrade/standard dello stesso importo).
-  // Un'esclusione senza aliquota_override ferma la proiezione (es. Saint Thomas, saldato in
-  // un'unica soluzione); con aliquota_override invece la proiezione continua ma con quella
-  // aliquota al posto di quella ricavata dall'ultimo anno reale (spesso gonfiata da un bonus/
-  // maggiorata riconosciuto solo il primo anno, che altrimenti si ripeterebbe anche dopo).
+  // Esclusione manuale: contratto pluriennale saldato in un'unica soluzione (tutte le
+  // annualità già incassate subito, es. caso Saint Thomas) — Marco la imposta a mano dalla
+  // tabella, perché dallo storico non c'è modo di distinguerla da un vero ricorrente futuro.
+  // Chiave solo ordine+prodotto (non sostituzione): un'esclusione/correzione impostata da Marco
+  // su un contratto vale per tutte le sue voci (anche se in futuro comparisse un U e un S).
   const mappaEsclusioni = new Map((esclusioni || []).map(e => [`${e.numero_ordine}|${e.codice_prodotto}`, e]));
   const gruppi = {};
   (storico || []).forEach(r => {
     if (!r.numero_ordine || !r.codice_prodotto || !r.decorrenza) return;
-    const chiave = `${r.numero_ordine}|${r.codice_prodotto}`;
+    const chiave = `${r.numero_ordine}|${r.codice_prodotto}|${r.sostituzione || ''}`;
     (gruppi[chiave] = gruppi[chiave] || []).push(r);
   });
   const eventi = [];
   Object.entries(gruppi).forEach(([chiave, righe]) => {
-    // Esclusione manuale: contratto pluriennale saldato in un'unica soluzione (tutte le
-    // annualità già incassate subito, es. caso Saint Thomas) — Marco la imposta a mano dalla
-    // tabella, perché dallo storico non c'è modo di distinguerla da un vero ricorrente futuro.
-    const esclusione = mappaEsclusioni.get(chiave);
+    const chiaveEsclusione = `${righe[0].numero_ordine}|${righe[0].codice_prodotto}`;
+    const esclusione = mappaEsclusioni.get(chiaveEsclusione);
     if (esclusione && esclusione.aliquota_override == null) return; // escluso del tutto
     const durataM = Math.max(...righe.map(r => Number(r.durata) || 0));
     const anniTotali = durataM ? Math.max(1, Math.round(durataM / 12)) : 1;
@@ -324,29 +343,42 @@ export function eventiProiettatiDaStorico(storico, esclusioni) {
     // che legge i contratti inseriti a mano, non questa proiezione basata sullo storico.
     if (ultime.some(r => (r.note || '').toUpperCase().includes('ANNULLAT'))) return;
     const base = ultime[0];
-    // Base imponibile e provvigione dell'ultimo anno conosciuto: somma le eventuali righe U/S
-    // dello stesso anno. L'aliquota futura è quella effettiva (provvigione/imponibile), non
-    // la singola ALIQUOTA PROVVIGIONE di una riga — così resta corretta anche quando U e S
-    // dello stesso anno hanno aliquote diverse tra loro.
+    // Questa voce (ordine+prodotto+sostituzione) ha ormai sempre una sola riga per annualità —
+    // niente più somma tra U e S: imponibile/provvigione/aliquota sono già quelli reali di
+    // questa singola voce, mai una media con un'altra voce diversa.
     const importoBase = ultime.reduce((s, r) => s + (Number(r.imponibile) || 0), 0);
     const provvigioneBase = ultime.reduce((s, r) => s + (Number(r.importo_provvigioni) || 0), 0);
-    const pctCalcolata = importoBase > 0 ? Math.round((provvigioneBase / importoBase) * 10000) / 100 : (Number(base.aliquota) || 0);
-    // Oltre 35% non esiste aliquota "ordinaria" in tabella: un valore così alto sull'ultimo anno
-    // noto è quasi sempre il bonus/maggiorata riconosciuto solo al primo anno, che non si ripete
-    // — lo segnalo (sospettaMaggiorata) perché Marco lo veda subito, anche quando non ha ancora
-    // corretto l'aliquota a mano con l'override.
-    const sospettaMaggiorata = pctCalcolata >= 40 && !(esclusione && esclusione.aliquota_override != null);
-    const pct = (esclusione && esclusione.aliquota_override != null) ? Number(esclusione.aliquota_override) : pctCalcolata;
+    const pctReale = importoBase > 0 ? Math.round((provvigioneBase / importoBase) * 10000) / 100 : (Number(base.aliquota) || 0);
+    // Oltre 35% non esiste aliquota "ordinaria" in tabella per nessuna categoria: è quasi sempre
+    // il bonus/maggiorata riconosciuto solo il primo anno. Se riconosco la categoria del prodotto
+    // e quella categoria prevede davvero la maggiorata45, correggo in automatico l'aliquota degli
+    // anni successivi con la riga "rinnovo" di tabella, sulla durata di questo contratto.
+    const categoria = indovinaCategoriaStorico(base.descrizione_prodotto);
     const tipoKey = base.tipo_contratto === 'R' ? 'rinnovo' : 'nuovo';
+    let pctAutocorretta = null;
+    if (pctReale >= 40 && categoria) {
+      const regola = trovaRegola(categoria, base.descrizione_prodotto);
+      if (regola && regola.maggiorata45) {
+        pctAutocorretta = regola.rinnovo[bucketDurata(durataM)];
+      }
+    }
+    // Resta un ⚠️ manuale solo per i casi che NON si riescono a correggere da soli (categoria
+    // non riconosciuta, o aliquota alta per un motivo diverso dal bonus) — Marco può sempre
+    // intervenire con ✎ anche su questi.
+    const sospettaMaggiorata = pctReale >= 40 && pctAutocorretta == null && !(esclusione && esclusione.aliquota_override != null);
+    const pct = (esclusione && esclusione.aliquota_override != null)
+      ? Number(esclusione.aliquota_override)
+      : (pctAutocorretta != null ? pctAutocorretta : pctReale);
     for (let anno = maxAnnualita + 1; anno <= anniTotali; anno++) {
       eventi.push({
         storicoProiettato: true,
         contattoId: base.codice_cliente, nome: base.ragione_sociale, azienda: null,
         codiceCliente: base.codice_cliente, numeroOrdine: base.numero_ordine, numeroFattura: null,
         codiceProdotto: base.codice_prodotto,
-        prodottoNome: base.descrizione_prodotto || '(senza nome)', categoria: null,
+        prodottoNome: base.descrizione_prodotto || '(senza nome)', categoria,
         etichettaRegola: base.sostituzione === 'U' ? 'Upgrade' : base.sostituzione === 'S' ? 'Standard' : '—',
         anno, anniTotali, primoAnno: false, tipo: tipoKey, maggiorata: false, sospettaMaggiorata,
+        correttaDaCategoria: pctAutocorretta != null,
         data: mesiCompetenzaDaDecorrenza(base.decorrenza, anno) + '-15',
         importo: importoBase, pct, provvigione: importoBase * pct / 100,
       });
@@ -813,7 +845,8 @@ export default function Provvigioni({ contacts, navigateTo, showToast }) {
                   </td>
                   <td className="fs-12 fw-600">
                     {e.pct}%
-                    {e.sospettaMaggiorata && <span title="Sopra il 35% non esiste aliquota ordinaria in tabella: è probabile che l'ultimo anno reale includesse un bonus riconosciuto solo quell'anno, che qui si sta ripetendo per errore. Usa ✎ per correggerla." style={{ marginLeft: 4, cursor: 'help' }}>⚠️</span>}
+                    {e.correttaDaCategoria && <span title={`Corretta automaticamente: l'ultimo anno reale aveva il bonus del 45% riconosciuto solo al primo anno — dal secondo anno si applica l'aliquota di rinnovo di tabella per la categoria "${e.categoria}".`} style={{ marginLeft: 4, cursor: 'help', color: '#1B7A3E' }}>✓</span>}
+                    {e.sospettaMaggiorata && <span title="Sopra il 35% non esiste aliquota ordinaria in tabella: è probabile che l'ultimo anno reale includesse un bonus riconosciuto solo quell'anno, che qui si sta ripetendo per errore. Non riconosco la categoria di questo prodotto per correggerla da solo — usa ✎ per correggerla a mano." style={{ marginLeft: 4, cursor: 'help' }}>⚠️</span>}
                   </td>
                   <td className="fs-12">{fmtEur(e.importo)}</td>
                   <td className="fw-600" style={{ color: '#1B7A3E' }}>{fmtEur(e.provvigione)}</td>
