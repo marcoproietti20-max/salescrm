@@ -348,7 +348,12 @@ export function eventiProiettatiDaStorico(storico, esclusioni) {
     // questa singola voce, mai una media con un'altra voce diversa.
     const importoBase = ultime.reduce((s, r) => s + (Number(r.imponibile) || 0), 0);
     const provvigioneBase = ultime.reduce((s, r) => s + (Number(r.importo_provvigioni) || 0), 0);
-    const pctReale = importoBase > 0 ? Math.round((provvigioneBase / importoBase) * 10000) / 100 : (Number(base.aliquota) || 0);
+    // L'aliquota da proiettare è quella che l'azienda ha scritto nella colonna ALIQUOTA
+    // PROVVIGIONE della riga reale — mai ricalcolata come provvigione/imponibile: quel calcolo
+    // a ritroso introduce rumore di arrotondamento (es. 12,99% invece di 13%) che non esiste nel
+    // dato originale. Il rapporto provvigione/imponibile resta solo un ripiego per le rarissime
+    // righe import senza l'aliquota già compilata.
+    const pctReale = base.aliquota ? Number(base.aliquota) : (importoBase > 0 ? Math.round((provvigioneBase / importoBase) * 10000) / 100 : 0);
     // Oltre 35% non esiste aliquota "ordinaria" in tabella per nessuna categoria: è quasi sempre
     // il bonus/maggiorata riconosciuto solo il primo anno. Se riconosco la categoria del prodotto
     // e quella categoria prevede davvero la maggiorata45, correggo in automatico l'aliquota degli
