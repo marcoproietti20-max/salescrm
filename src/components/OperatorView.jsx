@@ -145,10 +145,22 @@ const CSS = `
   .opv-overlay { display: none; }
   .opv-statochip { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
   @media (max-width: 900px) {
-    .opv-side { transform: translateX(-100%); transition: transform .18s; }
+    .opv-side { transform: translateX(-100%); transition: transform .18s; width: 270px; }
     .opv-side.open { transform: translateX(0); }
     .opv-overlay.show { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 44; }
     .opv-burger { display: block; width: 46px; height: 46px; font-size: 20px; }
+    /* Il menu laterale (hamburger) non era mai stato toccato per mobile: restava ai font
+       pensati per la sidebar fissa da desktop, molto più piccoli del resto dell'app ora
+       ingrandito. Qui lo si allinea alle stesse proporzioni. */
+    .opv-logo .big { font-size: 26px; }
+    .opv-logo .sub { font-size: 12.5px; }
+    .opv-navlabel { font-size: 11.5px; padding: 10px 20px 8px; }
+    .opv-navitem { font-size: 16.5px; padding: 13px 14px; gap: 13px; min-height: 48px; }
+    .opv-navicon { width: 19px; height: 19px; }
+    .opv-navbadge { font-size: 12.5px; padding: 2px 10px; }
+    .opv-sidefoot { font-size: 13.5px; padding: 18px 20px; }
+    .opv-sidefoot strong { font-size: 15px; }
+    .opv-esci { font-size: 14.5px; padding: 11px; min-height: 44px; }
     .opv-main { margin-left: 0; padding: 0 14px 60px; }
     .opv-topbar { padding-top: 64px; }
     .opv-title { font-size: 22px; }
