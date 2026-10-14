@@ -15,6 +15,7 @@ const CAMPI_LEAD = [
   { key: 'categoria', label: 'Categoria',        kw: ['categoria', 'tipolog', 'professione', 'attivit'] },
   { key: 'citta',     label: 'Città',            kw: ['citt', 'comune', 'localit', 'city'] },
   { key: 'provincia', label: 'Provincia',        kw: ['prov', 'pr.'] },
+  { key: 'priorita',  label: 'Priorità (A/B/C)', kw: ['priorit'] },
   // Campi avanzati — solo per file già lavorati (storico, esiti). Lasciali vuoti per una lista grezza mai chiamata.
   { key: 'stato',        label: 'Stato (avanzato)',            kw: ['stato'], avanzato: true },
   { key: 'tentativi',    label: 'Tentativi (avanzato)',         kw: ['tentativi'], avanzato: true },
@@ -565,6 +566,7 @@ export default function Telemarketing({ contacts, showToast }) {
             telefono2: g(row, 'telefono2') || null, telefono3: g(row, 'telefono3') || null,
             email: em || null,
             categoria: g(row, 'categoria') || null, citta: g(row, 'citta') || null, provincia: g(row, 'provincia') || null,
+            priorita: ['A', 'B', 'C'].includes(g(row, 'priorita').toUpperCase()) ? g(row, 'priorita').toUpperCase() : null,
             stato: statoFinale, lista: nomeLista.trim(), fonte: fonteDefault,
             tentativi: Number.isFinite(tentativiFile) ? tentativiFile : 0,
             data_richiamo: statoFinale === 'Richiamare' ? (parseDataSicura(g(row, 'data_richiamo')) || null) : null,

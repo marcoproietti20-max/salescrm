@@ -242,6 +242,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const [richiamiView, setRichiamiView] = useState('cal');
   const [sideOpen, setSideOpen] = useState(false);
   const [fCategoria, setFCategoria] = useState('');
+  const [fPriorita, setFPriorita] = useState('');
   const [fLista, setFLista] = useState('');
   const [fStato, setFStato] = useState('');
   const [cerca, setCerca] = useState('');
@@ -321,6 +322,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const matchFiltri = l => {
     if (fCategoria && l.categoria !== fCategoria) return false;
     if (fLista && l.lista !== fLista) return false;
+    if (fPriorita && l.priorita !== fPriorita) return false;
     if (cerca) {
       const q = cerca.toLowerCase();
       const hay = [l.azienda, l.nome, l.telefono, l.citta].filter(Boolean).join(' ').toLowerCase();
@@ -388,6 +390,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
 
   const liste = [...new Set(leads.map(l => l.lista).filter(Boolean))].sort();
   const categoriePresenti = CATEGORIE.filter(c => leads.some(l => l.categoria === c));
+  const prioritaPresenti = ['A', 'B', 'C'].filter(p => leads.some(l => l.priorita === p));
 
   const esitiOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => ESITI_VALIDI.has(h.esito) && (h.date || '').slice(0, 10) === today).length, 0);
   const apptOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === today && h.esito === 'Appuntamento fissato').length, 0);
@@ -604,6 +607,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
         <div style={{ marginTop: 3 }}>
           {l.categoria && <span className="opv-chip" style={{ background: 'rgba(0,120,212,.1)', color: '#005A9E' }}>{l.categoria}</span>}
           {l.lista && <span className="opv-chip" style={{ background: '#EEF1F5', color: '#5A6B7E' }}>{l.lista}</span>}
+          {l.priorita && <span className="opv-chip" style={{ background: l.priorita === 'A' ? 'rgba(99,153,34,.14)' : l.priorita === 'B' ? 'rgba(224,123,26,.14)' : '#EEF1F5', color: l.priorita === 'A' ? '#3F6B12' : l.priorita === 'B' ? '#9A5410' : '#5A6B7E' }} title="Priorità della scheda Google: A = sito, scheda verificata e recensioni; B = due su tre; C = una o nessuna">Priorità {l.priorita}</span>}
         </div>
         {ultimaNota && <div className="nota">📝 {ultimaNota}</div>}
       </div>
@@ -696,6 +700,12 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
             {liste.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
         )}
+        {prioritaPresenti.length > 0 && (
+          <select className="opv-select" value={fPriorita} onChange={e => setFPriorita(e.target.value)}>
+            <option value="">Tutte le priorità</option>
+            {prioritaPresenti.map(p => <option key={p} value={p}>Priorità {p}</option>)}
+          </select>
+        )}
         {conStato && (
           <select className="opv-select" value={fStato} onChange={e => setFStato(e.target.value)}>
             <option value="">Tutti gli stati</option>
@@ -703,7 +713,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
             {ESITI_CHIAMATA.map(e => <option key={e.name} value={e.name}>{e.icon} {e.name}</option>)}
           </select>
         )}
-        {(fCategoria || fLista || cerca || fStato) && <button className="opv-btn" onClick={() => { setFCategoria(''); setFLista(''); setCerca(''); setFStato(''); }}>✕ Azzera</button>}
+        {(fCategoria || fLista || fPriorita || cerca || fStato) && <button className="opv-btn" onClick={() => { setFCategoria(''); setFLista(''); setFPriorita(''); setCerca(''); setFStato(''); }}>✕ Azzera</button>}
       </div>
     </div>
   );
