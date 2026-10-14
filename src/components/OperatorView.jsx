@@ -261,7 +261,14 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const [calendarioView, setCalendarioView] = useState('cal');
   const [visCalendario, setVisCalendario] = useState(50);
   const [weekOffsetAppt, setWeekOffsetAppt] = useState(0);
-  const [ordinaCoda, setOrdinaCoda] = useState('tentativi_asc');
+  // Ordinamento della coda: di default "Ultimi caricati prima"; la scelta di Rosanna resta memorizzata su questo browser
+  const [ordinaCoda, setOrdinaCodaState] = useState(() => {
+    try { return localStorage.getItem('opv_ordina_coda') || 'recenti_prima'; } catch { return 'recenti_prima'; }
+  });
+  const setOrdinaCoda = (v) => {
+    setOrdinaCodaState(v);
+    try { localStorage.setItem('opv_ordina_coda', v); } catch { /* storage non disponibile: la scelta vale solo per questa sessione */ }
+  };
   const [ordinaRichiami, setOrdinaRichiami] = useState('data_richiamo_asc');
   const [codaCorrente, setCodaCorrente] = useState(null); // snapshot degli id per "Prossimo →"
   const [codaIndice, setCodaIndice] = useState(0);
@@ -322,12 +329,23 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     return true;
   };
 
+  // Giorno in cui il lead è entrato nel CRM: data di creazione se disponibile,
+  // altrimenti la data della nota "Import" scritta dall'importazione
+  const giornoIngresso = (l) => {
+    if (l.created_at) return String(l.created_at).slice(0, 10);
+    const imp = (l.note_storia || []).find(h => h.esito === 'Import' && h.date);
+    return imp ? String(imp.date).slice(0, 10) : '';
+  };
+
   const byRichiamo = (a, b) => (a.data_richiamo || '').localeCompare(b.data_richiamo || '') || (a.richiamo_ora || '99:99').localeCompare(b.richiamo_ora || '99:99');
 
   // Ordinamento configurabile: chi ha meno tentativi, chi aspetta da più tempo, alfabetico, o l'ordine di caricamento
   const applicaOrdine = (arr, criterio) => {
     const out = [...arr];
     switch (criterio) {
+      // Ultimi caricati prima: i lead importati più di recente in cima (per giorno di ingresso).
+      // A parità di giorno, meno tentativi prima; a parità anche di tentativi resta l'ordine del file importato.
+      case 'recenti_prima': return out.sort((a, b) => giornoIngresso(b).localeCompare(giornoIngresso(a)) || (a.tentativi || 0) - (b.tentativi || 0));
       case 'tentativi_asc': return out.sort((a, b) => (a.tentativi || 0) - (b.tentativi || 0));
       case 'tentativi_desc': return out.sort((a, b) => (b.tentativi || 0) - (a.tentativi || 0));
       case 'contatto_vecchio': return out.sort((a, b) => (a.ultimo_contatto || '').localeCompare(b.ultimo_contatto || '') || (a.ultimo_contatto ? 0 : -1));
@@ -353,6 +371,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const nRiconattiBadge = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today).length;
 
   const OPZIONI_ORDINE_CODA = [
+    { v: 'recenti_prima', l: '🆕 Ultimi caricati prima' },
     { v: 'tentativi_asc', l: '↑ Meno tentativi prima' },
     { v: 'tentativi_desc', l: '↓ Più tentativi prima' },
     { v: 'contatto_vecchio', l: 'Contattati da più tempo' },
