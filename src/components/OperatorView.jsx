@@ -242,7 +242,6 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const [richiamiView, setRichiamiView] = useState('cal');
   const [sideOpen, setSideOpen] = useState(false);
   const [fCategoria, setFCategoria] = useState('');
-  const [fPriorita, setFPriorita] = useState('');
   const [fLista, setFLista] = useState('');
   const [fStato, setFStato] = useState('');
   const [cerca, setCerca] = useState('');
@@ -262,14 +261,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const [calendarioView, setCalendarioView] = useState('cal');
   const [visCalendario, setVisCalendario] = useState(50);
   const [weekOffsetAppt, setWeekOffsetAppt] = useState(0);
-  // Ordinamento della coda: di default "Ultimi caricati prima"; la scelta di Rosanna resta memorizzata su questo browser
-  const [ordinaCoda, setOrdinaCodaState] = useState(() => {
-    try { return localStorage.getItem('opv_ordina_coda') || 'recenti_prima'; } catch { return 'recenti_prima'; }
-  });
-  const setOrdinaCoda = (v) => {
-    setOrdinaCodaState(v);
-    try { localStorage.setItem('opv_ordina_coda', v); } catch { /* storage non disponibile: la scelta vale solo per questa sessione */ }
-  };
+  const [ordinaCoda, setOrdinaCoda] = useState('tentativi_asc');
   const [ordinaRichiami, setOrdinaRichiami] = useState('data_richiamo_asc');
   const [codaCorrente, setCodaCorrente] = useState(null); // snapshot degli id per "Prossimo →"
   const [codaIndice, setCodaIndice] = useState(0);
@@ -322,7 +314,6 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const matchFiltri = l => {
     if (fCategoria && l.categoria !== fCategoria) return false;
     if (fLista && l.lista !== fLista) return false;
-    if (fPriorita && l.priorita !== fPriorita) return false;
     if (cerca) {
       const q = cerca.toLowerCase();
       const hay = [l.azienda, l.nome, l.telefono, l.citta].filter(Boolean).join(' ').toLowerCase();
@@ -331,23 +322,12 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     return true;
   };
 
-  // Giorno in cui il lead è entrato nel CRM: data di creazione se disponibile,
-  // altrimenti la data della nota "Import" scritta dall'importazione
-  const giornoIngresso = (l) => {
-    if (l.created_at) return String(l.created_at).slice(0, 10);
-    const imp = (l.note_storia || []).find(h => h.esito === 'Import' && h.date);
-    return imp ? String(imp.date).slice(0, 10) : '';
-  };
-
   const byRichiamo = (a, b) => (a.data_richiamo || '').localeCompare(b.data_richiamo || '') || (a.richiamo_ora || '99:99').localeCompare(b.richiamo_ora || '99:99');
 
   // Ordinamento configurabile: chi ha meno tentativi, chi aspetta da più tempo, alfabetico, o l'ordine di caricamento
   const applicaOrdine = (arr, criterio) => {
     const out = [...arr];
     switch (criterio) {
-      // Ultimi caricati prima: i lead importati più di recente in cima (per giorno di ingresso).
-      // A parità di giorno, meno tentativi prima; a parità anche di tentativi resta l'ordine del file importato.
-      case 'recenti_prima': return out.sort((a, b) => giornoIngresso(b).localeCompare(giornoIngresso(a)) || (a.tentativi || 0) - (b.tentativi || 0));
       case 'tentativi_asc': return out.sort((a, b) => (a.tentativi || 0) - (b.tentativi || 0));
       case 'tentativi_desc': return out.sort((a, b) => (b.tentativi || 0) - (a.tentativi || 0));
       case 'contatto_vecchio': return out.sort((a, b) => (a.ultimo_contatto || '').localeCompare(b.ultimo_contatto || '') || (a.ultimo_contatto ? 0 : -1));
@@ -373,7 +353,6 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const nRiconattiBadge = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today).length;
 
   const OPZIONI_ORDINE_CODA = [
-    { v: 'recenti_prima', l: '🆕 Ultimi caricati prima' },
     { v: 'tentativi_asc', l: '↑ Meno tentativi prima' },
     { v: 'tentativi_desc', l: '↓ Più tentativi prima' },
     { v: 'contatto_vecchio', l: 'Contattati da più tempo' },
@@ -390,7 +369,6 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
 
   const liste = [...new Set(leads.map(l => l.lista).filter(Boolean))].sort();
   const categoriePresenti = CATEGORIE.filter(c => leads.some(l => l.categoria === c));
-  const prioritaPresenti = ['A', 'B', 'C'].filter(p => leads.some(l => l.priorita === p));
 
   const esitiOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => ESITI_VALIDI.has(h.esito) && (h.date || '').slice(0, 10) === today).length, 0);
   const apptOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => (h.date || '').slice(0, 10) === today && h.esito === 'Appuntamento fissato').length, 0);
@@ -436,11 +414,32 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     return { agg: aggVerificati, totVerificati, nonVerificati, totComplessivo: totVerificati + nonVerificati, pctSvolti: totVerificati > 0 ? Math.round(svolti / totVerificati * 100) : null };
   })();
 
+  // Un appuntamento arriva dai Contatti (tabella diversa), ma quasi sempre nasce da un suo lead —
+  // lo ritroviamo per telefono/email, così possiamo sia aprirne la scheda sia (sotto) capire se
+  // la segretaria l'ha già richiamato dopo l'appuntamento mancato.
+  const dig9 = s => (s || '').replace(/\D/g, '').slice(-9);
+  const trovaLeadDaContatto = (c) => leads.find(l =>
+    (dig9(c.telefono) && dig9(c.telefono) === dig9(l.telefono)) ||
+    (c.email && l.email && c.email.toLowerCase() === l.email.toLowerCase())
+  ) || null;
+
   // Le stesse liste della "Qualità appuntamenti" (sopra), ma pronte da mostrare direttamente
   // in due box affiancati nella Dashboard, con chiamata immediata — non solo dietro un clic sul grafico.
+  // "Da recuperare" è l'appt_stato impostato da Marco (tabella Contatti), ma quel campo non si
+  // aggiorna quando Rosanna richiama e registra un nuovo esito sul lead (tabella Leads, campo
+  // separato) — quindi senza questo controllo il contatto resterebbe in lista per sempre anche
+  // dopo essere stato recuperato. Lo togliamo lato client se il lead collegato ha un contatto più
+  // recente della data dell'appuntamento mancato.
   const STATI_NON_SVOLTI = ['Non effettuato', 'Non si è presentato', 'Da rifissare'];
   const apptSvolti = (appuntamentiList || []).filter(c => c.appt_stato === 'Svolto').sort((a, b) => (b.appt_date || '').localeCompare(a.appt_date || ''));
-  const apptDaRecuperare = (appuntamentiList || []).filter(c => STATI_NON_SVOLTI.includes(c.appt_stato)).sort((a, b) => (b.appt_date || '').localeCompare(a.appt_date || ''));
+  const apptDaRecuperare = (appuntamentiList || [])
+    .filter(c => STATI_NON_SVOLTI.includes(c.appt_stato))
+    .filter(c => {
+      const lead = trovaLeadDaContatto(c);
+      if (!lead || !lead.ultimo_contatto || !c.appt_date) return true;
+      return lead.ultimo_contatto <= c.appt_date;
+    })
+    .sort((a, b) => (b.appt_date || '').localeCompare(a.appt_date || ''));
 
   // ── Grafico settimana (pagina home) ────────────────────────
   const giorni = []; { const d = new Date(); while (giorni.length < 5) { if (d.getDay() !== 0 && d.getDay() !== 6) giorni.unshift(d.toISOString().slice(0, 10)); d.setDate(d.getDate() - 1); } }
@@ -504,13 +503,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     showToast('Nota salvata', '');
   };
 
-  // Un appuntamento arriva dai Contatti (tabella diversa), ma quasi sempre nasce da un suo lead —
-  // lo ritroviamo per telefono/email e apriamo la scheda che già conosce, con la possibilità di richiamare.
-  const dig9 = s => (s || '').replace(/\D/g, '').slice(-9);
-  const trovaLeadDaContatto = (c) => leads.find(l =>
-    (dig9(c.telefono) && dig9(c.telefono) === dig9(l.telefono)) ||
-    (c.email && l.email && c.email.toLowerCase() === l.email.toLowerCase())
-  ) || null;
+  // dig9/trovaLeadDaContatto sono definiti più sopra (servono anche al filtro "Da recuperare").
   const apriContattoAppuntamento = (c) => {
     const lead = trovaLeadDaContatto(c);
     if (lead) { apriLead(lead, 'scheda'); setListaModale(null); }
@@ -607,7 +600,6 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
         <div style={{ marginTop: 3 }}>
           {l.categoria && <span className="opv-chip" style={{ background: 'rgba(0,120,212,.1)', color: '#005A9E' }}>{l.categoria}</span>}
           {l.lista && <span className="opv-chip" style={{ background: '#EEF1F5', color: '#5A6B7E' }}>{l.lista}</span>}
-          {l.priorita && <span className="opv-chip" style={{ background: l.priorita === 'A' ? 'rgba(99,153,34,.14)' : l.priorita === 'B' ? 'rgba(224,123,26,.14)' : '#EEF1F5', color: l.priorita === 'A' ? '#3F6B12' : l.priorita === 'B' ? '#9A5410' : '#5A6B7E' }} title="Priorità della scheda Google: A = sito, scheda verificata e recensioni; B = due su tre; C = una o nessuna">Priorità {l.priorita}</span>}
         </div>
         {ultimaNota && <div className="nota">📝 {ultimaNota}</div>}
       </div>
@@ -700,12 +692,6 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
             {liste.map(l => <option key={l} value={l}>{l}</option>)}
           </select>
         )}
-        {prioritaPresenti.length > 0 && (
-          <select className="opv-select" value={fPriorita} onChange={e => setFPriorita(e.target.value)}>
-            <option value="">Tutte le priorità</option>
-            {prioritaPresenti.map(p => <option key={p} value={p}>Priorità {p}</option>)}
-          </select>
-        )}
         {conStato && (
           <select className="opv-select" value={fStato} onChange={e => setFStato(e.target.value)}>
             <option value="">Tutti gli stati</option>
@@ -713,7 +699,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
             {ESITI_CHIAMATA.map(e => <option key={e.name} value={e.name}>{e.icon} {e.name}</option>)}
           </select>
         )}
-        {(fCategoria || fLista || fPriorita || cerca || fStato) && <button className="opv-btn" onClick={() => { setFCategoria(''); setFLista(''); setFPriorita(''); setCerca(''); setFStato(''); }}>✕ Azzera</button>}
+        {(fCategoria || fLista || cerca || fStato) && <button className="opv-btn" onClick={() => { setFCategoria(''); setFLista(''); setCerca(''); setFStato(''); }}>✕ Azzera</button>}
       </div>
     </div>
   );
