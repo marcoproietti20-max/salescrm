@@ -16,8 +16,8 @@ const NAV_GROUPS = [
   ]},
   { label: 'Il mio business', items: [
     { id: 'portafoglio',  label: 'Portafoglio',     icon: 'M2 6h12v7a1 1 0 01-1 1H3a1 1 0 01-1-1V6zm0 0V4a1 1 0 011-1h8a1 1 0 011 1v2M6 9h4' },
-    { id: 'canvass',      label: 'Canvass',         icon: 'M8 1l2 4.5 5 .5-3.7 3.3 1.1 4.9L8 11.8 3.6 14.2l1.1-4.9L1 5.9l5-.5z' },
-    { id: 'provvigioni',  label: 'Provvigioni',     icon: 'M8 1v14M4 4h6a2 2 0 010 4H6a2 2 0 000 4h6' },
+    { id: 'canvass',      label: 'Canvass',         icon: 'M1.5 6.5h13v3h-13zM2.5 9.5h11v5.5h-11zM8 6.5v8.5M8 6.5c-.5-2.5-4-2.5-4-.8 0 .8 1 .8 4 .8M8 6.5c.5-2.5 4-2.5 4-.8 0 .8-1 .8-4 .8' },
+    { id: 'provvigioni',  label: 'Provvigioni',     icon: 'M11 3a5 5 0 100 10M2 6h7M2 9h6' },
   ]},
   { label: 'Telemarketing', items: [
     { id: 'telemarketing',    label: 'Gestione liste', icon: 'M2.5 2l3-1 1.8 3.6-2 1.6a10.5 10.5 0 004.5 4.5l1.6-2L15 10.5l-1 3C8 14.5 1.5 8 2.5 2z' },
@@ -25,7 +25,7 @@ const NAV_GROUPS = [
     { id: 'vista_operatore2', label: 'Operatore 2',   icon: 'M8 3C4 3 1.5 6 1 8c.5 2 3 5 7 5s6.5-3 7-5c-.5-2-3-5-7-5zm0 8a3 3 0 100-6 3 3 0 000 6z' },
   ]},
   { label: 'Strumenti', items: [
-    { id: 'calendly',     label: 'Sincronizza CRM', icon: 'M8 2a6 6 0 100 12A6 6 0 008 2zm0 3v4l3 2' },
+    { id: 'calendly',     label: 'Sincronizza CRM', icon: 'M14 3v4h-4M2 13v-4h4M2.5 8a5.5 5.5 0 019-3.5L14 7M13.5 8a5.5 5.5 0 01-9 3.5L2 9' },
   ]},
   { label: 'Sistema', items: [
     { id: 'settings',     label: 'Impostazioni',    icon: 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 1v2M8 13v2M1 8h2M13 8h2' },

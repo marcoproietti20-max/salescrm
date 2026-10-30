@@ -1,4 +1,4 @@
-/* SalesCRM â€” Design System v3.1
+/* SalesCRM — Design System v3.1
    Palette: Bianco + Blu Microsoft #0078D4 */
 :root {
   --accent:     #0078D4;
@@ -41,7 +41,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .nav-group { padding-top: 12px; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); }
 .nav-group.first { padding-top: 0; margin-top: 0; border-top: none; }
 .nav-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: .09em; padding: 0 8px 6px; }
-.nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--r); cursor: pointer; font-size: 13px; color: rgba(255,255,255,0.7); border: none; background: none; width: 100%; text-align: left; transition: background .1s; font-family: var(--font); }
+.nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--r); cursor: pointer; font-size: 13px; color: rgba(255,255,255,0.92); border: none; background: none; width: 100%; text-align: left; transition: background .1s; font-family: var(--font); }
 .nav-item:hover { background: rgba(255,255,255,0.12); color: white; }
 .nav-item.active { background: rgba(255,255,255,0.2); color: white; font-weight: 600; }
 .nav-icon { width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; }
@@ -178,20 +178,20 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
 .hamburger { display: none; position: fixed; top: 10px; left: 10px; z-index: 51; background: var(--accent); border: none; border-radius: var(--r); padding: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,120,212,0.3); }
 .hamburger svg { stroke: white; }
 
-/* Ricerca globale e pulsante Esci: entrambi ancorati in basso a destra, impilati â€” angolo libero
+/* Ricerca globale e pulsante Esci: entrambi ancorati in basso a destra, impilati — angolo libero
    su ogni pagina, non entra mai in conflitto con i pulsanti della topbar (che possono essere
    tanti e variare da pagina a pagina, es. Provvigioni). Stessa posizione su desktop e mobile,
-   cosÃ¬ il comportamento resta identico passando da un dispositivo all'altro. */
+   così il comportamento resta identico passando da un dispositivo all'altro. */
 .global-search-wrap { position: fixed; bottom: 60px; right: 16px; z-index: 30; }
 .logout-btn { position: fixed; bottom: 16px; right: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text2); z-index: 20; }
 
-/* Griglie a colonne fisse (kanban Pipeline, calendario settimanale Appuntamenti/Follow-up) â€”
+/* Griglie a colonne fisse (kanban Pipeline, calendario settimanale Appuntamenti/Follow-up) —
    finora scritte come stile inline nei rispettivi componenti: qui diventano classi, per poter
-   essere corrette sotto i 900px con la stessa tecnica giÃ  in uso nella Vista Operatore. */
+   essere corrette sotto i 900px con la stessa tecnica già in uso nella Vista Operatore. */
 .kanban-grid, .week-grid { display: grid; gap: 12px; }
 
-/* Card Budget: anello+testo e colonne+legenda â€” da impilare in verticale sotto i 900px,
-   altrimenti il testo piÃ¹ lungo (il messaggio di stato, il nome completo di una linea)
+/* Card Budget: anello+testo e colonne+legenda — da impilare in verticale sotto i 900px,
+   altrimenti il testo più lungo (il messaggio di stato, il nome completo di una linea)
    allarga la riga oltre lo schermo invece di andare a capo. */
 .budget-ring-row { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; flex: 1; }
 .budget-linea-row { display: flex; gap: 20px; align-items: stretch; }
@@ -212,7 +212,7 @@ input[type="checkbox"] { cursor: pointer; width: 15px; height: 15px; accent-colo
   .info-grid { grid-template-columns: 1fr; }
   .modal-box { width: 100%; max-height: 100vh; border-radius: 0; }
   .modal-overlay { padding: 0; align-items: flex-end; }
-  /* Il pulsante Esci resta "fixed" ma piÃ¹ piccolo e meno invadente su schermo stretto â€”
+  /* Il pulsante Esci resta "fixed" ma più piccolo e meno invadente su schermo stretto —
      la ricerca (solo icona, angolo in basso a destra) non ha bisogno di correzioni qui:
      resta identica a desktop e mobile. */
   .logout-btn { padding: 5px 10px; font-size: 11px; }
