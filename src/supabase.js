@@ -28,7 +28,7 @@ export async function dbLoadContacts() {
   let all = [];
   let from = 0;
   while (true) {
-    const {data,error}=await supabase.from('contacts').select('*').order('created_at',{ascending:true}).order('id',{ascending:true}).range(from, from+PAGE-1);
+    const {data,error}=await supabase.from('contacts').select('*').order('created_at',{ascending:true}).range(from, from+PAGE-1);
     if(error){console.error(error); return all.length ? all.map(fromDb) : [];}
     all = all.concat(data||[]);
     if(!data || data.length < PAGE) break;
@@ -74,14 +74,12 @@ export async function dbLoadProfile() {
   if(error){console.error('dbLoadProfile:',error);return null;}
   return data;
 }
-// Ordinamento con 'id' come secondo criterio: i lead importati nello stesso lotto hanno lo stesso
-// created_at, e senza un criterio univoco la paginazione a blocchi da 1000 può saltare o duplicare righe.
 export async function dbLoadLeads() {
   const PAGE = 1000;
   let all = [];
   let from = 0;
   while (true) {
-    const {data,error}=await supabase.from('leads').select('*').order('created_at',{ascending:true}).order('id',{ascending:true}).range(from, from+PAGE-1);
+    const {data,error}=await supabase.from('leads').select('*').order('created_at',{ascending:true}).range(from, from+PAGE-1);
     if(error){console.error('dbLoadLeads:',error); return all.length ? all : null;}
     all = all.concat(data||[]);
     if(!data || data.length < PAGE) break;
@@ -98,6 +96,12 @@ export async function dbInsertLeads(rows) {
 export async function dbUpdateLead(id, fields) {
   const {error}=await supabase.from('leads').update(fields).eq('id',id);
   if(error){console.error('dbUpdateLead:',error);return false;}
+  return true;
+}
+export async function dbUpdateLeadsMany(ids, fields) {
+  if(!ids.length) return true;
+  const {error}=await supabase.from('leads').update(fields).in('id',ids);
+  if(error){console.error('dbUpdateLeadsMany:',error);return false;}
   return true;
 }
 export async function dbDeleteLeads(ids) {

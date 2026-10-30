@@ -22,6 +22,11 @@ import Login from './components/Login';
 import GlobalSearch from './components/GlobalSearch';
 import './App.css';
 
+// Collega il nome dell'operatrice (profiles.nome, o lo stesso nome usato in "operatore" sui lead)
+// alla fonte usata per i riquadri Svolti/Da recuperare in home — un solo punto da aggiornare se
+// in futuro si aggiunge una terza operatrice.
+const FONTE_PER_OPERATORE = { Rosanna: 'Telemarketing Rosanna', Francesca: 'Telemarketing Francesca' };
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -263,16 +268,37 @@ export default function App() {
 
   if (!session) return <Login onLogin={s => setSession(s)} />;
 
-  // Bivio per ruolo: l'operatore vede solo la sua postazione
-  if (profile?.role === 'operatore') return <OperatorView profile={profile} onLogout={logout} />;
+  // Bivio per ruolo: l'operatore vede solo la sua postazione, filtrata sui propri lead
+  // (profiles.nome deve coincidere con il valore usato in "operatore" sui lead, es. "Francesca").
+  if (profile?.role === 'operatore') return (
+    <OperatorView
+      profile={profile}
+      onLogout={logout}
+      operatoreFiltro={profile?.nome}
+      fonteOverride={FONTE_PER_OPERATORE[profile?.nome]}
+    />
+  );
 
-  // Vista amministratore: guarda l'app esattamente come la vede Rosanna, senza uscire dalla propria sessione.
-  // Non è una fotografia: è la stessa app live, con i dati reali — l'unica differenza è come si esce.
+  // Viste amministratore: guardi l'app esattamente come la vede ciascuna operatrice, senza uscire
+  // dalla tua sessione. Non è una fotografia: è la stessa app live, con i dati reali — l'unica
+  // differenza è come si esce. operatoreFiltro è ciò che tiene separate le due code di chiamata
+  // (vedi Telemarketing → "Assegna tra le operatrici"); fonteOverride resta per i soli riquadri
+  // "Svolti/Da recuperare" in home, che leggono dagli appuntamenti per fonte di provenienza.
   if (page === 'vista_operatore') return (
     <OperatorView
       profile={{ nome: 'Rosanna', role: 'operatore' }}
       onLogout={() => setPage('dashboard')}
-      fonteOverride="Telemarketing Rosanna"
+      fonteOverride={FONTE_PER_OPERATORE.Rosanna}
+      operatoreFiltro="Rosanna"
+      previewMode
+    />
+  );
+  if (page === 'vista_operatore2') return (
+    <OperatorView
+      profile={{ nome: 'Francesca', role: 'operatore' }}
+      onLogout={() => setPage('dashboard')}
+      fonteOverride={FONTE_PER_OPERATORE.Francesca}
+      operatoreFiltro="Francesca"
       previewMode
     />
   );

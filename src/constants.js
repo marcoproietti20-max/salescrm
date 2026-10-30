@@ -1,15 +1,20 @@
 export const FONTI = [
-  { name: 'Telemarketing Rosanna', color: '#7F77DD', icon: '📞' },
-  { name: 'TMK Serena',            color: '#9B6DD4', icon: '📞' },
-  { name: 'TMK NTC',               color: '#6B5EA8', icon: '📞' },
-  { name: 'LinkedIn',              color: '#0A66C2', icon: '🔗' },
-  { name: 'Coupon Aziendale',      color: '#E07B1A', icon: '🎟' },
-  { name: 'Autonomia',             color: '#639922', icon: '⭐' },
-  { name: 'Email Marketing',       color: '#c8102e', icon: '✉' },
-  { name: 'Calendly',              color: '#006BFF', icon: '📅' },
-  { name: 'Bookings',              color: '#0078D4', icon: '📆' },
-  { name: 'Portafoglio',           color: '#2E7D32', icon: '💼' },
+  { name: 'Telemarketing Rosanna',  color: '#7F77DD', icon: '📞' },
+  { name: 'Telemarketing Francesca', color: '#C27BA0', icon: '📞' },
+  { name: 'TMK Serena',             color: '#9B6DD4', icon: '📞' },
+  { name: 'TMK NTC',                color: '#6B5EA8', icon: '📞' },
+  { name: 'LinkedIn',               color: '#0A66C2', icon: '🔗' },
+  { name: 'Coupon Aziendale',       color: '#E07B1A', icon: '🎟' },
+  { name: 'Autonomia',              color: '#639922', icon: '⭐' },
+  { name: 'Email Marketing',        color: '#c8102e', icon: '✉' },
+  { name: 'Calendly',               color: '#006BFF', icon: '📅' },
+  { name: 'Bookings',               color: '#0078D4', icon: '📆' },
+  { name: 'Portafoglio',            color: '#2E7D32', icon: '💼' },
 ];
+// Le due operatrici telemarketing tra cui Marco assegna le anagrafiche (vedi Telemarketing.jsx
+// "Assegna tra le operatrici" e Sidebar "Operatore 1/2"). Il nome qui è anche il valore salvato
+// nel campo lead.operatore — aggiungerne una terza basta ad estendere ovunque serva questa lista.
+export const OPERATORI = ['Rosanna', 'Francesca'];
 export const CATEGORIE = [
   'Avvocato / Studio Legale','Architetto','Azienda','Caf/Patronato',
   'Commercialista','Consulente del Lavoro','Geometra','Ingegnere','Notaio','Tributarista',

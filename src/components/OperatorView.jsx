@@ -234,7 +234,7 @@ const CSS = `
   }
 `;
 
-export default function OperatorView({ profile, onLogout, fonteOverride, previewMode }) {
+export default function OperatorView({ profile, onLogout, fonteOverride, operatoreFiltro, previewMode }) {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pageOp, setPageOp] = useState('home');
@@ -311,7 +311,10 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const showToast = (msg, type = 'ok') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3500); };
 
   // ── Filtri e code ──────────────────────────────────────────
+  // Un lead senza "operatore" (vecchi lead, Portafoglio, ecc.) resta implicitamente di Rosanna —
+  // così la coda di chi lavorava già su questi dati non si svuota di colpo al primo utilizzo.
   const matchFiltri = l => {
+    if (operatoreFiltro && (l.operatore || 'Rosanna') !== operatoreFiltro) return false;
     if (fCategoria && l.categoria !== fCategoria) return false;
     if (fLista && l.lista !== fLista) return false;
     if (cerca) {
@@ -349,8 +352,8 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   const richiamiFuturi = applicaOrdine(leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && (!l.data_richiamo || l.data_richiamo > today) && !l.portafoglio_uscito && matchFiltri(l)), ordinaRichiami);
   // Il badge rosso in sidebar segnala solo le PROMESSE da rispettare oggi (richiami veri, fissati da te).
   // Le riattivazioni "Non interessato" sono opportunità, non scadenze: restano visibili in pagina ma non generano allarme.
-  const nRichiamiBadge = leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo && l.data_richiamo <= today).length;
-  const nRiconattiBadge = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today).length;
+  const nRichiamiBadge = leads.filter(l => l.stato === 'Richiamare' && l.richiamo_fissato_da !== 'import' && l.data_richiamo && l.data_richiamo <= today && (!operatoreFiltro || (l.operatore || 'Rosanna') === operatoreFiltro)).length;
+  const nRiconattiBadge = leads.filter(l => l.stato === 'Non interessato' && l.non_interessato_fino_a && l.non_interessato_fino_a <= today && (!operatoreFiltro || (l.operatore || 'Rosanna') === operatoreFiltro)).length;
 
   const OPZIONI_ORDINE_CODA = [
     { v: 'tentativi_asc', l: '↑ Meno tentativi prima' },
@@ -367,7 +370,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     { v: 'default', l: 'Ordine di caricamento' },
   ];
 
-  const liste = [...new Set(leads.map(l => l.lista).filter(Boolean))].sort();
+  const liste = [...new Set(leads.filter(l => !operatoreFiltro || (l.operatore || 'Rosanna') === operatoreFiltro).map(l => l.lista).filter(Boolean))].sort();
   const categoriePresenti = CATEGORIE.filter(c => leads.some(l => l.categoria === c));
 
   const esitiOggi = leads.reduce((n, l) => n + (l.note_storia || []).filter(h => ESITI_VALIDI.has(h.esito) && (h.date || '').slice(0, 10) === today).length, 0);
@@ -418,10 +421,16 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
   // lo ritroviamo per telefono/email, così possiamo sia aprirne la scheda sia (sotto) capire se
   // la segretaria l'ha già richiamato dopo l'appuntamento mancato.
   const dig9 = s => (s || '').replace(/\D/g, '').slice(-9);
-  const trovaLeadDaContatto = (c) => leads.find(l =>
-    (dig9(c.telefono) && dig9(c.telefono) === dig9(l.telefono)) ||
-    (c.email && l.email && c.email.toLowerCase() === l.email.toLowerCase())
-  ) || null;
+  // Un lead può avere più numeri (cellulare, telefono, telefono2, telefono3) — un contatto importato
+  // nel CRM a volte riporta solo uno di quelli, quindi il confronto deve controllarli tutti, non solo
+  // "telefono", altrimenti un match reale (stessa persona, numero secondario) risulta "non trovato".
+  const trovaLeadDaContatto = (c) => {
+    const dc = dig9(c.telefono);
+    return leads.find(l =>
+      (dc && [l.cellulare, l.telefono, l.telefono2, l.telefono3].some(t => dig9(t) && dig9(t) === dc)) ||
+      (c.email && l.email && c.email.toLowerCase() === l.email.toLowerCase())
+    ) || null;
+  };
 
   // Le stesse liste della "Qualità appuntamenti" (sopra), ma pronte da mostrare direttamente
   // in due box affiancati nella Dashboard, con chiamata immediata — non solo dietro un clic sul grafico.
@@ -518,7 +527,7 @@ export default function OperatorView({ profile, onLogout, fonteOverride, preview
     if (e.tipo === 'richiamo' && !dataRichiamo) { showToast('Indica la data di richiamo', 'err'); return; }
     setSaving(true);
     const nowIso = new Date().toISOString();
-    const entry = { id: Date.now().toString(36), date: nowIso, esito: e.name, testo: nota.trim() };
+    const entry = { id: Date.now().toString(36), date: nowIso, esito: e.name, testo: nota.trim(), operatore: profile?.nome || null };
     // Salvo lo stato precedente per l'eventuale "Annulla ultima registrazione"
     const prima = { stato: selected.stato, tentativi: selected.tentativi, ultimo_contatto: selected.ultimo_contatto, note_storia: selected.note_storia, data_richiamo: selected.data_richiamo, richiamo_ora: selected.richiamo_ora, non_interessato_fino_a: selected.non_interessato_fino_a, richiamo_fissato_da: selected.richiamo_fissato_da };
     const fields = {

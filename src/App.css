@@ -38,6 +38,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .brand-name { font-size: 13px; font-weight: 700; color: white; }
 .brand-sub { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 2px; }
 .nav { padding: 10px 8px; flex: 1; overflow-y: auto; }
+.nav-group { padding-top: 12px; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); }
+.nav-group.first { padding-top: 0; margin-top: 0; border-top: none; }
 .nav-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: .09em; padding: 0 8px 6px; }
 .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: var(--r); cursor: pointer; font-size: 13px; color: rgba(255,255,255,0.7); border: none; background: none; width: 100%; text-align: left; transition: background .1s; font-family: var(--font); }
 .nav-item:hover { background: rgba(255,255,255,0.12); color: white; }

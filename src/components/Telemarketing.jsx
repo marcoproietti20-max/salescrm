@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chart, ArcElement, DoughnutController, LineController, LineElement, PointElement, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
-import { FONTI, CATEGORIE, fmtDT } from '../constants';
-import { dbLoadLeads, dbInsertLeads, dbUpdateLead, dbDeleteLeads, normPhone, supabase, dbLoadImportBatches, dbCreateImportBatch, dbUndoImportBatch } from '../supabase';
+import { FONTI, CATEGORIE, OPERATORI, fmtDT } from '../constants';
+import { dbLoadLeads, dbInsertLeads, dbUpdateLead, dbUpdateLeadsMany, dbDeleteLeads, normPhone, supabase, dbLoadImportBatches, dbCreateImportBatch, dbUndoImportBatch } from '../supabase';
 import { ESITI_CHIAMATA } from './OperatorView';
 Chart.register(ArcElement, DoughnutController, LineController, LineElement, PointElement, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -15,7 +15,6 @@ const CAMPI_LEAD = [
   { key: 'categoria', label: 'Categoria',        kw: ['categoria', 'tipolog', 'professione', 'attivit'] },
   { key: 'citta',     label: 'Città',            kw: ['citt', 'comune', 'localit', 'city'] },
   { key: 'provincia', label: 'Provincia',        kw: ['prov', 'pr.'] },
-  { key: 'priorita',  label: 'Priorità (A/B/C)', kw: ['priorit'] },
   // Campi avanzati — solo per file già lavorati (storico, esiti). Lasciali vuoti per una lista grezza mai chiamata.
   { key: 'stato',        label: 'Stato (avanzato)',            kw: ['stato'], avanzato: true },
   { key: 'tentativi',    label: 'Tentativi (avanzato)',         kw: ['tentativi'], avanzato: true },
@@ -172,6 +171,13 @@ export default function Telemarketing({ contacts, showToast }) {
   const [mapping, setMapping] = useState({});
   const [nomeLista, setNomeLista] = useState('');
   const [fonteDefault, setFonteDefault] = useState('Telemarketing Rosanna');
+  const [operatoreDefault, setOperatoreDefault] = useState('Rosanna');
+  // Assegna tra le operatrici — sposta un lotto di lead "mai chiamati" di una lista da un'operatrice all'altra
+  const [assLista, setAssLista] = useState('');
+  const [assDa, setAssDa] = useState('Rosanna');
+  const [assA, setAssA] = useState('Francesca');
+  const [assQty, setAssQty] = useState(20);
+  const [assegnando, setAssegnando] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(null);
   const [report, setReport] = useState(null);
@@ -250,7 +256,7 @@ export default function Telemarketing({ contacts, showToast }) {
           daInserire.push({
             nome: null, azienda: c.azienda || null, telefono: c.telefono || null, email: c.email || null,
             citta: c.citta || null, provincia: c.provincia || null, categoria: null,
-            stato: 'Da chiamare', lista: 'Portafoglio', fonte: 'Portafoglio', tentativi: 0,
+            stato: 'Da chiamare', lista: 'Portafoglio', fonte: 'Portafoglio', operatore: 'Rosanna', tentativi: 0,
             codice_cliente_sap: c.codice_cliente_sap, valore_cliente: c.valore_cliente,
             prodotti_attivi: c.prodotti_attivi, prossima_scadenza: c.prossima_scadenza,
             stato_amministrativo: c.stato_amministrativo, portafoglio_uscito: false,
@@ -314,7 +320,7 @@ export default function Telemarketing({ contacts, showToast }) {
           daInserire.push({
             nome: null, azienda: c.azienda || null, telefono: c.telefono || null, email: c.email || null,
             citta: c.citta || null, provincia: c.provincia || null, categoria: null,
-            stato: 'Da chiamare', lista: 'Portafoglio', fonte: 'Portafoglio', tentativi: 0,
+            stato: 'Da chiamare', lista: 'Portafoglio', fonte: 'Portafoglio', operatore: 'Rosanna', tentativi: 0,
             codice_cliente_sap: c.codice_cliente_sap, valore_cliente: 0,
             prodotti_attivi: [], prossima_scadenza: null, stato_amministrativo: null, portafoglio_uscito: false,
             note_storia: [{ id: 'imp-' + c.codice_cliente_sap, date: oggiIso, esito: 'Import', testo: 'Importato dal Portafoglio Formale (riassegnazione annuale).' }],
@@ -566,8 +572,7 @@ export default function Telemarketing({ contacts, showToast }) {
             telefono2: g(row, 'telefono2') || null, telefono3: g(row, 'telefono3') || null,
             email: em || null,
             categoria: g(row, 'categoria') || null, citta: g(row, 'citta') || null, provincia: g(row, 'provincia') || null,
-            priorita: ['A', 'B', 'C'].includes(g(row, 'priorita').toUpperCase()) ? g(row, 'priorita').toUpperCase() : null,
-            stato: statoFinale, lista: nomeLista.trim(), fonte: fonteDefault,
+            stato: statoFinale, lista: nomeLista.trim(), fonte: fonteDefault, operatore: operatoreDefault,
             tentativi: Number.isFinite(tentativiFile) ? tentativiFile : 0,
             data_richiamo: statoFinale === 'Richiamare' ? (parseDataSicura(g(row, 'data_richiamo')) || null) : null,
             richiamo_fissato_da: statoFinale === 'Richiamare' ? 'import' : null,
@@ -861,6 +866,28 @@ export default function Telemarketing({ contacts, showToast }) {
     setListaDaEliminare('');
   };
 
+  // ── Assegna tra le operatrici ──────────────────────────────────
+  // Sposta un lotto di lead "mai chiamati" (tentativi 0, nessuno storico di chiamata reale) di
+  // una lista da un'operatrice all'altra: così puoi dare a Francesca una fetta di ogni lista da
+  // cui partire senza toccare i lead che Rosanna ha già lavorato o sta lavorando.
+  const assCandidati = leads.filter(l => l.lista === assLista && (l.operatore || 'Rosanna') === assDa
+    && (l.tentativi || 0) === 0 && !(l.note_storia || []).some(h => ESITI_VALIDI.has(h.esito)));
+  const assegnaLotto = async () => {
+    if (!assLista || assDa === assA || assQty < 1 || assegnando) return;
+    const lotto = assCandidati.slice(0, assQty);
+    if (!lotto.length) { showToast('Nessun lead "mai chiamato" trovato con questi criteri', '', 'info'); return; }
+    setAssegnando(true);
+    const ok = await dbUpdateLeadsMany(lotto.map(l => l.id), { operatore: assA });
+    if (ok) {
+      const ids = new Set(lotto.map(l => l.id));
+      setLeads(prev => prev.map(l => ids.has(l.id) ? { ...l, operatore: assA } : l));
+      showToast(`${lotto.length} lead assegnati a ${assA}`, `Lista "${assLista}"`);
+    } else {
+      showToast('Errore durante l\'assegnazione', '', 'info');
+    }
+    setAssegnando(false);
+  };
+
   // ── Esportazione con storico leggibile ────────────────────────
   const esportaLead = async (rows, nomeFile) => {
     if (!rows.length) { showToast('Niente da esportare', '', 'info'); return; }
@@ -917,6 +944,11 @@ export default function Telemarketing({ contacts, showToast }) {
                 <div className="form-group"><label className="form-label">Fonte assegnata ai lead</label>
                   <select className="form-control" value={fonteDefault} onChange={e => setFonteDefault(e.target.value)}>
                     {FONTI.map(f => <option key={f.name} value={f.name}>{f.icon} {f.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group"><label className="form-label">Operatrice assegnata</label>
+                  <select className="form-control" value={operatoreDefault} onChange={e => setOperatoreDefault(e.target.value)}>
+                    {OPERATORI.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
               </div>
@@ -1173,6 +1205,31 @@ export default function Telemarketing({ contacts, showToast }) {
               <div className="fs-11 text-muted" style={{ marginTop: 4 }}>Eliminazione: {bulkProgress.done.toLocaleString('it-IT')} / {bulkProgress.total.toLocaleString('it-IT')} — non chiudere questa pagina</div>
             </div>
           )}
+        </div>
+
+        {/* ── ASSEGNA TRA LE OPERATRICI ── */}
+        <div className="card">
+          <div className="card-title">Assegna tra le operatrici</div>
+          <div className="fs-12 text-muted" style={{ marginBottom: 10 }}>
+            Sposta un lotto di lead mai chiamati (0 tentativi, nessuno storico) di una lista da un'operatrice all'altra — utile per dare a una collega nuova una fetta da cui partire senza toccare ciò che l'altra sta già lavorando.
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select className="form-control" style={{ width: 240, fontSize: 13 }} value={assLista} onChange={e => setAssLista(e.target.value)}>
+              <option value="">— scegli una lista —</option>
+              {liste.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+            <select className="form-control" style={{ width: 130, fontSize: 13 }} value={assDa} onChange={e => setAssDa(e.target.value)}>
+              {OPERATORI.map(o => <option key={o} value={o}>da {o}</option>)}
+            </select>
+            <select className="form-control" style={{ width: 130, fontSize: 13 }} value={assA} onChange={e => setAssA(e.target.value)}>
+              {OPERATORI.map(o => <option key={o} value={o}>a {o}</option>)}
+            </select>
+            <input type="number" min={1} className="form-control" style={{ width: 90, fontSize: 13 }} value={assQty} onChange={e => setAssQty(parseInt(e.target.value, 10) || 1)} />
+            <button className="btn btn-primary" disabled={!assLista || assDa === assA || assegnando} onClick={assegnaLotto}>
+              {assegnando ? '⏳...' : `Assegna`}
+            </button>
+            {assLista && <span className="fs-12 text-muted">{assCandidati.length} lead mai chiamati di "{assDa}" disponibili in questa lista</span>}
+          </div>
         </div>
 
         {/* ── ELENCO LEAD ── */}

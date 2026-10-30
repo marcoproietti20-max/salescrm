@@ -1,19 +1,35 @@
 import React, { useState, useEffect } from 'react';
-const NAV = [
-  { id: 'dashboard',    label: 'Dashboard',      icon: 'M2 2h5v5H2zm7 0h5v5H9zm-7 7h5v5H2zm7 0h5v5H9z' },
-  { id: 'contacts',     label: 'Contatti',        icon: 'M8 8a3 3 0 100-6 3 3 0 000 6zm-6 6c0-3.3 2.7-6 6-6s6 2.7 6 6' },
-  { id: 'pipeline',     label: 'Pipeline',        icon: 'M2 4h4v8H2zm5 3h4v5H7zm5-5h2v10h-2z' },
-  { id: 'appointments', label: 'Appuntamenti',    icon: 'M1 2h14a1 1 0 011 1v11a1 1 0 01-1 1H1a1 1 0 01-1-1V3a1 1 0 011-1zm0 4h14M5 1v2M11 1v2' },
-  { id: 'followups',    label: 'Follow-up',       icon: 'M8 1v7l4 2M15 8A7 7 0 111 8a7 7 0 0114 0z', badge: true },
-  { id: 'chiuso',       label: 'Chiuso per mese', icon: 'M2 12l4-4 3 3 5-6M1 15h14' },
-  { id: 'archivio',     label: 'Archivio KO',     icon: 'M1 5h14l-2-3H3zm0 0v10a1 1 0 001 1h12a1 1 0 001-1V5M6 9h4' },
-  { id: 'calendly',     label: 'Bookings',        icon: 'M8 2a6 6 0 100 12A6 6 0 008 2zm0 3v4l3 2' },
-  { id: 'telemarketing', label: 'Telemarketing',  icon: 'M2.5 2l3-1 1.8 3.6-2 1.6a10.5 10.5 0 004.5 4.5l1.6-2L15 10.5l-1 3C8 14.5 1.5 8 2.5 2z' },
-  { id: 'portafoglio', label: 'Portafoglio', icon: 'M2 6h12v7a1 1 0 01-1 1H3a1 1 0 01-1-1V6zm0 0V4a1 1 0 011-1h8a1 1 0 011 1v2M6 9h4' },
-  { id: 'canvass', label: 'Canvass', icon: 'M8 1l2 4.5 5 .5-3.7 3.3 1.1 4.9L8 11.8 3.6 14.2l1.1-4.9L1 5.9l5-.5z' },
-  { id: 'provvigioni', label: 'Provvigioni', icon: 'M8 1v14M4 4h6a2 2 0 010 4H6a2 2 0 000 4h6' },
-  { id: 'vista_operatore', label: 'Vista Operatore', icon: 'M8 3C4 3 1.5 6 1 8c.5 2 3 5 7 5s6.5-3 7-5c-.5-2-3-5-7-5zm0 8a3 3 0 100-6 3 3 0 000 6z' },
-  { id: 'settings',     label: 'Impostazioni',    icon: 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 1v2M8 13v2M1 8h2M13 8h2' },
+// Il menu è raggruppato in macro-aree (una linea sottile separa un gruppo dal successivo — vedi
+// .nav-group in App.css) invece di un unico elenco piatto: più facile orientarsi man mano che
+// le voci crescono.
+const NAV_GROUPS = [
+  { label: 'Panoramica', items: [
+    { id: 'dashboard',    label: 'Dashboard',      icon: 'M2 2h5v5H2zm7 0h5v5H9zm-7 7h5v5H2zm7 0h5v5H9z' },
+  ]},
+  { label: 'Clienti', items: [
+    { id: 'contacts',     label: 'Contatti',        icon: 'M8 8a3 3 0 100-6 3 3 0 000 6zm-6 6c0-3.3 2.7-6 6-6s6 2.7 6 6' },
+    { id: 'pipeline',     label: 'Pipeline',        icon: 'M2 4h4v8H2zm5 3h4v5H7zm5-5h2v10h-2z' },
+    { id: 'appointments', label: 'Appuntamenti',    icon: 'M1 2h14a1 1 0 011 1v11a1 1 0 01-1 1H1a1 1 0 01-1-1V3a1 1 0 011-1zm0 4h14M5 1v2M11 1v2' },
+    { id: 'followups',    label: 'Follow-up',       icon: 'M8 1v7l4 2M15 8A7 7 0 111 8a7 7 0 0114 0z', badge: true },
+    { id: 'chiuso',       label: 'Fatturato',       icon: 'M2 12l4-4 3 3 5-6M1 15h14' },
+    { id: 'archivio',     label: 'Archivio KO',     icon: 'M1 5h14l-2-3H3zm0 0v10a1 1 0 001 1h12a1 1 0 001-1V5M6 9h4' },
+  ]},
+  { label: 'Il mio business', items: [
+    { id: 'portafoglio',  label: 'Portafoglio',     icon: 'M2 6h12v7a1 1 0 01-1 1H3a1 1 0 01-1-1V6zm0 0V4a1 1 0 011-1h8a1 1 0 011 1v2M6 9h4' },
+    { id: 'canvass',      label: 'Canvass',         icon: 'M8 1l2 4.5 5 .5-3.7 3.3 1.1 4.9L8 11.8 3.6 14.2l1.1-4.9L1 5.9l5-.5z' },
+    { id: 'provvigioni',  label: 'Provvigioni',     icon: 'M8 1v14M4 4h6a2 2 0 010 4H6a2 2 0 000 4h6' },
+  ]},
+  { label: 'Telemarketing', items: [
+    { id: 'telemarketing',    label: 'Gestione liste', icon: 'M2.5 2l3-1 1.8 3.6-2 1.6a10.5 10.5 0 004.5 4.5l1.6-2L15 10.5l-1 3C8 14.5 1.5 8 2.5 2z' },
+    { id: 'vista_operatore',  label: 'Operatore 1',   icon: 'M8 3C4 3 1.5 6 1 8c.5 2 3 5 7 5s6.5-3 7-5c-.5-2-3-5-7-5zm0 8a3 3 0 100-6 3 3 0 000 6z' },
+    { id: 'vista_operatore2', label: 'Operatore 2',   icon: 'M8 3C4 3 1.5 6 1 8c.5 2 3 5 7 5s6.5-3 7-5c-.5-2-3-5-7-5zm0 8a3 3 0 100-6 3 3 0 000 6z' },
+  ]},
+  { label: 'Strumenti', items: [
+    { id: 'calendly',     label: 'Sincronizza CRM', icon: 'M8 2a6 6 0 100 12A6 6 0 008 2zm0 3v4l3 2' },
+  ]},
+  { label: 'Sistema', items: [
+    { id: 'settings',     label: 'Impostazioni',    icon: 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 1v2M8 13v2M1 8h2M13 8h2' },
+  ]},
 ];
 export default function Sidebar({ page, setPage, brand, urgentFU }) {
   const [open, setOpen] = useState(window.innerWidth > 900);
@@ -41,16 +57,20 @@ export default function Sidebar({ page, setPage, brand, urgentFU }) {
           </div>
         </div>
         <nav className="nav">
-          <div className="nav-label">Menu</div>
-          {NAV.map(item => (
-            <button key={item.id} className={`nav-item${page === item.id ? ' active' : ''}`}
-              onClick={() => go(item.id)} title={item.label}>
-              <svg className="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d={item.icon} />
-              </svg>
-              <span>{item.label}</span>
-              {item.badge && urgentFU > 0 && <span className="nav-badge">{urgentFU}</span>}
-            </button>
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={group.label} className={`nav-group${gi === 0 ? ' first' : ''}`}>
+              <div className="nav-label">{group.label}</div>
+              {group.items.map(item => (
+                <button key={item.id} className={`nav-item${page === item.id ? ' active' : ''}`}
+                  onClick={() => go(item.id)} title={item.label}>
+                  <svg className="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d={item.icon} />
+                  </svg>
+                  <span>{item.label}</span>
+                  {item.badge && urgentFU > 0 && <span className="nav-badge">{urgentFU}</span>}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="sidebar-footer">
