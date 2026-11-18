@@ -119,11 +119,6 @@ export default function App() {
     showToast(`${ids.size} contatti spostati nel cestino`, 'Recuperabili da "Cestino" nel menu', 'info');
   }, [showToast]);
 
-  // ── Cestino ────────────────────────────────────────────────
-  const [trash, setTrash] = useState([]);
-  const loadTrash = useCallback(async () => {
-    setTrash(await dbLoadTrash());
-  }, []);
   const restoreFromTrash = useCallback(async (ids) => {
     const idArr = [...ids];
     const ok = await dbRestoreMany(idArr);
