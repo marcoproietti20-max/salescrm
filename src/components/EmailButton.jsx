@@ -142,7 +142,7 @@ export function versioneHtml(testo) {
   h = h.replace(/\*\*([\s\S]+?)\*\*/g, '<b>$1</b>');
   h = h.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
   h = h.replace(/\r?\n/g, '<br>');
-  return '<div style="font-family:' + FONT_EMAIL + ';font-size:11pt;">' + h + '</div>';
+  return '<div style="font-family:' + FONT_EMAIL + ';font-size:12pt;">' + h + '</div>';
 }
 
 // Avvolge (o toglie) il grassetto attorno alla selezione. Restituisce il nuovo testo e la nuova selezione.
