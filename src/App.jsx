@@ -42,6 +42,15 @@ export default function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
 
+  // ── Cestino ────────────────────────────────────────────────
+  // Dichiarato qui, prima degli effetti più sotto che lo usano (incluso nelle loro
+  // dipendenze): quelle dipendenze vengono lette durante il render, quindi loadTrash
+  // deve già esistere a questo punto, non solo dentro le funzioni che lo chiamano.
+  const [trash, setTrash] = useState([]);
+  const loadTrash = useCallback(async () => {
+    setTrash(await dbLoadTrash());
+  }, []);
+
   // Auth check on mount — carica profilo (ruolo) e, solo per admin, i contatti
   useEffect(() => {
     const init = async (session) => {
