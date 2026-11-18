@@ -21,6 +21,7 @@ function fromDb(r) {
     contratti:r.contratti||[], testoProposta:r.testo_proposta||'', noteInterne:r.note_interne||'',
     history:r.history||[], customData:r.custom_data||{},
     specializzazioni:r.specializzazioni||[],
+    deletedAt:r.deleted_at||null,
   };
 }
 export async function dbLoadContacts() {
@@ -28,8 +29,23 @@ export async function dbLoadContacts() {
   let all = [];
   let from = 0;
   while (true) {
-    const {data,error}=await supabase.from('contacts').select('*').order('created_at',{ascending:true}).range(from, from+PAGE-1);
+    // .is('deleted_at', null): nasconde i contatti nel Cestino dalle viste normali (Pipeline, Contatti,
+    // Dashboard, ecc.) senza che quei componenti debbano saperne nulla.
+    const {data,error}=await supabase.from('contacts').select('*').is('deleted_at', null).order('created_at',{ascending:true}).range(from, from+PAGE-1);
     if(error){console.error(error); return all.length ? all.map(fromDb) : [];}
+    all = all.concat(data||[]);
+    if(!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all.map(fromDb);
+}
+export async function dbLoadTrash() {
+  const PAGE = 1000;
+  let all = [];
+  let from = 0;
+  while (true) {
+    const {data,error}=await supabase.from('contacts').select('*').not('deleted_at','is',null).order('deleted_at',{ascending:false}).range(from, from+PAGE-1);
+    if(error){console.error('dbLoadTrash:',error); return all.length ? all.map(fromDb) : [];}
     all = all.concat(data||[]);
     if(!data || data.length < PAGE) break;
     from += PAGE;
@@ -45,13 +61,35 @@ export async function dbSaveMany(contacts) {
   const {error}=await supabase.from('contacts').upsert(contacts.map(toDb),{onConflict:'id'});
   if(error) console.error('dbSaveMany:',error);
 }
+// "Eliminare" un contatto non lo cancella più: lo sposta nel Cestino (deleted_at), da cui si
+// può ripristinare. Il nome delle funzioni resta invariato apposta, così tutto il codice che le
+// chiama già (Pipeline, Contatti) continua a funzionare senza modifiche.
 export async function dbDelete(id) {
-  const {error}=await supabase.from('contacts').delete().eq('id',id);
+  const {error}=await supabase.from('contacts').update({deleted_at:new Date().toISOString()}).eq('id',id);
   if(error) console.error('dbDelete:',error);
 }
 export async function dbDeleteMany(ids) {
-  const {error}=await supabase.from('contacts').delete().in('id',[...ids]);
+  if(!ids.length) return;
+  const {error}=await supabase.from('contacts').update({deleted_at:new Date().toISOString()}).in('id',[...ids]);
   if(error) console.error('dbDeleteMany:',error);
+}
+export async function dbRestore(id) {
+  const {error}=await supabase.from('contacts').update({deleted_at:null}).eq('id',id);
+  if(error){console.error('dbRestore:',error); return false;}
+  return true;
+}
+export async function dbRestoreMany(ids) {
+  if(!ids.length) return true;
+  const {error}=await supabase.from('contacts').update({deleted_at:null}).in('id',[...ids]);
+  if(error){console.error('dbRestoreMany:',error); return false;}
+  return true;
+}
+// Eliminazione vera e definitiva, solo dal Cestino — qui sì che non si torna indietro.
+export async function dbPurgeMany(ids) {
+  if(!ids.length) return true;
+  const {error}=await supabase.from('contacts').delete().in('id',[...ids]);
+  if(error){console.error('dbPurgeMany:',error); return false;}
+  return true;
 }
 export async function dbUpdateHistory(id, history) {
   const {error}=await supabase.from('contacts').update({history,updated_at:new Date().toISOString()}).eq('id',id);

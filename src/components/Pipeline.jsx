@@ -33,7 +33,7 @@ export default function Pipeline({ contacts, stages, setModal, setContacts, show
 
   const handleBulkDelete = () => {
     if (!selIds.size) return;
-    if (!window.confirm(`Eliminare ${selIds.size} contatti? Questa azione è irreversibile.`)) return;
+    if (!window.confirm(`Eliminare ${selIds.size} contatti? Verranno spostati nel Cestino, da cui potrai recuperarli.`)) return;
     deleteContacts(selIds);
     setSelIds(new Set());
   };

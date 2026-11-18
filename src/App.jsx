@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { lsGet, lsSet, uid, parseDate, DEFAULT_STAGES, DEFAULT_BRAND, parseCSVRow } from './constants';
-import { dbLoadContacts, dbSave, dbSaveMany, dbDelete, dbDeleteMany, dbUpdateHistory, dbLoadBookingsInbox, dbMarkBookingsProcessed, dbLoadProfile, dbLoadLeads, dbUpdateLead, normPhone, supabase } from './supabase';
+import { dbLoadContacts, dbSave, dbSaveMany, dbDelete, dbDeleteMany, dbLoadTrash, dbRestoreMany, dbPurgeMany, dbUpdateHistory, dbLoadBookingsInbox, dbMarkBookingsProcessed, dbLoadProfile, dbLoadLeads, dbUpdateLead, normPhone, supabase } from './supabase';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Contacts from './components/Contacts';
@@ -9,6 +9,7 @@ import Appointments from './components/Appointments';
 import FollowUps from './components/FollowUps';
 import ChiusoPerMese from './components/ChiusoPerMese';
 import ArchivioKO from './components/ArchivioKO';
+import Cestino from './components/Cestino';
 import Calendly from './components/Calendly';
 import Settings from './components/Settings';
 import Telemarketing from './components/Telemarketing';
@@ -52,6 +53,7 @@ export default function App() {
       if (!p || p.role !== 'operatore') {
         const data = await dbLoadContacts();
         setContacts(data);
+        loadTrash(); // conteggio badge nel menu fin da subito, non solo aprendo la pagina
       }
       setLoading(false);
     };
@@ -61,6 +63,8 @@ export default function App() {
   }, []);
 
   // Persist settings to localStorage
+  // Carica il Cestino solo quando serve (al primo accesso a quella pagina), non ad ogni avvio.
+  useEffect(() => { if (page === 'cestino') loadTrash(); }, [page, loadTrash]);
   useEffect(() => { lsSet('crm_stages', stages); }, [stages]);
   useEffect(() => { lsSet('crm_fields', customFields); }, [customFields]);
   useEffect(() => { lsSet('crm_brand', brand); }, [brand]);
@@ -97,13 +101,41 @@ export default function App() {
   const deleteContact = useCallback(async (id) => {
     setContacts(prev => prev.filter(c => c.id !== id));
     await dbDelete(id);
-    showToast('Contatto eliminato', '', 'info');
+    showToast('Contatto spostato nel cestino', 'Recuperabile da "Cestino" nel menu', 'info');
   }, [showToast]);
 
   const deleteContacts = useCallback(async (ids) => {
     setContacts(prev => prev.filter(c => !ids.has(c.id)));
     await dbDeleteMany(ids);
-    showToast(`${ids.size} contatti eliminati`, '', 'info');
+    showToast(`${ids.size} contatti spostati nel cestino`, 'Recuperabili da "Cestino" nel menu', 'info');
+  }, [showToast]);
+
+  // ── Cestino ────────────────────────────────────────────────
+  const [trash, setTrash] = useState([]);
+  const loadTrash = useCallback(async () => {
+    setTrash(await dbLoadTrash());
+  }, []);
+  const restoreFromTrash = useCallback(async (ids) => {
+    const idArr = [...ids];
+    const ok = await dbRestoreMany(idArr);
+    if (ok) {
+      const restored = trash.filter(c => idArr.includes(c.id)).map(c => ({ ...c, deletedAt: null }));
+      setTrash(prev => prev.filter(c => !idArr.includes(c.id)));
+      setContacts(prev => [...prev, ...restored]);
+      showToast(`${restored.length} contatti ripristinati`, '');
+    } else {
+      showToast('Errore nel ripristino', '', 'info');
+    }
+  }, [trash, showToast]);
+  const purgeFromTrash = useCallback(async (ids) => {
+    const idArr = [...ids];
+    const ok = await dbPurgeMany(idArr);
+    if (ok) {
+      setTrash(prev => prev.filter(c => !idArr.includes(c.id)));
+      showToast(`${idArr.length} contatti eliminati definitivamente`, '', 'info');
+    } else {
+      showToast('Errore nell\'eliminazione definitiva', '', 'info');
+    }
   }, [showToast]);
 
   const updateContact = useCallback(async (id, updater) => {
@@ -252,11 +284,12 @@ export default function App() {
     saveContact, deleteContact, deleteContacts, updateContact,
     syncFromBookingsInbox, importFromCSV,
     setModal, showToast, today, navigateTo, pageFilter, setPageFilter,
+    trash, loadTrash, restoreFromTrash, purgeFromTrash,
   };
 
   const logout = async () => { await supabase.auth.signOut(); setSession(null); setProfile(null); setContacts([]); };
 
-  const pages = { dashboard: Dashboard, contacts: Contacts, pipeline: Pipeline, appointments: Appointments, followups: FollowUps, chiuso: ChiusoPerMese, archivio: ArchivioKO, calendly: Calendly, telemarketing: Telemarketing, portafoglio: Portafoglio, canvass: Canvass, provvigioni: Provvigioni, settings: Settings };
+  const pages = { dashboard: Dashboard, contacts: Contacts, pipeline: Pipeline, appointments: Appointments, followups: FollowUps, chiuso: ChiusoPerMese, archivio: ArchivioKO, cestino: Cestino, calendly: Calendly, telemarketing: Telemarketing, portafoglio: Portafoglio, canvass: Canvass, provvigioni: Provvigioni, settings: Settings };
   const Page = pages[page] || Dashboard;
 
   if (authLoading) return (
@@ -313,7 +346,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar page={page} setPage={setPage} brand={brand} urgentFU={urgentFU} />
+      <Sidebar page={page} setPage={setPage} brand={brand} urgentFU={urgentFU} trashCount={trash.length} />
       <main className="main">
         <Page {...sharedProps} />
       </main>
