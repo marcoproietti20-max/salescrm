@@ -60,6 +60,55 @@ Marco Proietti
 Il Sole 24 Ore Professionale`,
   },
   {
+    id: 'preventivo-dopo-incontro-lei',
+    nome: 'Preventivo dopo l\'incontro (Lei)',
+    oggetto: 'Preventivo [prodotto] - Il Sole 24 ORE',
+    corpo: `Buongiorno {nome},
+
+la ringrazio per il tempo che mi ha dedicato [giorno dell'incontro]. Come concordato, le invio in allegato il preventivo per [prodotto].
+
+Trova anche la proposta per [secondo prodotto], la soluzione per [funzione principale] che abbiamo approfondito insieme durante l'incontro.
+
+Ho aggiunto le brochure informative, dove può vedere nel dettaglio le funzionalità di ciascun prodotto.
+
+La ricontatterò [giorno] per raccogliere un suo primo riscontro e chiarire eventuali dubbi. Se nel frattempo le servisse qualche informazione in più, può scrivermi o chiamarmi direttamente.
+
+Un cordiale saluto,
+Marco Proietti`,
+  },
+  {
+    id: 'preventivo-dopo-incontro-tu',
+    nome: 'Preventivo dopo l\'incontro (tu)',
+    oggetto: 'Preventivo [prodotto] - Il Sole 24 ORE',
+    corpo: `Buongiorno {nome},
+
+ti ringrazio per il tempo che mi hai dedicato [giorno dell'incontro]. Come concordato, ti invio in allegato il preventivo per [prodotto].
+
+Ho aggiunto le brochure informative, dove puoi vedere nel dettaglio le funzionalità di ciascun prodotto.
+
+Ti ricontatterò [giorno] per raccogliere un tuo primo riscontro e chiarire eventuali dubbi. Se nel frattempo ti servisse qualche informazione in più, puoi scrivermi o chiamarmi direttamente.
+
+Un caro saluto,
+Marco Proietti`,
+  },
+  {
+    id: 'appuntamento-non-svolto-oggi',
+    nome: 'Appuntamento odierno non svolto',
+    oggetto: 'Il nostro appuntamento di oggi - Marco Proietti | Il Sole 24 Ore',
+    corpo: `Buongiorno {nome},
+
+oggi avevamo in programma il nostro incontro, ma immagino sia sorto un imprevisto.
+
+Mi farebbe piacere fissare un nuovo appuntamento per presentarle le ultime novità del Sole 24 Ore riservate ai professionisti del suo settore. Bastano circa 30 minuti, anche a distanza.
+
+Può scegliere il giorno e l'orario che preferisce da questo link: {link}
+
+In alternativa, può rispondere a questa email indicandomi qualche sua disponibilità e mi occuperò io di fissare l'appuntamento.
+
+Un cordiale saluto,
+Marco Proietti`,
+  },
+  {
     id: 'rinnovo',
     nome: 'Rinnovo in scadenza',
     oggetto: 'Rinnovo dei suoi servizi Il Sole 24 Ore Professionale',
